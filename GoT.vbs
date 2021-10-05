@@ -21,10 +21,24 @@ Randomize
 
 Const BallSize = 50     ' 50 is the normal size used in the core.vbs, VP kicker routines uses this value divided by 2
 Const BallMass = 1.7    ' standard ball mass in JP's VPX Physics 3.0
-Const SongVolume = 0.15 ' 1 is full volume, but I set it quite low to listen better the other sounds :)
+
+'***********TABLE VOLUME LEVELS ********* 
+' [Value is from 0 to 1 where 1 is full volume. 
+' NOTE: you can go past 1 to amplify sounds]
+
+' Desktop Volumes
+'Const VolBGMusic = 0.5  ' Volume for Video Clips   
+'Const VolMusic1 = 0.4	' Volume for Cleland or Original Gameplay music
+' Cab Volumes
+Const VolBGMusic = 0.9  ' Volume for Video Clips   
+Const VolMusic1 = 0.7	' Volume forOriginal Gameplay music
+
+Const VolDef = 0.2		' Default volume for callouts 
+Const VolSfx = 0.2		' Volume for table Sound effects 
 
 
 Const DMDMode = 1 ' Use Flex/UltraDMD (currently the only option supported)
+Const UltraDMDVideos = True				'	ULTRA: Works on my DMDv3 but seems it causes issues on others
 
 ' Load the core.vbs for supporting Subs and functions
 LoadCoreFiles
@@ -77,6 +91,7 @@ Dim PlayersPlayingGame
 Dim CurrentPlayer
 Dim Credits
 Dim PuPlayer                ' Not currently used
+Dim plungerIM 'used mostly as an autofire plunger
 Dim BonusPoints(4)
 Dim BonusHeldPoints(4)
 Dim BonusMultiplier(4)
@@ -112,6 +127,7 @@ Dim	bUsePUPDMD
 Dim	bPupStarted
 Dim bBonusHeld
 Dim bJustStarted            ' Not sure what this is used for
+Dim bShowMatch
 
 ' Define game-specific global variables
 Dim bChooseHouse
@@ -129,7 +145,7 @@ Sub Table1_Init()
 	' TODO need to look into this 
 	vpmNudge.TiltSwitch = 14
     vpmNudge.Sensitivity = 1
-    vpmNudge.TiltObj = Array(Bumper001, bumper002, bumper003, LeftSlingshot, RightSlingshot)
+    vpmNudge.TiltObj = Array(Bumper1, bumper2, bumper3, LeftSlingshot, RightSlingshot)
 	
 	bTableReady=False
 	bUseUltraDMD=False
@@ -173,14 +189,15 @@ Sub Table1_Init()
     Loadhs
 
     'Init main variables
-	TableState_Init(0)
-	TableState_Init(1)
-	TableState_Init(2)
-	TableState_Init(3)
-	TableState_Init(4)
-	for i = 0 to StackSize
-		StackState_Init(i)
-	Next
+    'TODO: Revisit tablestate_init
+	' TableState_Init(0)
+	' TableState_Init(1)
+	' TableState_Init(2)
+	' TableState_Init(3)
+	' TableState_Init(4)
+	' for i = 0 to StackSize
+	' 	StackState_Init(i)
+	' Next
 
     ' initalise the DMD display
     DMD_Init
@@ -551,6 +568,53 @@ End Sub
 Sub PlaySoundAtBall(soundname) ' play a sound at the ball position, like rubbers, targets, metals, plastics
     PlaySound soundname, 0, Vol(ActiveBall), pan(ActiveBall), 0.4, 0, 0, 0, AudioFade(ActiveBall)
 End Sub
+
+Sub PlaySoundVol(soundname, Volume)
+  PlaySound soundname, 1, Volume
+End Sub
+
+Sub PlaySoundLoopVol(soundname, Volume)
+  PlaySound soundname, -1, Volume
+End Sub
+
+'********************
+' Music as wav sounds
+'********************
+
+Dim Song
+Song = ""
+
+Sub ThemeSong
+	PlaySong("Song-1")
+	SongNum=1
+End Sub
+
+Sub RotateSong()
+'debug.print "Rotate " & SongNum
+	PlaySong "Song-" & SongNum
+	SongNum=SongNum+1
+	if (SongNum>=4) then SongNum=1
+End Sub
+
+
+dim bPlayPaused
+bPlayPaused = False
+Sub PlaySong(name)
+'debug.print "PlaySong " & name & " " & song
+	dim PlayLength
+	if bUsePUPDMD then 			' Use Pup if we have it so we can pause the music
+'		PlaySongPup(name)
+		exit sub
+	End If 
+	StopSound "m_wait"
+	StopSound Song	' Stop the old song
+	if name <> "" then Song = name
+	PlayLength = -1
+	If Song = "m_end" Then PlayLength = 0
+	bPlayPaused=False
+	PlaySound Song, PlayLength, VolBGMusic 'this last number is the volume, from 0 to 1
+End Sub
+
 
 Function RndNbr(n) 'returns a random number between 1 and n
     Randomize timer
@@ -944,10 +1008,12 @@ End Sub
 ' and eventually PuP
 '******************************************************** 
 
+Const eNone = 0        ' Instantly displayed
+
 Sub LoadUltraDMD
 	Dim WshShell
 	Set WshShell = CreateObject("WScript.Shell")
-	WshShell.RegWrite "HKCU\Software\UltraDMD\fullcolor",UseFullColor,"REG_SZ"
+	WshShell.RegWrite "HKCU\Software\UltraDMD\fullcolor",False,"REG_SZ"
 
 	On Error Resume Next
     Set UltraDMD = CreateObject("UltraDMD.DMDObject")
@@ -1177,6 +1243,7 @@ End Function
 
 Dim bLutActive, LUTImage
 Sub LoadLUT
+    Dim x
     bLutActive = False
     x = LoadValue(cGameName, "LUTImage")
     If(x <> "")Then LUTImage = x Else LUTImage = 0
@@ -1349,35 +1416,21 @@ Sub ChangeGi(col) 'changes the gi color
 End Sub
 
 Sub GiOn
-    PlaySoundAt "fx_GiOn", li036 'about the center of the table
     DOF 118, DOFOn
     Dim bulb
     For each bulb in aGiLights
         bulb.State = 1
     Next
     GameGiOn
-    Fi001.Visible = 1
-    Fi002.Visible = 1
-    Fi003.Visible = 1
-    Fi004.Visible = 1
-    Fi005.Visible = 1
-    Fi006.Visible = 1
 End Sub
 
 Sub GiOff
-    PlaySoundAt "fx_GiOff", li036 'about the center of the table
     DOF 118, DOFOff
     Dim bulb
     For each bulb in aGiLights
         bulb.State = 0
     Next
     GameGiOff
-    Fi001.Visible = 0
-    Fi002.Visible = 0
-    Fi003.Visible = 0
-    Fi004.Visible = 0
-    Fi005.Visible = 0
-    Fi006.Visible = 0
 End Sub
 
 ' GI, light & flashers sequence effects
@@ -1427,7 +1480,7 @@ End Sub
 
 Sub StartAttractMode
     Dim a
-    StartRainbow aArrows
+    'StartRainbow aArrows
     StartLightSeq
     DMDFlush
     ShowTableInfo
@@ -1439,7 +1492,7 @@ Sub StartAttractMode
 End Sub
 
 Sub StopAttractMode
-    StopRainbow
+    'StopRainbow
     DMDScoreNow
     LightSeqAttract.StopPlay
 End Sub
@@ -1582,6 +1635,45 @@ Sub TurnOffPlayfieldLights()
     For each a in aLights
         a.State = 0
     Next
+End Sub
+
+Sub ShowTableInfo
+   Dim tmp
+   'info goes in a loop only stopped by the credits and the startkey
+   ' TODO: Add Game Of Thrones logo animation and move this to game-specific code
+   If Score(1)Then
+       DMD CL(0, "LAST SCORE"), CL(1, "PLAYER1 " &FormatScore(Score(1))), "", eNone, eNone, eNone, 3000, False, ""
+   End If
+   If Score(2)Then
+       DMD CL(0, "LAST SCORE"), CL(1, "PLAYER2 " &FormatScore(Score(2))), "", eNone, eNone, eNone, 3000, False, ""
+   End If
+   If Score(3)Then
+       DMD CL(0, "LAST SCORE"), CL(1, "PLAYER3 " &FormatScore(Score(3))), "", eNone, eNone, eNone, 3000, False, ""
+   End If
+   If Score(4)Then
+       DMD CL(0, "LAST SCORE"), CL(1, "PLAYER4 " &FormatScore(Score(4))), "", eNone, eNone, eNone, 3000, False, ""
+   End If
+   DMD "", CL(1, "GAME OVER"), "", eNone, eNone, eNone, 2000, False, ""
+   If bFreePlay Then
+       DMD CL(0, "FREE PLAY"), CL(1, "PRESS START"), "", eNone, eNone, eNone, 2000, False, ""
+   Else
+       If Credits > 0 Then
+           DMD CL(0, "CREDITS " & Credits), CL(1, "PRESS START"), "", eNone, eNone, eNone, 2000, False, ""
+       Else
+           DMD CL(0, "CREDITS " & Credits), CL(1, "INSERT COIN"), "", eNone, eNone, eNone, 2000, False, ""
+       End If
+   End If
+   tmp = chr(35)&chr(36)&chr(37)
+   DMD "", "", tmp, eNone, eNone, eNone, 3000, False, "" 'jpsalas presents
+   tmp = chr(38)&chr(39)&chr(40)
+   DMD "", "", tmp, eNone, eNone, eNone, 4000, False, "" 'title
+   'DMD CL(0, "HIGHSCORES"), Space(dCharsPerLine(1)), "", eScrollLeft, eScrollLeft, eNone, 20, False, ""
+   'DMD CL(0, "HIGHSCORES"), "", "", eBlinkFast, eNone, eNone, 1000, False, ""
+   'DMD CL(0, "HIGHSCORES"), "1> " &HighScoreName(0) & " " &FormatScore(HighScore(0)), "", eNone, eScrollLeft, eNone, 2000, False, ""
+   'DMD "_", "2> " &HighScoreName(1) & " " &FormatScore(HighScore(1)), "", eNone, eScrollLeft, eNone, 2000, False, ""
+   'DMD "_", "3> " &HighScoreName(2) & " " &FormatScore(HighScore(2)), "", eNone, eScrollLeft, eNone, 2000, False, ""
+   'DMD "_", "4> " &HighScoreName(3) & " " &FormatScore(HighScore(3)), "", eNone, eScrollLeft, eNone, 2000, False, ""
+   'DMD Space(dCharsPerLine(0)), Space(dCharsPerLine(1)), "", eScrollLeft, eScrollLeft, eNone, 500, False, ""
 End Sub
 
 '**************************************
@@ -1771,13 +1863,13 @@ End Sub
 ' Local game code starts here
 '******************************************
 
-Const Stark 1
-Const Baratheon 2
-Const Lannister 3
-Const Greyjoy 4
-Const Tyrell 5
-Const Martell 6
-Const Targaryen 7
+Const Stark = 1
+Const Baratheon = 2
+Const Lannister = 3
+Const Greyjoy = 4
+Const Tyrell = 5
+Const Martell = 6
+Const Targaryen = 7
 
 
 ' Global table-specific variables
@@ -1806,9 +1898,12 @@ Dim PlayfieldMultiplierVal
 ' Table, Game, and ball initialization code
 '**************************************************
 
+Sub VPObjects_Init
+'   
+End Sub
+
 Sub Game_Init()     'called at the start of a new game
     Dim i, j
-    bExtraBallWonThisBall = False
     TurnOffPlayfieldLights()
 End Sub
 
@@ -2343,3 +2438,31 @@ Sub GameGiOff
     Fi005.Visible = 0
     Fi006.Visible = 0
 End Sub
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+'*****************
+' PinUP Support
+'*****************
+
+Class PinupNULL	' Dummy Pinup class so I dont have to keep adding if cases when people dont choose pinup
+	Public Sub LabelShowPage(screen, pagenum, vis, Special)
+	End Sub
+	Public Sub LabelSet(screen, label, text, vis, Special)
+	End Sub
+	Public Sub playlistplayex(screen, dir, fname, volume, priority)
+	End Sub 
+End Class 
