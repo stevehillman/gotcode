@@ -39,6 +39,7 @@ Const VolSfx = 0.2		' Volume for table Sound effects
 
 Const DMDMode = 1 ' Use Flex/UltraDMD (currently the only option supported)
 Const UltraDMDVideos = True				'	ULTRA: Works on my DMDv3 but seems it causes issues on others
+Const bUsePlungerForSternKey = False    ' If true, use the plunger key for the Action/Select button. 
 
 ' Load the core.vbs for supporting Subs and functions
 LoadCoreFiles
@@ -1146,26 +1147,27 @@ Sub DMDScore()
 
 	if bUseUltraDMD Then 
 		If Not UltraDMD.IsRendering Then
-			if PlayerMode = -1 Then
-				If bSecondMode then
-					if PlayerMode2 = -1 then 
-						TimeStr = "Select Mode/2nd"
-					Else 
-						if PlayerMode2 = 7 or PlayerMode2 = 2 Then  ' SwitchHits 
-							TimeStr = Mode2Percent(PlayerMode2) & "%  HITS:" & SwitchHitCount & " 2nd"
-						else
-							TimeStr = Mode2Percent(PlayerMode2) & "% 2nd"
-						end If
-					End if 
-				else 
-					TimeStr = "Select Mode"
-				End If 
-			elseif PlayerMode = 7 Then  ' SwitchHits 
-				TimeStr = "Time:" & ModeCountdownTimer.UserValue & "(" & ModePercent(PlayerMode) & ") Sw:" & SwitchHitCount
-			else
-				TimeStr = "Time:" & ModeCountdownTimer.UserValue & "(" & ModePercent(PlayerMode) & ")"
-			end If
-			DisplayDMDText RL(0,Score(CurrentPlayer)), "", "", 1000 
+            'TODO: This is where we'll display custom text when selecting house, battle, and mystery awards
+			' if PlayerMode = -1 Then
+			' 	If bSecondMode then
+			' 		if PlayerMode2 = -1 then 
+			' 			TimeStr = "Select Mode/2nd"
+			' 		Else 
+			' 			if PlayerMode2 = 7 or PlayerMode2 = 2 Then  ' SwitchHits 
+			' 				TimeStr = Mode2Percent(PlayerMode2) & "%  HITS:" & SwitchHitCount & " 2nd"
+			' 			else
+			' 				TimeStr = Mode2Percent(PlayerMode2) & "% 2nd"
+			' 			end If
+			' 		End if 
+			' 	else 
+			' 		TimeStr = "Select Mode"
+			' 	End If 
+			' elseif PlayerMode = 7 Then  ' SwitchHits 
+			' 	TimeStr = "Time:" & ModeCountdownTimer.UserValue & "(" & ModePercent(PlayerMode) & ") Sw:" & SwitchHitCount
+			' else
+			' 	TimeStr = "Time:" & ModeCountdownTimer.UserValue & "(" & ModePercent(PlayerMode) & ")"
+			' end If
+			DisplayDMDText RL(0,Score(CurrentPlayer)), "", 1000 
 		End If
 	End If
 End Sub
@@ -1966,7 +1968,6 @@ Sub ResetForNewPlayerBall()
 
     BonusPoints(CurrentPlayer) = 0
     bBonusHeld = False
-    bExtraBallWonThisBall = False
 
     'Reset any table specific
     ResetNewBallVariables
@@ -2439,9 +2440,29 @@ Sub GameGiOff
     Fi006.Visible = 0
 End Sub
 
+' Set the Bonus Multiplier to the specified level AND set any lights accordingly
+' There is no bonus multiplier lights in this table
 
+Sub SetBonusMultiplier(Level)
+    ' Set the multiplier to the specified level
+    BonusMultiplier(CurrentPlayer) = Level
+End Sub
 
+Sub UpdatePFXLights(Level)
+    ' Update the playfield multiplier lights
+    Select Case Level
+        Case 1:li56.State = 0:li59.State = 0:li62.State = 0:li65.State = 0
+        Case 2:li56.State = 1:li59.State = 0:li62.State = 0:li65.State = 0
+        Case 3:li56.State = 1:li59.State = 1:li62.State = 0:li65.State = 0
+        Case 4:li56.State = 1:li59.State = 1:li62.State = 1:li65.State = 0
+        Case 5:li56.State = 1:li59.State = 1:li62.State = 1:li65.State = 1
+    End Select
+' show the multiplier in the DMD?
+End Sub
 
+Sub CheckActionButton
+'TODO
+End Sub
 
 
 
