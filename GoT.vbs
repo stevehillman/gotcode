@@ -130,9 +130,6 @@ Dim bBonusHeld
 Dim bJustStarted            ' Not sure what this is used for
 Dim bShowMatch
 
-' Define game-specific global variables
-Dim bChooseHouse
-
 
 ' *********************************************************************
 '                Visual Pinball Defined Script Events
@@ -308,10 +305,7 @@ Sub Table1_KeyDown(ByVal Keycode)
 			end if
 		End if
 
-        If bChooseHouse Then
-            ChooseHouse(keycode)
-            Exit Sub
-        End If
+        If CheckLocalKeydown(keycode) Then Exit Sub
 
         If keycode = StartGameKey Then
             If((PlayersPlayingGame <MaxPlayers)AND(bOnTheFirstBall = True))Then
@@ -1861,8 +1855,38 @@ Sub BallSaverSpeedUpTimer_Timer()
     LightShootAgain.State = 2
 End Sub
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 '******************************************
 ' Local game code starts here
+'
+'
+'
+'
+'
+'
+'
+'
+'
 '******************************************
 
 Const Stark = 1
@@ -1875,26 +1899,80 @@ Const Targaryen = 7
 
 
 ' Global table-specific variables
+Dim PlayerMode          ' Current player's mode. 0=normal, -1 = select house, -2 = select battle, -3 = select mystery, 1 = in battle
 Dim HouseColor(7)
+Dim HouseSigil(7)
+Dim HouseShield(7)
+Dim SelectedHouse       ' Current Player's selected house
 
 
 ' TODO: Put this inside the House class
-HouseColor(Stark) = white
-HouseColor(Baratheon) = yellow
-HouseColor(Lannister) = red
-HouseColor(Greyjoy) = purple
-HouseColor(Tyrell) = green
-HouseColor(Martell) = amber
-HouseColor(Targaryen) = blue
+HouseColor = (white,white,yellow,red,purple,green,amber,blue)
+' Assignment of centre field shields
+HouseSigil = (li38,li38,li41,li44,li47,li50,li53,li32)
+' Assignment of "shot" shields
+HouseShield = (li141,li141,li26,li114,li86,li77,li156,li98)
+
 
 ' Global game-specific variables - saved across balls and between players
 
 Dim PlayerHouse(4)  ' Each player's chosen starting house
-Dim HouseMode(7,4)  ' Current state of each house - some house modes aren't saved, while others are. May need a Class to save detailed state
+Dim House(4)  ' Current state of each house - some house modes aren't saved, while others are. May need a Class to save detailed state
 
 ' Ball-specific variables (not saved across balls)
 Dim PlayfieldMultiplierVal
 
+
+' This class holds everything to do with House logic
+Class cHouse
+    Dim bSaid(7)             ' Whether the house's name has been said yet during ChooseHouse state
+    Dim bQualified(7)        ' Whether the house has qualified for battle
+    Dim bCompleted(7)        ' Whether battle has been completed
+    Dim BattleState(7)      ' Placeholder for current battle state
+    Dim QualifyCount(7)     ' Count of how many times the qualifying shot has been made for each house
+
+    Private Sub Class_Initialize(  )
+		dim i
+		For i = 0 to 7
+			bQualified(i) = False
+            bCompleted(i) = False
+            bSaid(i) = False
+            QualifyCount(i) = 0
+		Next
+	End Sub
+
+    Public Sub Say(h)
+        Dim tmp
+        if (Said(h)) Then tmp="" Else tmp="house-"
+        PlaySoundVol "say-"&tmp&HouseToString(h), VolDef
+    End Sub
+
+    Public Sub StopSay(h)
+        Dim tmp
+        if (Said(h)) Then tmp="" Else tmp="house-"
+        StopSound "say-"&tmp&HouseToString(h)
+        Said(cHouse) = True
+    End Sub
+
+End Class
+
+Function HouseToString(h)
+    Select Case h
+        Case Stark
+            HouseToString = "stark"
+        Case Baratheon
+            HouseToString = "baratheon"
+        Case Lannister
+            HouseToString = "lannister"
+        Case Greyjoy
+            HouseToString = "greyjoy"
+        Case Tyrell
+            HouseToString = "tyrell"
+        Case Martell
+            HouseToString = "martell"
+        Case Targaryen
+            HouseToString = "targaryen"
+End Function
 
 '**************************************************
 ' Table, Game, and ball initialization code
@@ -1930,6 +2008,8 @@ Sub ResetForNewGame()
         BonusHeldPoints(i) = 0
         BonusMultiplier(i) = 1
         BallsRemaining(i) = BallsPerGame
+        PlayerHouse(i) = 0
+        Set House(i) = New cHouse
     Next
 
     ' initialise any other flags
@@ -1977,6 +2057,13 @@ Sub ResetForNewPlayerBall()
 
     'and the skillshot
     bSkillShotReady = True
+
+    if (PlayerHouse(CurrentPlayer) = 0) Then
+        PlayerMode = -1
+    Else 
+        PlayerMode = 0
+    End If
+        
 
 'Change the music ?
 End Sub
@@ -2463,6 +2550,79 @@ End Sub
 Sub CheckActionButton
 'TODO
 End Sub
+
+
+' Check for key presses specific to this game.
+' If PlayerMode is < 0, in a 'Select' state, so use flippers to toggle
+Function CheckLocalKeydown(ByVal keycode)
+    if PlayerMode < 0 and (keycode = LeftFlipperKey or keycode = RightFlipperKey) Then
+        CheckLocalKeydown = True
+        if PlayerMode = -1 Then ChooseHouse(keycode)
+        ElseIf PlayerMode = -2 Then ChooseBattle(keycode)
+        Else ChooseMystery(keycode)
+        End If    
+    Else
+        CheckLocalKeydown = False
+End Function
+
+
+Sub ChooseHouse(ByVal keycode)
+    If keycode = LeftFlipperKey Then
+        FlashShields(SelectedHouse,False)
+        House(CurrentPlayer).StopSay(SelectedHouse)
+        If SelectedHouse = Stark Then 
+            SelectedHouse = Targaryen
+        Else
+            SelectedHouse = SelectedHouse - 1
+        End If
+        FlashShields(SelectedHouse,True)
+        House(CurrentPlayer).Say(SelectedHouse)
+    ElseIf keycode = RightFlipperKey Then
+        FlashShields(SelectedHouse,False)
+        House(CurrentPlayer).StopSay(SelectedHouse)
+        If SelectedHouse = Targaryen Then 
+            SelectedHouse = Stark
+        Else
+            SelectedHouse = SelectedHouse + 1
+        End If
+        FlashShields(SelectedHouse,True)
+        House(CurrentPlayer).Say(SelectedHouse)
+    End If
+End Sub
+
+
+Sub FlashShields(h,State)
+    if State Then
+        SetLightColor(HouseSigil(h),HouseColor(h),2)
+        SetLightColor(HouseShield(h),HouseColor(h),2)
+    Else
+        HouseSigil(h).State = 0
+        HouseShield(h).State = 0
+    Else
+        
+End Sub
+
+
+
+
+
+Sub ChooseBattle(ByVal keycode)
+'TODO: implemement battle mode
+End Sub
+
+Sub ChooseMystery(ByVal keycode)
+'TODO: implement mystery selection
+End Sub
+
+
+
+
+
+
+
+
+
+
 
 
 
