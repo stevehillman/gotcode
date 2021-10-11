@@ -110,6 +110,7 @@ Dim BallsOnPlayfield        ' Active balls on playfield, including real locked o
 Dim RealBallsInLock			' These are actually locked on the table
 Dim BallsInLock             ' Number of balls the current player has locked
 Dim BallSearchCnt
+Dim LastSwitchHit
 
 ' flags
 Dim bMultiBallMode
@@ -129,6 +130,7 @@ Dim	bPupStarted
 Dim bBonusHeld
 Dim bJustStarted            ' Not sure what this is used for
 Dim bShowMatch
+Dim bSkillShotReady
 
 
 ' *********************************************************************
@@ -301,7 +303,7 @@ Sub Table1_KeyDown(ByVal Keycode)
 				plungerIM.Strength = 45
 				'plungerIM.InitImpulseP swplunger, 45, 1.1
 			Else	
-				CheckActionButton True				
+				CheckActionButton				
 			end if
 		End if
 
@@ -1900,18 +1902,18 @@ Const Targaryen = 7
 
 ' Global table-specific variables
 Dim PlayerMode          ' Current player's mode. 0=normal, -1 = select house, -2 = select battle, -3 = select mystery, 1 = in battle
-Dim HouseColor(7)
-Dim HouseSigil(7)
-Dim HouseShield(7)
+Dim HouseColor
+Dim HouseSigil
+Dim HouseShield
 Dim SelectedHouse       ' Current Player's selected house
 
 
 ' TODO: Put this inside the House class
-HouseColor = (white,white,yellow,red,purple,green,amber,blue)
+HouseColor = Array(white,white,yellow,red,purple,green,amber,blue)
 ' Assignment of centre field shields
-HouseSigil = (li38,li38,li41,li44,li47,li50,li53,li32)
+HouseSigil = Array(li38,li38,li41,li44,li47,li50,li53,li32)
 ' Assignment of "shot" shields
-HouseShield = (li141,li141,li26,li114,li86,li77,li156,li98)
+HouseShield = Array(li141,li141,li26,li114,li86,li77,li156,li98)
 
 
 ' Global game-specific variables - saved across balls and between players
@@ -1943,15 +1945,15 @@ Class cHouse
 
     Public Sub Say(h)
         Dim tmp
-        if (Said(h)) Then tmp="" Else tmp="house-"
+        if (bSaid(h)) Then tmp="" Else tmp="house-"
         PlaySoundVol "say-"&tmp&HouseToString(h), VolDef
     End Sub
 
     Public Sub StopSay(h)
         Dim tmp
-        if (Said(h)) Then tmp="" Else tmp="house-"
+        if (bSaid(h)) Then tmp="" Else tmp="house-"
         StopSound "say-"&tmp&HouseToString(h)
-        Said(cHouse) = True
+        bSaid(h) = True
     End Sub
 
 End Class
@@ -2055,8 +2057,8 @@ Sub ResetForNewPlayerBall()
     'This is a new ball, so activate the ballsaver
     bBallSaverReady = True
 
-    'and the skillshot
-    bSkillShotReady = True
+    'This table doesn't use a skill shot
+    bSkillShotReady = False
 
     if (PlayerHouse(CurrentPlayer) = 0) Then
         PlayerMode = -1
@@ -2144,8 +2146,8 @@ Sub tmrBallSearch_Timer()	' We timed out
 
 	'debug.print "Ball Search"
 
+		'tmrEndOfBallBonus.Enabled = False and _
 	if bGameInPlay and _ 
-		tmrEndOfBallBonus.Enabled = False and _
 		bBallInPlungerLane = False and _
 		LeftFlipper.CurrentAngle <> LeftFlipper.EndAngle and _
 		RightFlipper.CurrentAngle <> RightFlipper.EndAngle Then
@@ -2496,6 +2498,10 @@ Sub StopMBmodes
 '  - restore pre-mb state?
 End Sub
 
+Sub RotateLaneLights(dir)
+'TODO
+End Sub
+
 Sub ResetDropTargets
     ' PlaySoundAt "fx_resetdrop", Target010
     If Target7.IsDropped OR Target8.IsDropped OR Target9.IsDropped Then
@@ -2557,35 +2563,39 @@ End Sub
 Function CheckLocalKeydown(ByVal keycode)
     if PlayerMode < 0 and (keycode = LeftFlipperKey or keycode = RightFlipperKey) Then
         CheckLocalKeydown = True
-        if PlayerMode = -1 Then ChooseHouse(keycode)
-        ElseIf PlayerMode = -2 Then ChooseBattle(keycode)
-        Else ChooseMystery(keycode)
+        if PlayerMode = -1 Then 
+            ChooseHouse(keycode)
+        ElseIf PlayerMode = -2 Then 
+            ChooseBattle(keycode)
+        Else 
+            ChooseMystery(keycode)
         End If    
     Else
         CheckLocalKeydown = False
+    End If
 End Function
 
 
 Sub ChooseHouse(ByVal keycode)
     If keycode = LeftFlipperKey Then
-        FlashShields(SelectedHouse,False)
+        FlashShields SelectedHouse,False
         House(CurrentPlayer).StopSay(SelectedHouse)
         If SelectedHouse = Stark Then 
             SelectedHouse = Targaryen
         Else
             SelectedHouse = SelectedHouse - 1
         End If
-        FlashShields(SelectedHouse,True)
+        FlashShields SelectedHouse,True
         House(CurrentPlayer).Say(SelectedHouse)
     ElseIf keycode = RightFlipperKey Then
-        FlashShields(SelectedHouse,False)
+        FlashShields SelectedHouse,False
         House(CurrentPlayer).StopSay(SelectedHouse)
         If SelectedHouse = Targaryen Then 
             SelectedHouse = Stark
         Else
             SelectedHouse = SelectedHouse + 1
         End If
-        FlashShields(SelectedHouse,True)
+        FlashShields SelectedHouse,True
         House(CurrentPlayer).Say(SelectedHouse)
     End If
 End Sub
@@ -2593,13 +2603,12 @@ End Sub
 
 Sub FlashShields(h,State)
     if State Then
-        SetLightColor(HouseSigil(h),HouseColor(h),2)
-        SetLightColor(HouseShield(h),HouseColor(h),2)
+        SetLightColor HouseSigil(h),HouseColor(h),2
+        SetLightColor HouseShield(h),HouseColor(h),2
     Else
         HouseSigil(h).State = 0
         HouseShield(h).State = 0
-    Else
-        
+    End If     
 End Sub
 
 
@@ -2614,7 +2623,9 @@ Sub ChooseMystery(ByVal keycode)
 'TODO: implement mystery selection
 End Sub
 
-
+Sub InstantInfo
+'TODO
+End Sub
 
 
 
