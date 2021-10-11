@@ -717,7 +717,7 @@ Sub aPlastics_Hit(idx):PlaySoundAtBall "fx_PlasticHit":End Sub
 Sub aGates_Hit(idx):PlaySoundAtBall "fx_Gate":End Sub
 Sub aWoods_Hit(idx):PlaySoundAtBall "fx_Woodhit":End Sub
 ' TODO: Not sure we want to play random sounds when triggers are hit?
-Sub aTriggers_Hit(idx):PlaySfx:End Sub
+'Sub aTriggers_Hit(idx):PlaySfx:End Sub
 
 ' Slingshots has been hit
 
@@ -744,7 +744,7 @@ Sub LeftSlingShot_Timer
     Select Case LStep
         Case 1:LeftSLing4.Visible = 0:LeftSLing3.Visible = 1:Lemk.RotX = 14
         Case 2:LeftSLing3.Visible = 0:LeftSLing2.Visible = 1:Lemk.RotX = 2
-        Case 3:LeftSLing2.Visible = 0:LeftSling1.Visible = 1:Lemk.RotX = -10:Gi2.State = 1:LeftSlingShot.TimerEnabled = False
+        Case 3:LeftSLing2.Visible = 0:LeftSling1.Visible = 1:Lemk.RotX = -10:LeftSlingShot.TimerEnabled = False
     End Select
     LStep = LStep + 1
 End Sub
@@ -770,7 +770,7 @@ Sub RightSlingShot_Timer
     Select Case RStep
         Case 1:RightSLing4.Visible = 0:RightSLing3.Visible = 1:Remk.RotX = 14:
         Case 2:RightSLing3.Visible = 0:RightSLing2.Visible = 1:Remk.RotX = 2:
-        Case 3:RightSLing2.Visible = 0:RightSLing1.Visible = 1:Remk.RotX = -10:Gi4.State = 1:RightSlingShot.TimerEnabled = False
+        Case 3:RightSLing2.Visible = 0:RightSLing1.Visible = 1:Remk.RotX = -10:RightSlingShot.TimerEnabled = False
     End Select
     RStep = RStep + 1
 End Sub
@@ -1970,7 +1970,7 @@ Class cHouse
 
     ' Set the shield/sigil lights to the houses' current state
     Public Sub ResetLights
-        If HouseSelected = 0 Then End Sub       ' Do nothing if we're still in Choose House mode
+        If HouseSelected = 0 Then Exit Sub       ' Do nothing if we're still in Choose House mode
         Dim i
         For i = Stark to Targaryen
             If bCompleted(i) Then 
@@ -2004,6 +2004,7 @@ Function HouseToString(h)
             HouseToString = "martell"
         Case Targaryen
             HouseToString = "targaryen"
+    End Select
 End Function
 
 '**************************************************
@@ -2654,7 +2655,7 @@ End Sub
 ' Handle game-specific processing when ball is launched
 Sub GameDoBallLaunched
     If PlayerMode = -1 Then
-        House(CurrentPlayer).MyHouse(SelectedHouse)
+        House(CurrentPlayer).MyHouse = SelectedHouse
         House(CurrentPlayer).ResetLights
         PlayerMode = 0
     End If
