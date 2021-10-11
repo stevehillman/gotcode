@@ -115,6 +115,7 @@ Dim LastSwitchHit
 ' flags
 Dim bMultiBallMode
 Dim bAutoPlunger
+Dim bAutoPlunged
 Dim bInstantInfo
 Dim bAttractMode
 Dim bFreePlay
@@ -1792,7 +1793,7 @@ Sub swPlungerRest_Hit()
     ' kick the ball in play if the bAutoPlunger flag is on
     If bAutoPlunger Then
         'debug.print "autofire the ball"
-        vpmtimer.addtimer 1000, "PlungerIM.AutoFire:DOF 120, DOFPulse:PlaySoundAt ""fx_kicker"", swPlungerRest:bAutoPlunger = False '"
+        vpmtimer.addtimer 1000, "PlungerIM.AutoFire:DOF 120, DOFPulse:PlaySoundAt ""fx_kicker"", swPlungerRest:bAutoPlunger = False:bAutoPlunged = True '"
     End If
     'Start the Selection of the skillshot if ready
     If bSkillShotReady Then
@@ -1825,6 +1826,7 @@ Sub swPlungerRest_UnHit()
     End If
 
     GameDoBallLaunched
+    bAutoPlunged = False
 End Sub
 
 Sub EnableBallSaver(seconds)
@@ -2093,12 +2095,13 @@ Sub ResetForNewPlayerBall()
     if (House(CurrentPlayer).MyHouse = 0) Then
         PlayerMode = -1
         SelectedHouse = 1
+        FlashShields(SelectedHouse,1)
     Else 
         PlayerMode = 0
         SelectedHouse = House(CurrentPlayer).MyHouse
+        House(CurrentPlayer).ResetLights
     End If
-
-'Change the music ?
+    PlaySong("got-track1")
 End Sub
 
 Sub ResetNewBallVariables() 'reset variables for a new ball or player
@@ -2659,7 +2662,7 @@ Sub GameDoBallLaunched
         House(CurrentPlayer).ResetLights
         PlayerMode = 0
     End If
-    PlaySoundVol "gotfx-balllaunch",VolDef
+    If bAutoPlunged = False Then  PlaySoundVol "gotfx-balllaunch",VolDef
 End Sub
 
 
