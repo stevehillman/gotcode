@@ -1315,6 +1315,7 @@ End Sub
 ' in this table this colors are use to keep track of the progress during the modes
 
 'colors
+Const ice = 11
 Const red = 10
 Const orange = 9
 Const amber = 8
@@ -1336,6 +1337,9 @@ Const teal = 0
 
 Sub SetLightColor(n, col, stat) 'stat 0 = off, 1 = on, 2 = blink, -1= no change
     Select Case col
+        Case ice
+            n.color = RGB(0, 18, 18)
+            n.colorfull = RGB(192, 255, 255)
         Case red
             n.color = RGB(18, 0, 0)
             n.colorfull = RGB(255, 0, 0)
@@ -1819,8 +1823,8 @@ Sub swPlungerRest_UnHit()
     If(bBallSaverReady = True)AND(BallSaverTime <> 0)And(bBallSaverActive = False)Then
         EnableBallSaver BallSaverTime
     End If
-' turn off LaunchLight
-' LaunchLight.State = 0
+
+    GameDoBallLaunched
 End Sub
 
 Sub EnableBallSaver(seconds)
@@ -1906,19 +1910,17 @@ Dim HouseColor
 Dim HouseSigil
 Dim HouseShield
 Dim SelectedHouse       ' Current Player's selected house
+Dim bTopLanes(2)
 
 
-' TODO: Put this inside the House class
 HouseColor = Array(white,white,yellow,red,purple,green,amber,blue)
 ' Assignment of centre field shields
 HouseSigil = Array(li38,li38,li41,li44,li47,li50,li53,li32)
 ' Assignment of "shot" shields
 HouseShield = Array(li141,li141,li26,li114,li86,li77,li156,li98)
 
-
 ' Global game-specific variables - saved across balls and between players
 
-Dim PlayerHouse(4)  ' Each player's chosen starting house
 Dim House(4)  ' Current state of each house - some house modes aren't saved, while others are. May need a Class to save detailed state
 
 ' Ball-specific variables (not saved across balls)
@@ -1932,6 +1934,7 @@ Class cHouse
     Dim bCompleted(7)        ' Whether battle has been completed
     Dim BattleState(7)      ' Placeholder for current battle state
     Dim QualifyCount(7)     ' Count of how many times the qualifying shot has been made for each house
+    Dim HouseSelected
 
     Private Sub Class_Initialize(  )
 		dim i
@@ -1941,8 +1944,17 @@ Class cHouse
             bSaid(i) = False
             QualifyCount(i) = 0
 		Next
+        HouseSelected = 0
 	End Sub
 
+    Public Property Let MyHouse(h) 
+        HouseSelected = h
+        bQualified(h) = True
+        if (h = Greyjoy or h = Targaryen) Then bCompleted(h) = True 
+    End Property
+	Public Property Get MyHouse : MyHouse = HouseSelected : End Property
+
+    ' Say the house name. Include "house " if not said before
     Public Sub Say(h)
         Dim tmp
         if (bSaid(h)) Then tmp="" Else tmp="house-"
@@ -1954,6 +1966,24 @@ Class cHouse
         if (bSaid(h)) Then tmp="" Else tmp="house-"
         StopSound "say-"&tmp&HouseToString(h)
         bSaid(h) = True
+    End Sub
+
+    ' Set the shield/sigil lights to the houses' current state
+    Public Sub ResetLights
+        If HouseSelected = 0 Then End Sub       ' Do nothing if we're still in Choose House mode
+        Dim i
+        For i = Stark to Targaryen
+            If bCompleted(i) Then 
+                SetLightColor HouseSigil(i),HouseColor(i),1
+                HouseShield(i).State = 0        ' TODO: What color do shields turn for completed houses
+            ElseIf bCompleted(i) = False and (bQualified(i)) Then 
+                SetLightColor HouseSigil(i),HouseColor(i),2
+                SetLightColor HouseShield(i), ice, 1
+            Else
+                HouseSigil(i).State = 0
+                SetLightColor HouseShield(i),HouseColor(i),1       
+            End If
+        Next
     End Sub
 
 End Class
@@ -2010,7 +2040,6 @@ Sub ResetForNewGame()
         BonusHeldPoints(i) = 0
         BonusMultiplier(i) = 1
         BallsRemaining(i) = BallsPerGame
-        PlayerHouse(i) = 0
         Set House(i) = New cHouse
     Next
 
@@ -2060,12 +2089,13 @@ Sub ResetForNewPlayerBall()
     'This table doesn't use a skill shot
     bSkillShotReady = False
 
-    if (PlayerHouse(CurrentPlayer) = 0) Then
+    if (House(CurrentPlayer).MyHouse = 0) Then
         PlayerMode = -1
+        SelectedHouse = 1
     Else 
         PlayerMode = 0
+        SelectedHouse = House(CurrentPlayer).MyHouse
     End If
-        
 
 'Change the music ?
 End Sub
@@ -2075,6 +2105,8 @@ Sub ResetNewBallVariables() 'reset variables for a new ball or player
     'turn on or off the needed lights before a new ball is released
     TurnOffPlayfieldLights
     ResetDropTargets
+     ' Top lanes start out off on the Premium/LE
+    For i = 0 to 1 : bTopLanes(i) = False : Next
     'playfield multipiplier
     pfxtimer.Enabled = 0
     PlayfieldMultiplierVal = 1
@@ -2238,10 +2270,13 @@ Sub EndOfBall()
 		'    ffmpeg -i Video-0x007A.mp4  -i BonusScreen-BW2.png -filter_complex "[1:v]scale=1360:768 [ovrl],[0:v][ovrl]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2" -strict -2 ./output.mp4
 
 
+        'TODO: Figure out how to do bonuses. For now, skip
+        ' Below is how GOTG does it
         ' add a bit of a delay to allow for the bonus points to be shown & added up
-		tmrEndOfBallBonus.Interval = 800
-		tmrEndOfBallBonus.UserValue = 0		' Timer will start EndOfBall2 when it is done
-		tmrEndOfBallBonus.Enabled = true
+		'tmrEndOfBallBonus.Interval = 800
+		'tmrEndOfBallBonus.UserValue = 0		' Timer will start EndOfBall2 when it is done
+		'tmrEndOfBallBonus.Enabled = true
+        vpmtimer.addtimer 100, "EndOfBall2 '"
     Else
         vpmtimer.addtimer 100, "EndOfBall2 '"
     End If
@@ -2499,7 +2534,12 @@ Sub StopMBmodes
 End Sub
 
 Sub RotateLaneLights(dir)
-'TODO
+    If bTopLanes(0) or bTopLanes(1) Then
+        bTopLanes(0) = Not bTopLanes(0)
+        bTopLanes(1) = Not bTopLanes(1)
+        SetLightColor li162, white, bTopLanes(0)
+        SetLightColor li165, white, bTopLanes(1)
+    End If
 End Sub
 
 Sub ResetDropTargets
@@ -2600,7 +2640,7 @@ Sub ChooseHouse(ByVal keycode)
     End If
 End Sub
 
-
+' Turn on the flashing shield sigils when choosing a house
 Sub FlashShields(h,State)
     if State Then
         SetLightColor HouseSigil(h),HouseColor(h),2
@@ -2611,8 +2651,15 @@ Sub FlashShields(h,State)
     End If     
 End Sub
 
-
-
+' Handle game-specific processing when ball is launched
+Sub GameDoBallLaunched
+    If PlayerMode = -1 Then
+        House(CurrentPlayer).MyHouse(SelectedHouse)
+        House(CurrentPlayer).ResetLights
+        PlayerMode = 0
+    End If
+    PlaySoundVol "gotfx-balllaunch",VolDef
+End Sub
 
 
 Sub ChooseBattle(ByVal keycode)
