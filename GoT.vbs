@@ -243,6 +243,10 @@ Sub Table1_Init()
 
 End Sub
 
+Private Function BigMod(Value1, Value2)
+    BigMod = Value1 - (Int(Value1 / Value2) * Value2)
+End Function
+
 '******
 ' Keys
 '******
@@ -1906,13 +1910,24 @@ Const Martell = 6
 Const Targaryen = 7
 
 
+' Constants we might need to tweak later
+Const SpinnerAddValue 5000      ' Base amount that Spinner's value increases by for each target hit. TODO: Figure out right value
+
 ' Global table-specific variables
 Dim PlayerMode          ' Current player's mode. 0=normal, -1 = select house, -2 = select battle, -3 = select mystery, 1 = in battle
 Dim HouseColor
 Dim HouseSigil
 Dim HouseShield
+Dim LoLLights
 Dim SelectedHouse       ' Current Player's selected house
 Dim bTopLanes(2)
+Dim DroppedTargets      ' Number of targets dropped
+Dim LoLTargetsCompleted ' Number of times the target bank has been completed
+Dim WildfireTargetsCompleted ' Number of times wildfire target bank has been completed
+Dim bWildfireTargets(2)
+Dim bLoLLit
+Dim bLoLUsed
+Dim CompletedHouses
 
 
 HouseColor = Array(white,white,yellow,red,purple,green,amber,blue)
@@ -1920,14 +1935,43 @@ HouseColor = Array(white,white,yellow,red,purple,green,amber,blue)
 HouseSigil = Array(li38,li38,li41,li44,li47,li50,li53,li32)
 ' Assignment of "shot" shields
 HouseShield = Array(li141,li141,li26,li114,li86,li77,li156,li98)
+' Assignment of Lol Target lights
+LoLLights = Array(li17,li20,li23)
 
 ' Global game-specific variables - saved across balls and between players
 
 Dim House(4)  ' Current state of each house - some house modes aren't saved, while others are. May need a Class to save detailed state
+Dim PlayerState(4) ' Structure to save global player-specific variables across balls
 
 ' Ball-specific variables (not saved across balls)
 Dim PlayfieldMultiplierVal
+Dim SpinnerValue
+Dim SpinnerLevel
 
+' This class holds player state that is carried over across balls
+Class cPState
+    Dim bWFTargets(2)
+    Dim WFTargetsCompleted
+    Dim LTargetsCompleted
+    Dim myLoLLit
+    Dim myLoLUsed
+
+    Public Sub Save
+        bWFTargets(0) = bWildfireTargets(0):bWFTargets(1) = bWildfireTargets(1)
+        WFTargetsCompleted = WildfireTargetsCompleted
+        LTargetsCompleted = LoLTargetsCompleted
+        myLoLLit = bLoLLit
+        myLoLUsed = bLoLUsed
+    End Sub
+
+    Public Sub Restore
+        bWildfireTargets(0) = bWFTargets(0):bWildfireTargets(1) = bWFTargets(1)
+        WildfireTargetsCompleted = WFTargetsCompleted
+        LoLTargetsCompleted = LTargetsCompleted
+        bLoLLit = myLoLLit
+        bLoLUsed = myLoLUsed
+    End Sub
+End Class
 
 ' This class holds everything to do with House logic
 Class cHouse
@@ -1974,10 +2018,12 @@ Class cHouse
     Public Sub ResetLights
         If HouseSelected = 0 Then Exit Sub       ' Do nothing if we're still in Choose House mode
         Dim i
+        Dim j = 0
         For i = Stark to Targaryen
             If bCompleted(i) Then 
                 SetLightColor HouseSigil(i),HouseColor(i),1
                 HouseShield(i).State = 0        ' TODO: What color do shields turn for completed houses
+                j = j + 1
             ElseIf bCompleted(i) = False and (bQualified(i)) Then 
                 SetLightColor HouseSigil(i),HouseColor(i),2
                 SetLightColor HouseShield(i), ice, 1
@@ -1986,6 +2032,20 @@ Class cHouse
                 SetLightColor HouseShield(i),HouseColor(i),1       
             End If
         Next
+        CompletedHouses = j
+        'TODO: Set HOTK and IronThrone lights too
+    End Sub
+
+    Public Sub RegisterHit(h)
+        QualifyCount(h) = QualifyCount(h) + 1
+        if QualifyCount(h) >= 3 Then
+            bQualified(h) = True
+            ResetLights
+        Else
+            PlaySoundVol "gotfx_qualify_hit", VolDef
+        End If
+        'TODO: Play sound, Add score and update DMD based on whether we qualified or not
+        'TODO: Light battle light?
     End Sub
 
 End Class
@@ -2037,6 +2097,10 @@ Sub ResetForNewGame()
     CurrentPlayer = 1
     PlayersPlayingGame = 1
     bOnTheFirstBall = True
+    WildfireTargetsCompleted = 0
+    LoLTargetsCompleted = 0
+    CompletedHouses = 0
+    bWildfireTargets(0) = False:bWildfireTargets(1) = False
     For i = 1 To MaxPlayers
         Score(i) = 0
         BonusPoints(i) = 0
@@ -2044,6 +2108,7 @@ Sub ResetForNewGame()
         BonusMultiplier(i) = 1
         BallsRemaining(i) = BallsPerGame
         Set House(i) = New cHouse
+        Set PlayerState(u) = New cPState
     Next
 
     ' initialise any other flags
@@ -2095,8 +2160,9 @@ Sub ResetForNewPlayerBall()
     if (House(CurrentPlayer).MyHouse = 0) Then
         PlayerMode = -1
         SelectedHouse = 1
-        FlashShields(SelectedHouse,1)
+        FlashShields SelectedHouse,1
     Else 
+        PlayerState(CurrentPlayer).Restore
         PlayerMode = 0
         SelectedHouse = House(CurrentPlayer).MyHouse
         House(CurrentPlayer).ResetLights
@@ -2114,6 +2180,8 @@ Sub ResetNewBallVariables() 'reset variables for a new ball or player
     'playfield multipiplier
     pfxtimer.Enabled = 0
     PlayfieldMultiplierVal = 1
+    SpinnerLevel = 1
+    SpinnerValue = SpinnerAddValue      ' Start with the AddValue as the base value. TODO: Try to find the right value
     UpdatePFXLights(PlayfieldMultiplierVal)
     ' TODO: Update playfield lights to their correct status based on current player and state
 End Sub
@@ -2369,6 +2437,9 @@ Sub EndOfBallComplete()
 
     debug.print "EndOfBall - Complete"
 
+    ' Save the current player's state
+    PlayerState(CurrentPlayer).Save
+
     ' are there multiple players playing this game ?
     If(PlayersPlayingGame > 1)Then
         ' then move to the next player
@@ -2554,7 +2625,8 @@ Sub ResetDropTargets
         Target8.IsDropped = 0
         Target9.IsDropped = 0
     End If
-    ' TODO: Set LoL target lights based on how many times bank has been completed
+    DroppedTargets = 0
+    SetTargetLights
 End Sub
 
 Sub GameGiOn
@@ -2678,7 +2750,64 @@ Sub InstantInfo
 'TODO
 End Sub
 
+Sub SetTargetLights
+    Dim i
+    For i = 0 to 2
+        if i >= LoLTargetsCompleted Then LoLLights(i).State = 0 Else SetLightColor LoLLights(i),yellow,1
+    Next
+End Sub
 
+Sub SetOutlaneLights
+    SetLightColor li11,white,bLoLLit
+    SetLightColor li74,white,bLoLLit
+End Sub
+
+'*****************************
+'  Handle target hits
+'*****************************
+
+' LoL Drop Targets
+' Any target increases spinner value. 
+Sub Target9_Dropped 'LoL target 1
+    PlaySoundAt "fx_droptarget", Target9
+    If Tilted Then Exit Sub
+    DoTargetsDropped
+End Sub
+
+Sub Target8_Dropped 'LoL target 2
+    PlaySoundAt "fx_droptarget", Target8
+    If Tilted Then Exit Sub
+    DoTargetsDropped
+End Sub
+
+Sub Target7_Dropped 'LoL target 3
+    PlaySoundAt "fx_droptarget", Target7
+    If Tilted Then Exit Sub
+    DoTargetsDropped
+End Sub
+
+Sub DoTargetsDropped
+    Dim i
+    Addscore 330
+    PlaySoundVol "gotfx_loltarget_hit", VolDef
+    DroppedTargets = DroppedTargets + 1
+    SpinnerValue = SpinnerValue + (SpinnerAddValue * SpinnerLevel)
+    If PlayerMode > 0 Then
+        'TODO: In a mode. See if it's House Baratheon, and if so, target may collect value
+    End If
+    If DroppedTargets = 3 Then
+        ' Target bank completed
+        LoLTargetsCompleted = LoLTargetsCompleted + 1
+        ResetDropTargets
+        If bLoLLit = False and bLoLUsed = False Then bLoLLit = True : SetOutlaneLights 'TODO: Is there a sound to play with LoL lights?
+        For i = 0 to 2
+            'TODO: Revisit this to see whether LoL lights that are on solid still flash when bank is completed
+            FlashForMs LoLLights(i),500,100,2
+        Next
+        If SpinnerLevel <= CompletedHouses Then SpinnerLevel = SpinnerLevel + 1
+        House(CurrentPlayer).RegisterHit(Baratheon)
+    End If
+End Sub
 
 
 
