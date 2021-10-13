@@ -575,6 +575,11 @@ Sub PlaySoundVol(soundname, Volume)
   PlaySound soundname, 1, Volume
 End Sub
 
+' Play an already playing sound (starts anew if not playing). Restart=whether to restart the sound. Presumably 0 = just let it keep playing
+Sub PlayExistingSoundVol(soundname, Volume, Restart)
+  PlaySound soundname, 1, Volume, 0, 0, 0, 1, Restart
+End Sub
+
 Sub PlaySoundLoopVol(soundname, Volume)
   PlaySound soundname, -1, Volume
 End Sub
@@ -1911,7 +1916,7 @@ Const Targaryen = 7
 
 
 ' Constants we might need to tweak later
-Const SpinnerAddValue 5000      ' Base amount that Spinner's value increases by for each target hit. TODO: Figure out right value
+Const SpinnerAddValue 500      ' Base amount that Spinner's value increases by for each target hit. TODO: Figure out right value
 
 ' Global table-specific variables
 Dim PlayerMode          ' Current player's mode. 0=normal, -1 = select house, -2 = select battle, -3 = select mystery, 1 = in battle
@@ -1928,7 +1933,7 @@ Dim bWildfireTargets(2)
 Dim bLoLLit
 Dim bLoLUsed
 Dim CompletedHouses
-
+Dim ComboLaneMap
 
 HouseColor = Array(white,white,yellow,red,purple,green,amber,blue)
 ' Assignment of centre field shields
@@ -1937,6 +1942,8 @@ HouseSigil = Array(li38,li38,li41,li44,li47,li50,li53,li32)
 HouseShield = Array(li141,li141,li26,li114,li86,li77,li156,li98)
 ' Assignment of Lol Target lights
 LoLLights = Array(li17,li20,li23)
+' Map of house name to combo lane
+ComboLaneMap = Array(0,4,0,3,1,0,5,2)
 
 ' Global game-specific variables - saved across balls and between players
 
@@ -1947,6 +1954,7 @@ Dim PlayerState(4) ' Structure to save global player-specific variables across b
 Dim PlayfieldMultiplierVal
 Dim SpinnerValue
 Dim SpinnerLevel
+Dim ComboMultiplier(5)
 
 ' This class holds player state that is carried over across balls
 Class cPState
@@ -1981,6 +1989,8 @@ Class cHouse
     Dim BattleState(7)      ' Placeholder for current battle state
     Dim QualifyCount(7)     ' Count of how many times the qualifying shot has been made for each house
     Dim HouseSelected
+    Dim QualifyValue = 100000 ' Hold the current value for a qualifying target hit
+    Dim bBattleReady = True
 
     Private Sub Class_Initialize(  )
 		dim i
@@ -2000,17 +2010,19 @@ Class cHouse
     End Property
 	Public Property Get MyHouse : MyHouse = HouseSelected : End Property
 
+    Public Property Let BattleReady(e) : bBattleReady = e; End Property
+
     ' Say the house name. Include "house " if not said before
     Public Sub Say(h)
         Dim tmp
         if (bSaid(h)) Then tmp="" Else tmp="house-"
-        PlaySoundVol "say-"&tmp&HouseToString(h), VolDef
+        PlaySoundVol "say-" & tmp & HouseToString(h) & "1", VolDef
     End Sub
 
     Public Sub StopSay(h)
         Dim tmp
         if (bSaid(h)) Then tmp="" Else tmp="house-"
-        StopSound "say-"&tmp&HouseToString(h)
+        StopSound "say-" & tmp & HouseToString(h) & "1"
         bSaid(h) = True
     End Sub
 
@@ -2033,19 +2045,57 @@ Class cHouse
             End If
         Next
         CompletedHouses = j
+        if bBattleReady Then SetLightColor li108,white,2 Else SetLightColor li108,white,0
         'TODO: Set HOTK and IronThrone lights too
     End Sub
 
     Public Sub RegisterHit(h)
-        QualifyCount(h) = QualifyCount(h) + 1
-        if QualifyCount(h) >= 3 Then
-            bQualified(h) = True
-            ResetLights
+        Dim line0,line1,line2
+        Dim i
+        Dim combo = 1
+
+        if PlayerMode = 0 Then
+            if QualifyCount(h) < 3 Then
+                QualifyCount(h) = QualifyCount(h) + 1
+                PlayExistingSoundVol "gotfx_qualify_hit", VolDef, 0
+
+                If ComboLaneMap(h) Then combo = ComboMultiplier(ComboLaneMap(h))
+
+                line0 = "house " & HouseToString(h)
+                if QualifyCount(h) = 3 Then
+                    bQualified(h) = True
+                    bBattleReady = True
+                    ResetLights
+                    line2 = "house is lit"
+                    'TODO: Play an animation on house lit, some with sound
+                Else
+                    line2 = (3 - QualifyCount(h)) & " more to light"
+                    'TODO: sometimes play an animation and optional sound effect on house advance
+                End If
+                line1 = FormatScore(QualifyValue*combo)
+
+                ' Increase Qualify value for next shot. Lots of randomness seems to factor in here
+                if QualifyValue = 100000 Then
+                    QualifyValue = 430000
+                Else
+                    i = RndNbr(5)
+                    if i = 1 Then
+                        ' Use a wide range for random increase
+                        QualifyValue = QualifyValue + 100000 + (RndNbr(50)*10000)
+                    Else
+                        ' Use a narrower range for increase
+                        QualifyValue = QualifyValue + 275000 + (RndNbr(30)*5000)
+                    End If
+                End If
+
+                AddScore(QualifyValue*combo)
+                DMDComboScene(line0,line1,line2,combo,3000)
+            Else
+                ' Not in a Mode and house already Qualified. What do target hits do?
+            End If
         Else
-            PlaySoundVol "gotfx_qualify_hit", VolDef
+            ' TODO: hits do completely different things during Modes
         End If
-        'TODO: Play sound, Add score and update DMD based on whether we qualified or not
-        'TODO: Light battle light?
     End Sub
 
 End Class
@@ -2157,6 +2207,9 @@ Sub ResetForNewPlayerBall()
     'This table doesn't use a skill shot
     bSkillShotReady = False
 
+    ' Reset Combo multipliers
+    ResetComboMultipliers
+
     if (House(CurrentPlayer).MyHouse = 0) Then
         PlayerMode = -1
         SelectedHouse = 1
@@ -2181,7 +2234,7 @@ Sub ResetNewBallVariables() 'reset variables for a new ball or player
     pfxtimer.Enabled = 0
     PlayfieldMultiplierVal = 1
     SpinnerLevel = 1
-    SpinnerValue = SpinnerAddValue      ' Start with the AddValue as the base value. TODO: Try to find the right value
+    SpinnerValue = 500 + (BallsPerGame-BallsRemaining(CurrentPlayer))*2000 ' Appears to start at 2500 on ball 1 and 4500 on ball 2
     UpdatePFXLights(PlayfieldMultiplierVal)
     ' TODO: Update playfield lights to their correct status based on current player and state
 End Sub
@@ -2629,6 +2682,11 @@ Sub ResetDropTargets
     SetTargetLights
 End Sub
 
+Sub ResetComboMultipliers
+    Dim i
+    For i = 0 to 5: ComboMultiplier(i) = 1: Next
+End Sub
+
 Sub GameGiOn
     PlaySoundAt "fx_GiOn", li108 'about the center of the table
     Fi001.Visible = 1
@@ -2789,9 +2847,11 @@ End Sub
 Sub DoTargetsDropped
     Dim i
     Addscore 330
-    PlaySoundVol "gotfx_loltarget_hit", VolDef
+    ' In case two targets were hit at once, stop the sound for the first target before playing the one for the second
+    StopSound "gotfx_loltarget_hit" & DroppedTargets
     DroppedTargets = DroppedTargets + 1
-    SpinnerValue = SpinnerValue + (SpinnerAddValue * SpinnerLevel)
+    PlaySoundVol "gotfx_loltarget_hit" & DroppedTargets, VolDef
+    SpinnerValue = SpinnerValue + (SpinnerAddValue * RndNbr(10) * SpinnerLevel)
     If PlayerMode > 0 Then
         'TODO: In a mode. See if it's House Baratheon, and if so, target may collect value
     End If
@@ -2821,7 +2881,20 @@ End Sub
 
 
 
+'**************************
+' Game-specific DMD support
+'**************************
 
+' Combo Scene is used to display the results of combo shots. They are formatted as:
+'
+'     LINE 1 7x3 Charset
+'      SCORE 12x7 digits     X multi (10x18 (or so) charset)
+'     LINE 3 5x3 Charset
+'
+Sub DMDComboScene(line0,line1,line2,combox,duration)
+    ' TODO: Convert this to using FlexDMD Stages, Groups, and Actors
+    DisplayDMDText line0, line1 & "   " & combox & "X", duration
+End Sub
 
 
 
