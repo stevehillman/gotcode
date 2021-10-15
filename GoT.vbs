@@ -116,6 +116,7 @@ Dim LastSwitchHit
 Dim bMultiBallMode
 Dim bAutoPlunger
 Dim bAutoPlunged
+Dim bBallSaved
 Dim bInstantInfo
 Dim bAttractMode
 Dim bFreePlay
@@ -1754,6 +1755,7 @@ Sub Drain_Hit()
             ' we kick the ball with the autoplunger
             bAutoPlunger = True
             ' you may wish to put something on a display or play a sound at this point
+            bBallSaved = True
             DoBallSaved
         Else
             ' cancel any multiball if on last ball (ie. lost all other balls)
@@ -1836,6 +1838,7 @@ Sub swPlungerRest_UnHit()
 
     GameDoBallLaunched
     bAutoPlunged = False
+    bBallSaved = False
 End Sub
 
 Sub EnableBallSaver(seconds)
@@ -1919,34 +1922,27 @@ Const Targaryen = 7
 Const SpinnerAddValue = 500      ' Base amount that Spinner's value increases by for each target hit. TODO: Figure out right value
 
 ' Global table-specific variables
-Dim PlayerMode          ' Current player's mode. 0=normal, -1 = select house, -2 = select battle, -3 = select mystery, 1 = in battle
 Dim HouseColor
 Dim HouseSigil
 Dim HouseShield
+Dim HouseAction
 Dim LoLLights
-Dim SelectedHouse       ' Current Player's selected house
-Dim bTopLanes(2)
-Dim DroppedTargets      ' Number of targets dropped
-Dim LoLTargetsCompleted ' Number of times the target bank has been completed
-Dim WildfireTargetsCompleted ' Number of times wildfire target bank has been completed
-Dim bWildfireTargets(2)
-Dim bLoLLit
-Dim bLoLUsed
-Dim CompletedHouses
 Dim ComboLaneMap
 
-HouseColor = Array(white,white,yellow,red,purple,green,amber,blue)
-' Assignment of centre field shields
-HouseSigil = Array(li38,li38,li41,li44,li47,li50,li53,li32)
-' Assignment of "shot" shields
-HouseShield = Array(li141,li141,li26,li114,li86,li77,li156,li98)
-' Assignment of Lol Target lights
-LoLLights = Array(li17,li20,li23)
-' Map of house name to combo lane
-ComboLaneMap = Array(0,4,0,3,1,0,5,2)
+' Global variables with player data - saved across balls and between players
+Dim PlayerMode          ' Current player's mode. 0=normal, -1 = select house, -2 = select battle, -3 = select mystery, 1 = in battle
+Dim SelectedHouse       ' Current Player's selected house
+Dim bTopLanes(2)        ' State of top lanes
+Dim LoLTargetsCompleted ' Number of times the target bank has been completed
+Dim WildfireTargetsCompleted ' Number of times wildfire target bank has been completed
+Dim BWMultiballsCompleted
+Dim bLockIsLit
+Dim bWildfireTargets(2) ' State of Wildfire targets
+Dim bLoLLit             ' Whether Lord of Light Outlanes are lit
+Dim bLoLUsed            ' Whether Lord of Light has been used this game
+Dim CompletedHouses     ' Number of completed houses - determines max spinner level and triggers HOTK and Iron Throne modes
 
-' Global game-specific variables - saved across balls and between players
-
+' Player state data
 Dim House(4)  ' Current state of each house - some house modes aren't saved, while others are. May need a Class to save detailed state
 Dim PlayerState(4) ' Structure to save global player-specific variables across balls
 
@@ -1954,7 +1950,25 @@ Dim PlayerState(4) ' Structure to save global player-specific variables across b
 Dim PlayfieldMultiplierVal
 Dim SpinnerValue
 Dim SpinnerLevel
+Dim DroppedTargets      ' Number of targets dropped
 Dim ComboMultiplier(5)
+Dim bWildfireLit
+
+HouseColor = Array(white,white,yellow,red,purple,green,amber,blue)
+' Assignment of centre playfield shields
+HouseSigil = Array(li38,li38,li41,li44,li47,li50,li53,li32)
+' Assignment of "shot" shields
+HouseShield = Array(li141,li141,li26,li114,li86,li77,li156,li98)
+' House Ability strings, used during House Selection
+HouseAbility = Array("","increase winter is coming","advance wall multiball","collect more gold","plunder rival abilities","increase hand of the king","action button = add a ball","")
+
+' Assignment of Lol Target lights
+LoLLights = Array(li17,li20,li23)
+' Map of house name to combo lane
+ComboLaneMap = Array(0,4,0,3,1,0,5,2)
+
+
+
 
 ' This class holds player state that is carried over across balls
 Class cPState
@@ -1963,6 +1977,9 @@ Class cPState
     Dim LTargetsCompleted
     Dim myLoLLit
     Dim myLoLUsed
+    Dim myLockIsLit
+    Dim myBWMultiballsCompleted
+    Dim myBallsInLock
 
     Public Sub Save
         bWFTargets(0) = bWildfireTargets(0):bWFTargets(1) = bWildfireTargets(1)
@@ -1970,6 +1987,9 @@ Class cPState
         LTargetsCompleted = LoLTargetsCompleted
         myLoLLit = bLoLLit
         myLoLUsed = bLoLUsed
+        myLockIsLit = bLockIsLit
+        myBWMultiballsCompleted = BWMultiballsCompleted
+        myBallsInLock = BallsInLock
     End Sub
 
     Public Sub Restore
@@ -1978,6 +1998,9 @@ Class cPState
         LoLTargetsCompleted = LTargetsCompleted
         bLoLLit = myLoLLit
         bLoLUsed = myLoLUsed
+        bLockIsLit = myLockIsLit
+        BWMultiballsCompleted = myBWMultiballsCompleted
+        BallsInLock = myBallsInLock
     End Sub
 End Class
 
@@ -2036,7 +2059,7 @@ Class cHouse
         j=0
         For i = Stark to Targaryen
             If bCompleted(i) Then 
-                SetLightColor HouseSigil(i),HouseColor(i),1
+                SetLightColor HouseSigil(i),HouseColor(HouseSelected),1
                 HouseShield(i).State = 0        ' TODO: What color do shields turn for completed houses
                 j = j + 1
             ElseIf bCompleted(i) = False and (bQualified(i)) Then 
@@ -2056,11 +2079,12 @@ Class cHouse
         Dim line0,line1,line2
         Dim i
         Dim combo:combo=1
+        Dim combotext: combotext=""
 
         if PlayerMode = 0 Then
             if QualifyCount(h) < 3 Then
                 QualifyCount(h) = QualifyCount(h) + 1
-                PlayExistingSoundVol "gotfx-qualify-sword-hit", VolDef, 0
+                PlayExistingSoundVol "gotfx-qualify-sword-hit1", VolDef, 0
 
                 If ComboLaneMap(h) Then combo = ComboMultiplier(ComboLaneMap(h))
 
@@ -2075,10 +2099,16 @@ Class cHouse
                     line2 = (3 - QualifyCount(h)) & " more to light"
                     'TODO: sometimes play an animation and optional sound effect on house advance
                 End If
-                line1 = FormatScore(QualifyValue*combo)
+                line1 = FormatScore(QualifyValue*combo*PlayfieldMultiplierVal)
 
                 AddScore(QualifyValue*combo)
-                DMDComboScene line0,line1,line2,combo,3000
+                If combo > 1 and PlayfieldMultiplierVal > 1 Then
+                    combotext = "mixed"
+                Elseif combo > 1 Then
+                    combotext = "combo"
+                Elseif PlayfieldMultiplierVal > 1 Then
+                    combotext = "playfield"
+                DMDComboScene line0,line1,line2,combo*PlayfieldMultiplierVal,combotext,3000
 
                  ' Increase Qualify value for next shot. Lots of randomness seems to factor in here
                 if QualifyValue = 100000 Then
@@ -2094,7 +2124,7 @@ Class cHouse
                     End If
                 End If
             Else
-                ' Not in a Mode and house already Qualified. What do target hits do?
+                ' TODO: Not in a Mode and house already Qualified. Handle "Iced" targets for Winter-Is-Coming
             End If
         Else
             ' TODO: hits do completely different things during Modes
@@ -2153,6 +2183,8 @@ Sub ResetForNewGame()
     WildfireTargetsCompleted = 0
     LoLTargetsCompleted = 0
     CompletedHouses = 0
+    bLockIsLit = False
+    BWMultiballsCompleted = 0
     bWildfireTargets(0) = False:bWildfireTargets(1) = False
     For i = 1 To MaxPlayers
         Score(i) = 0
@@ -2239,6 +2271,7 @@ Sub ResetNewBallVariables() 'reset variables for a new ball or player
     SpinnerLevel = 1
     SpinnerValue = 500 + (BallsPerGame-BallsRemaining(CurrentPlayer))*2000 ' Appears to start at 2500 on ball 1 and 4500 on ball 2
     UpdatePFXLights(PlayfieldMultiplierVal)
+    bWildfireLit = False
     ' TODO: Update playfield lights to their correct status based on current player and state
 End Sub
 
@@ -2775,6 +2808,7 @@ Sub ChooseHouse(ByVal keycode)
         FlashShields SelectedHouse,True
         House(CurrentPlayer).Say(SelectedHouse)
     End If
+    DMDChooseScene1 "choose your house",HouseToString(SelectedHouse), HouseAbility(SelectedHouse),"sigil_" & HouseToString(SelectedHouse)
 End Sub
 
 ' Turn on the flashing shield sigils when choosing a house
@@ -2795,7 +2829,7 @@ Sub GameDoBallLaunched
         House(CurrentPlayer).ResetLights
         PlayerMode = 0
     End If
-    If bAutoPlunged = False Then  PlaySoundVol "gotfx-balllaunch",VolDef
+    If bBallSaved = False Then  PlaySoundVol "gotfx-balllaunch",VolDef
 End Sub
 
 
@@ -2872,6 +2906,56 @@ Sub DoTargetsDropped
     End If
 End Sub
 
+'*********************
+' Wildfire target hits
+'*********************
+Sub Target43_Hit
+    doWFTargetHit 0
+End Sub
+
+Sub Target44_Hit
+    doWFTargetHit 1
+End Sub
+
+Sub doWFTargetHit(t)
+    Dim t1:t1=1
+    If t Then t1=0
+    bWildfireTargets(t) = True
+    AddScore 230
+
+    PlayExistingSoundVol "gotfx-wftarget-hit", VolDef, 0
+    If BWMultiballsCompleted = 0 or bWildfireTargets(t1) Then LightLock
+    bWildfireTargets(t) = True
+    if bWildfireTargets(t1) Then
+        'Target bank completed
+        'Light both lights for 1 second, then shut them off
+        FlashForMs li80,1000,2000,0
+        FlashForMs li83,1000,2000,0
+        bWildfireTargets(0)=False:bWildfireTargets(1)=False
+        House(CurrentPlayer).RegisterHit(Tyrell)
+        bWildfireLit = True: SetLightColor li126, darkgreen, 1
+    End If
+End Sub
+
+Sub LightLock
+    Dim i
+
+    if bLockIsLit Then Exit Sub
+    bLockIsLit = True
+    ' Flash the lock light
+    li111.BlinkInterval = 300
+    SetLightColor li111,darkgreen,2
+
+    ' Enable the lock wall
+    LockWall.collidable = 1
+    If RealBallsInLock > 0 Then SwordWall.collidable = 1
+
+    i = RndNbr(3)
+    if i > 1 Then i = ""
+    PlaySoundVol "gotfx-lock-is-lit"&i, VolDef
+End Sub
+
+
 '******************
 ' 5 main shot hits
 '******************
@@ -2881,13 +2965,16 @@ Sub LOrbitSW30_Hit
     LastSwitchHit = "LOrbitSW30"
 End Sub
 
+' Left ramp switch
 Sub sw39_Hit
     AddScore 1000
     House(CurrentPlayer).RegisterHit(Lannister)
     'TODO: This ramp shot kicks off lots of other actions too
     LastSwitchHit = "sw39"
+    sw48.UserValue = "sw39"
 End Sub
 
+'Right ramp switch
 Sub sw42_Hit
     AddScore 1000
     House(CurrentPlayer).RegisterHit(Stark)
@@ -2913,14 +3000,102 @@ Sub Kicker37_Hit
     Kicker37.Kick 190,30    'Angle,Power
 End Sub
 
+'******************
+' lock switch
+'******************
+Sub sw48_Hit
+    ' Debounce - ignore if the ramp switch wasn't just hit
+    If sw48.UserValue <> "sw39" Then Exit Sub
+    sw48.UserValue = ""
+
+    if bInMultiball Then
+        BallsInLock = BallsInLock + 1
+        RealBallsInLock = RealBallsInLock + 1
+        tmrBWmultiballRelease.Enabled = True
+        Exit Sub
+    End If
+
+    If PlayerMode < 0 Then Exit Sub     ' ChooseBattle mode already started - let it take care of doing ball lock when done
+    If bLockIsLit Then 
+        LockBall
+    ElseIf RealBallsInLock > 0 Then     ' Lock isn't lit but we have a ball locked
+        ReleaseLockedBall 0
+    End If
+        
+End Sub
+
+Sub LockBall
+    Dim i
+    BallsInLock = BallsInLock + 1
+    RealBallsInLock = RealBallsInLock + 1
+    bLockIsLit = False
+    SetLightColor li111,darkgreen,0     ' Turn off Lock light
+    i = RndNbr(3)
+    if i > 1 Then i = ""
+    PlaySoundVol "say-ball-" & BallsInLock & "-locked" & i, VolDef
+    If BallsInLock = 3 Then
+        'Start BW multiball in 1 second - gives a chance to say 'ball locked'
+        vpmtimer.addtimer 1000, "StartBWMultiball '"
+    Else
+        If RealBallsInLock > BallsInLock Then
+            RealBallsInLock = RealBallsInLock - 1
+            ReleaseLockedBall 0
+        Else
+            bAutoPlunger = True
+            CreateNewBall
+    End If
+
+End Sub
+
+Sub StartBWMultiball
+    'TODO Play animation
+    PlaySoundVol "gotfx-blackwater-multiball-start",VolDef
+    PlaySong "got-track4"
+    'TODO Trigger a light sequence
+    tmrBWmultiballRelease.Enabled = True
+End Sub
+
+' Handle physically releasing a locked ball, as well as any sound effects needed
+Sub ReleaseLockedBall(sword)
+    SwordWall.TimerInterval = 330   ' how long the release solenoid stays down for
+    SwordWall.TimerEnabled = True
+    SwordWall.Collidable = True
+    SwordWall.UserValue = sword
+    LockWall.Collidable = False
+    'TODO move the actuator primitive down
+    'ActuatorPrimitive.TransZ = -50
+    PlaySoundAt "fx_kicker",sw50
+    If sword Then
+        'TODO Rotate sword primitive to "chop off" the ball
+        'SwordPrimitive.RotY = 30
+        'TODO Play sword chopping sound
+    End If
+    'TODO: Any lighting effect to do when releasing individual balls?
+End Sub
+
+' Called after the release solenoid has been down for ~300ms. Re-opens the invisible sword wall to let the
+' next ball through
+Sub SwordWall_Timer
+    Me.Enable = False
+    If RealBallsInLock > 0 Then LockWall.Collidable = True
+    SwordWall.Collidable = False
+    'TODO move the actuator primitive back up
+    'ActuatorPrimitive.TransZ = 0
+    If SwordWall.UserValue = 1 Then
+        'TODO Rotate sword primitive back to "open"
+        'SwordPrimitive.RotY = 0
+    End If
+End Sub
 
 
-
-
-
-
-
-
+Sub tmrBWmultiballRelease_Timer
+    tmrBWmultiballRelease.Enabled = False
+    ReleaseLockedBall 1
+    BallsInLock = BallsInLock - 1
+    RealBallsInLock = RealBallsInLock - 1
+    If RealBallsInLock > 0 Then tmrBWmultiballRelease.Enabled = True: Exit Sub
+    If BallsInLock > 0 Then AddMultiball BallsInLock
+End Sub
 
 
 
@@ -2939,7 +3114,17 @@ Sub DMDComboScene(line0,line1,line2,combox,duration)
     DisplayDMDText line0, line1 & "   " & combox & "X", duration
 End Sub
 
-
+' Choose Scene is used for choosing your house at the beginning of game. Format is
+'
+'   house    CHOOSE YOUR HOUSE 8x5 charset
+'   sigil    <|  House Name 9x5 charset  |>
+'             house action button 5x3 charset
+'
+' Once house is selected, bottom row goes away and top two rows give more detail on house action
+Sub DMDChooseScene1(line0,line1,line2,sigil)    ' sigil is an image name
+    ' TODO: Convert to FlexDMD
+    DisplayDMDText line0, line1, 0
+End Sub
 
 
 '*****************
