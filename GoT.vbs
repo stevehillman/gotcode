@@ -2935,6 +2935,8 @@ Sub doWFTargetHit(t)
     AddScore 230
     PlayExistingSoundVol "gotfx-wftarget-hit", VolDef, 0
 
+    debug.print "wftarget " & t & " hit"
+    debug.print "prev hitstate 0: " & bWildfireTargets(0) & " 1: " & bWildfireTargets(1)
     if bWildfireTargets(t) then Exit Sub
     bWildfireTargets(t) = True
 
@@ -2942,6 +2944,7 @@ Sub doWFTargetHit(t)
     if bWildfireTargets(t1) Then
         'Target bank completed
         'Light both lights for 1 second, then shut them off
+        debug.print "wf targets completed"
         FlashForMs li80,1000,2000,0
         FlashForMs li83,1000,2000,0
         bWildfireTargets(0)=False:bWildfireTargets(1)=False
@@ -2951,10 +2954,10 @@ Sub doWFTargetHit(t)
         Select Case t
             Case 0
                 SetLightColor li80,green,1
-                FlashForMs li80,1000,200,2
+                FlashForMs li80,1000,100,2
             Case 1
                 SetLightColor li83,green,1
-                FlashForMs li83,1000,200,2
+                FlashForMs li83,1000,100,2
         End Select
     End If
 End Sub
