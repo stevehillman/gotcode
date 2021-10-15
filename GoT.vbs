@@ -61,7 +61,7 @@ Const BallSaverTime = 20      ' in seconds of the first ball
 Const MaxMultiplier = 5       ' limit playfield multiplier
 Const MaxBonusMultiplier = 50 'limit Bonus multiplier
 Const BallsPerGame = 3        ' usually 3 or 5
-Const MaxMultiballs = 4       ' max number of balls during multiballs
+Const MaxMultiballs = 5       ' max number of balls during multiballs
 
 '********* UltraDMD **************
 Dim UltraDMD:UltraDMD=0
@@ -2695,6 +2695,7 @@ Sub StopMBmodes
 ' TODO: Need to do anything here? E.g.
 '  - reset lighting
 '  - restore pre-mb state?
+    PlaySong "got-track1"
 End Sub
 
 Sub RotateLaneLights(dir)
@@ -3008,7 +3009,7 @@ Sub sw48_Hit
     If sw48.UserValue <> "sw39" Then Exit Sub
     sw48.UserValue = ""
 
-    if bInMultiball Then
+    if bMultiBallMode Then
         BallsInLock = BallsInLock + 1
         RealBallsInLock = RealBallsInLock + 1
         tmrBWmultiballRelease.Enabled = True
@@ -3049,6 +3050,7 @@ End Sub
 
 Sub StartBWMultiball
     'TODO Play animation
+    bMultiBallMode = True
     PlaySoundVol "gotfx-blackwater-multiball-start",VolDef
     PlaySong "got-track4"
     'TODO Trigger a light sequence
@@ -3125,6 +3127,14 @@ Sub DMDChooseScene1(line0,line1,line2,sigil)    ' sigil is an image name
     ' TODO: Convert to FlexDMD
     DisplayDMDText line0, line1, 0
 End Sub
+
+' Choose Scene2 is used for choosing your House Battle(s). Format is
+'
+'    CHOOSE YOUR BATTLE (5x6 font)
+'         HOUSE NAME (8x6 font)
+'(optional)  and
+'         HOUSE NAME
+Sub DMDChooseScene2(line0,line1,line2)
 
 
 '*****************
