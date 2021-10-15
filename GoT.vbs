@@ -57,7 +57,7 @@ End Sub
 Const cGameName = "gameofthrones"
 Const myVersion = "0.9"
 Const MaxPlayers = 4          ' from 1 to 4
-Const BallSaverTime = 20      ' in seconds of the first ball
+Const BallSaverTime = 2000      ' in seconds of the first ball
 Const MaxMultiplier = 5       ' limit playfield multiplier
 Const MaxBonusMultiplier = 50 'limit Bonus multiplier
 Const BallsPerGame = 3        ' usually 3 or 5
@@ -1925,7 +1925,7 @@ Const SpinnerAddValue = 500      ' Base amount that Spinner's value increases by
 Dim HouseColor
 Dim HouseSigil
 Dim HouseShield
-Dim HouseAction
+Dim HouseAbility
 Dim LoLLights
 Dim ComboLaneMap
 
@@ -2108,6 +2108,7 @@ Class cHouse
                     combotext = "combo"
                 Elseif PlayfieldMultiplierVal > 1 Then
                     combotext = "playfield"
+                End If
                 DMDComboScene line0,line1,line2,combo*PlayfieldMultiplierVal,combotext,3000
 
                  ' Increase Qualify value for next shot. Lots of randomness seems to factor in here
@@ -2263,6 +2264,7 @@ Sub ResetNewBallVariables() 'reset variables for a new ball or player
     'turn on or off the needed lights before a new ball is released
     TurnOffPlayfieldLights
     ResetDropTargets
+    SetLockLight
      ' Top lanes start out off on the Premium/LE
     For i = 0 to 1 : bTopLanes(i) = False : Next
     'playfield multipiplier
@@ -2707,6 +2709,13 @@ Sub RotateLaneLights(dir)
     End If
 End Sub
 
+Sub SetLockLight
+    If Not bLockIsLit Then Exit Sub
+    ' Flash the lock light
+    li111.BlinkInterval = 300
+    SetLightColor li111,darkgreen,2
+End Sub
+
 Sub ResetDropTargets
     ' PlaySoundAt "fx_resetdrop", Target010
     If Target7.IsDropped OR Target8.IsDropped OR Target9.IsDropped Then
@@ -2829,6 +2838,8 @@ Sub GameDoBallLaunched
         House(CurrentPlayer).MyHouse = SelectedHouse
         House(CurrentPlayer).ResetLights
         PlayerMode = 0
+        ' TODO: Display additional text about house chosen on ball launch
+        DMDScoreNow
     End If
     If bBallSaved = False Then  PlaySoundVol "gotfx-balllaunch",VolDef
 End Sub
@@ -2921,12 +2932,13 @@ End Sub
 Sub doWFTargetHit(t)
     Dim t1:t1=1
     If t Then t1=0
-    bWildfireTargets(t) = True
     AddScore 230
-
     PlayExistingSoundVol "gotfx-wftarget-hit", VolDef, 0
-    If BWMultiballsCompleted = 0 or bWildfireTargets(t1) Then LightLock
+
+    if bWildfireTargets(t) then Exit Sub
     bWildfireTargets(t) = True
+
+    If BWMultiballsCompleted = 0 or bWildfireTargets(t1) Then LightLock
     if bWildfireTargets(t1) Then
         'Target bank completed
         'Light both lights for 1 second, then shut them off
@@ -2935,13 +2947,22 @@ Sub doWFTargetHit(t)
         bWildfireTargets(0)=False:bWildfireTargets(1)=False
         House(CurrentPlayer).RegisterHit(Tyrell)
         bWildfireLit = True: SetLightColor li126, darkgreen, 1
+    Else
+        Select Case t
+            Case 0
+                SetLightColor li80,green,1
+                FlashForMs li80,1000,200,2
+            Case 1
+                SetLightColor li83,green,1
+                FlashForMs li83,1000,200,2
+        End Select
     End If
 End Sub
 
 Sub LightLock
     Dim i
 
-    if bLockIsLit Then Exit Sub
+    if bLockIsLit or bMultiBallMode Then Exit Sub
     bLockIsLit = True
     ' Flash the lock light
     li111.BlinkInterval = 300
@@ -2953,7 +2974,7 @@ Sub LightLock
 
     i = RndNbr(3)
     if i > 1 Then i = ""
-    PlaySoundVol "gotfx-lock-is-lit"&i, VolDef
+    PlaySoundVol "say-lock-is-lit"&i, VolDef
 End Sub
 
 
@@ -3018,7 +3039,7 @@ Sub sw48_Hit
 
     If PlayerMode < 0 Then Exit Sub     ' ChooseBattle mode already started - let it take care of doing ball lock when done
     If bLockIsLit Then 
-        LockBall
+        vpmtimer.addtimer 400, "LockBall '"     ' Slight delay to give ball time to settle
     ElseIf RealBallsInLock > 0 Then     ' Lock isn't lit but we have a ball locked
         ReleaseLockedBall 0
     End If
@@ -3044,6 +3065,7 @@ Sub LockBall
         Else
             bAutoPlunger = True
             CreateNewBall
+        End If
     End If
 
 End Sub
@@ -3054,6 +3076,7 @@ Sub StartBWMultiball
     PlaySoundVol "gotfx-blackwater-multiball-start",VolDef
     PlaySong "got-track4"
     'TODO Trigger a light sequence
+  	tmrBWmultiballRelease.Interval = 5000	' Long initial delay to give sequence time to complete
     tmrBWmultiballRelease.Enabled = True
 End Sub
 
@@ -3066,7 +3089,7 @@ Sub ReleaseLockedBall(sword)
     LockWall.Collidable = False
     'TODO move the actuator primitive down
     'ActuatorPrimitive.TransZ = -50
-    PlaySoundAt "fx_kicker",sw50
+    PlaySoundAt "fx_kicker",sw46
     If sword Then
         'TODO Rotate sword primitive to "chop off" the ball
         'SwordPrimitive.RotY = 30
@@ -3078,7 +3101,7 @@ End Sub
 ' Called after the release solenoid has been down for ~300ms. Re-opens the invisible sword wall to let the
 ' next ball through
 Sub SwordWall_Timer
-    Me.Enable = False
+    Me.TimerEnabled = False
     If RealBallsInLock > 0 Then LockWall.Collidable = True
     SwordWall.Collidable = False
     'TODO move the actuator primitive back up
@@ -3092,6 +3115,7 @@ End Sub
 
 Sub tmrBWmultiballRelease_Timer
     tmrBWmultiballRelease.Enabled = False
+    tmrBWmultiballRelease.Interval = 1000
     ReleaseLockedBall 1
     BallsInLock = BallsInLock - 1
     RealBallsInLock = RealBallsInLock - 1
@@ -3111,9 +3135,9 @@ End Sub
 '      SCORE 12x7 digits     X multi (10x18 (or so) charset)
 '     LINE 3 5x3 Charset
 '
-Sub DMDComboScene(line0,line1,line2,combox,duration)
+Sub DMDComboScene(line0,line1,line2,combox,combotext,duration)
     ' TODO: Convert this to using FlexDMD Stages, Groups, and Actors
-    DisplayDMDText line0, line1 & "   " & combox & "X", duration
+    DisplayDMDText line0 & "  " & combotext, line1 & "   " & combox & "X", duration
 End Sub
 
 ' Choose Scene is used for choosing your house at the beginning of game. Format is
@@ -3135,7 +3159,13 @@ End Sub
 '(optional)  and
 '         HOUSE NAME
 Sub DMDChooseScene2(line0,line1,line2)
-
+    ' TODO: Convert to FlexDMD
+    If line2="" Then
+        DisplayDMDText line0, line1, 0
+    Else
+        DisplayDMDText line1, line2, 0
+    End if
+End Sub
 
 '*****************
 ' PinUP Support
