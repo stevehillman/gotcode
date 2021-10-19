@@ -63,28 +63,39 @@ Const MaxBonusMultiplier = 50 'limit Bonus multiplier
 Const BallsPerGame = 3        ' usually 3 or 5
 Const MaxMultiballs = 5       ' max number of balls during multiballs
 
-'********* UltraDMD **************
-Dim UltraDMD:UltraDMD=0
-Const UltraDMD_VideoMode_Stretch = 0
-Const UltraDMD_VideoMode_Top = 1
-Const UltraDMD_VideoMode_Middle = 2
-Const UltraDMD_VideoMode_Bottom = 3
-Const UltraDMD_Animation_FadeIn = 0
-Const UltraDMD_Animation_FadeOut = 1
-Const UltraDMD_Animation_ZoomIn = 2
-Const UltraDMD_Animation_ZoomOut = 3
-Const UltraDMD_Animation_ScrollOffLeft = 4
-Const UltraDMD_Animation_ScrollOffRight = 5
-Const UltraDMD_Animation_ScrollOnLeft = 6
-Const UltraDMD_Animation_ScrollOnRight = 7
-Const UltraDMD_Animation_ScrollOffUp = 8
-Const UltraDMD_Animation_ScrollOffDown = 9
-Const UltraDMD_Animation_ScrollOnUp = 10
-Const UltraDMD_Animation_ScrollOnDown = 11
-Const UltraDMD_Animation_None = 14
-Const UltraDMD_deOn = 1500
+'*****************************************************************************************************
+' FlexDMD constants
+Const 	FlexDMD_RenderMode_DMD_GRAY_2 = 0, _
+		FlexDMD_RenderMode_DMD_GRAY_4 = 1, _
+		FlexDMD_RenderMode_DMD_RGB = 2, _
+		FlexDMD_RenderMode_SEG_2x16Alpha = 3, _
+		FlexDMD_RenderMode_SEG_2x20Alpha = 4, _
+		FlexDMD_RenderMode_SEG_2x7Alpha_2x7Num = 5, _
+		FlexDMD_RenderMode_SEG_2x7Alpha_2x7Num_4x1Num = 6, _
+		FlexDMD_RenderMode_SEG_2x7Num_2x7Num_4x1Num = 7, _
+		FlexDMD_RenderMode_SEG_2x7Num_2x7Num_10x1Num = 8, _
+		FlexDMD_RenderMode_SEG_2x7Num_2x7Num_4x1Num_gen7 = 9, _
+		FlexDMD_RenderMode_SEG_2x7Num10_2x7Num10_4x1Num = 10, _
+		FlexDMD_RenderMode_SEG_2x6Num_2x6Num_4x1Num = 11, _
+		FlexDMD_RenderMode_SEG_2x6Num10_2x6Num10_4x1Num = 12, _
+		FlexDMD_RenderMode_SEG_4x7Num10 = 13, _
+		FlexDMD_RenderMode_SEG_6x4Num_4x1Num = 14, _
+		FlexDMD_RenderMode_SEG_2x7Num_4x1Num_1x16Alpha = 15, _
+		FlexDMD_RenderMode_SEG_1x16Alpha_1x16Num_1x7Num = 16
 
-'********* End UltraDMD **************
+Const 	FlexDMD_Align_TopLeft = 0, _
+		FlexDMD_Align_Top = 1, _
+		FlexDMD_Align_TopRight = 2, _
+		FlexDMD_Align_Left = 3, _
+		FlexDMD_Align_Center = 4, _
+		FlexDMD_Align_Right = 5, _
+		FlexDMD_Align_BottomLeft = 6, _
+		FlexDMD_Align_Bottom = 7, _
+		FlexDMD_Align_BottomRight = 8
+
+Const   UltraDMD_Animation_None = 14
+Dim FlexDMD
+'********* End FlexDMD **************
 
 
 ' Define Global Variables that aren't game-specific 
@@ -126,7 +137,7 @@ Dim bBallInPlungerLane
 Dim bBallSaverActive
 Dim bBallSaverReady
 Dim bTableReady
-Dim	bUseUltraDMD
+Dim	bUseFlexDMD
 Dim	bUsePUPDMD
 Dim	bPupStarted
 Dim bBonusHeld
@@ -150,11 +161,11 @@ Sub Table1_Init()
     vpmNudge.TiltObj = Array(Bumper1, bumper2, bumper3, LeftSlingshot, RightSlingshot)
 	
 	bTableReady=False
-	bUseUltraDMD=False
+	bUseFlexDMD=False
 	bUsePUPDMD=False
 	bPupStarted=False
 	if DMDMode = 1 then 
-		bUseUltraDMD= True
+		bUseFlexDMD= True
 		set PuPlayer = New PinupNULL
 	elseif DMDMode = 2 Then
 		bUsePUPDMD = True
@@ -189,17 +200,6 @@ Sub Table1_Init()
 
     'load saved values, highscore, names, jackpot
     Loadhs
-
-    'Init main variables
-    'TODO: Revisit tablestate_init
-	' TableState_Init(0)
-	' TableState_Init(1)
-	' TableState_Init(2)
-	' TableState_Init(3)
-	' TableState_Init(4)
-	' for i = 0 to StackSize
-	' 	StackState_Init(i)
-	' Next
 
     ' initalise the DMD display
     DMD_Init
@@ -247,6 +247,14 @@ End Sub
 Private Function BigMod(Value1, Value2)
     BigMod = Value1 - (Int(Value1 / Value2) * Value2)
 End Function
+
+Sub Table1_Exit()
+    If Not FlexDMD is Nothing Then
+		FlexDMD.Show = False
+		FlexDMD.Run = False
+		FlexDMD = NULL
+    End If
+End Sub
 
 '******
 ' Keys
@@ -1011,67 +1019,55 @@ End Sub
 
 
 '********************************************************
-' DMD Support. For now, this uses UltraDMD
-' but we'll probably update to FlexDMD-specific API calls
+' DMD Support. Updated to FlexDMD-specific API calls
 ' and eventually PuP
 '******************************************************** 
 
 Const eNone = 0        ' Instantly displayed
 
-Sub LoadUltraDMD
-	Dim WshShell
-	Set WshShell = CreateObject("WScript.Shell")
-	WshShell.RegWrite "HKCU\Software\UltraDMD\fullcolor",False,"REG_SZ"
-
-	On Error Resume Next
-    Set UltraDMD = CreateObject("UltraDMD.DMDObject")
-    If UltraDMD is Nothing Then
-        MsgBox "No UltraDMD found.  This table MAY run without it."
-		bUseUltraDMD=False
+Dim UltraDMD
+Sub LoadFlexDMD
+	Set FlexDMD = CreateObject("FlexDMD.FlexDMD")
+    If FlexDMD is Nothing Then
+        MsgBox "No FlexDMD found. This table will not be as good without it."
+        bUseFlexDMD = False
         Exit Sub
     End If
-	On Error Goto 0
+	SetLocale(1033)
+	With FlexDMD
+		.GameName = cGameName
+		.TableFile = Table1.Filename & ".vpx"
+		.Color = RGB(255, 88, 32)
+		.RenderMode = FlexDMD_RenderMode_DMD_GRAY_4
+		.Width = 128
+		.Height = 32
+		.Clear = True
+		.Run = True
+	End With	
 
-    UltraDMD.Init
-	UltraDMD.SetVideoStretchMode 2
-    If Not UltraDMD.GetMajorVersion = 1 Then
-        MsgBox "Incompatible Version of UltraDMD found."
-        Exit Sub
-    End If
-
-    If UltraDMD.GetMinorVersion < 1 Then
-        MsgBox "Incompatible Version of UltraDMD found. Please update to version 1.1 or newer."
-        Exit Sub
-    End If
-
-    Dim fso
-    Set fso = CreateObject("Scripting.FileSystemObject")
-    Dim curDir
-    curDir = fso.GetAbsolutePathName(".")
-    UltraDMD.SetProjectFolder curDir & "\GameOfThronesLE.UltraDMD"
-	dim vid0
-	
+    ' Let's try this while we transition to FlexDMD
+    Set UltraDMD = FlexDMD.NewUltraDMD()
 End Sub
 
 Sub DMD_Clearforhighscore()
-	if (bUseUltraDMD) then
+	if (bUseFlexDMD) then
 		UltraDMD.CancelRendering
 		UltraDMD.Clear
 	End If
 End Sub
 
 Sub DMDClearQueue				' It looks like if we call this too fast it will cancel the ULTRA DMD logo scene
-	if bUseUltraDMD and UltraDMDVideos Then
+	if bUseFlexDMD and UltraDMDVideos Then
 		If UltraDMD.IsRendering Then
 			UltraDMD.CancelRendering
-			'UltraDMD.CancelRenderingWithId video
-			'UltraDMD.Clear
+			'FlexDMD.CancelRenderingWithId video
+			'FlexDMD.Clear
 		End If
 	End If
 End Sub
 
 Sub PlayDMDScene(video, timeMs)
-	if bUseUltraDMD and UltraDMDVideos Then
+	if bUseFlexDMD and UltraDMDVideos Then
 		' Note Video needs to not have sounds and must be more then 3 seconds (Export from iMovie, I chose 540p, high quality, Faster compression.
 		UltraDMD.DisplayScene00 video, "", 15, "", 15, UltraDMD_Animation_None, timeMs, UltraDMD_Animation_None
 		'UltraDMD.DisplayScene00ExWithId video, False, video, "", 15, 15, "", 15, 15, 14, 4000, 14
@@ -1080,7 +1076,7 @@ End Sub
 
 Sub DisplayDMDText(Line1, Line2, duration)
 	'debug.print "DMDText " & Line1 & " " & Line2
-	if bUseUltraDMD Then
+	if bUseFlexDMD Then
 		UltraDMD.DisplayScene00 "", Line1, 15, Line2, 15, 14, duration, 14
 	Elseif bUsePUPDMD Then
 		If bPupStarted then 
@@ -1094,7 +1090,7 @@ Sub DisplayDMDText(Line1, Line2, duration)
 End Sub
 
 Sub DisplayDMDText2(Line1, Line2, duration, pri, blink)
-	if bUseUltraDMD Then
+	if bUseFlexDMD Then
 		UltraDMD.DisplayScene00 "", Line1, 15, Line2, 15, 14, duration, 14
 	Elseif bUsePUPDMD Then
 		If bPupStarted then 
@@ -1110,7 +1106,7 @@ End Sub
 
 
 Sub DMDId(id, toptext, bottomtext, duration) 'used in the highscore entry routine
-	if bUseUltraDMD then 
+	if bUseFlexDMD then 
 		UltraDMD.DisplayScene00ExwithID id, false, "", toptext, 15, 0, bottomtext, 15, 0, 14, duration, 14
 	Elseif bUsePUPDMD Then
 		If bPupStarted then pupDMDDisplay "default", toptext & "^" & bottomtext, "" ,Duration/1000, 0, 10
@@ -1118,7 +1114,7 @@ Sub DMDId(id, toptext, bottomtext, duration) 'used in the highscore entry routin
 End Sub
 
 Sub DMDMod(id, toptext, bottomtext, duration) 'used in the highscore entry routine
-	if bUseUltraDMD then 
+	if bUseFlexDMD then 
 		UltraDMD.ModifyScene00Ex id, toptext, bottomtext, duration
 	Elseif bUsePUPDMD Then
 		If bPupStarted then pupDMDDisplay "default", toptext & "^" & bottomtext, "" ,Duration/1000, 0, 10
@@ -1132,7 +1128,7 @@ Dim dLine(2)
 Sub DMD_Init() 'default/startup values
     Dim i, j
 
-	if bUseUltraDMD then LoadUltraDMD()
+	if bUseFlexDMD then LoadFlexDMD()
 
     DMDFlush()
     dCharsPerLine(0) = 12
@@ -1152,7 +1148,7 @@ Sub DMDScore()
     Dim tmp, tmp1, tmp2
 	Dim TimeStr
 
-	if bUseUltraDMD Then 
+	if bUseFlexDMD Then 
 		If Not UltraDMD.IsRendering Then
             'TODO: This is where we'll display custom text when selecting house, battle, and mystery awards
 			' if PlayerMode = -1 Then
@@ -1928,6 +1924,7 @@ Dim HouseShield
 Dim HouseAbility
 Dim LoLLights
 Dim ComboLaneMap
+Dim GoldTargetLights
 
 ' Global variables with player data - saved across balls and between players
 Dim PlayerMode          ' Current player's mode. 0=normal, -1 = select house, -2 = select battle, -3 = select mystery, 1 = in battle
@@ -1937,10 +1934,15 @@ Dim LoLTargetsCompleted ' Number of times the target bank has been completed
 Dim WildfireTargetsCompleted ' Number of times wildfire target bank has been completed
 Dim BWMultiballsCompleted
 Dim bLockIsLit
+Dim bEBisLit            ' TODO: Find out whether this carries over
 Dim bWildfireTargets(2) ' State of Wildfire targets
 Dim bLoLLit             ' Whether Lord of Light Outlanes are lit
 Dim bLoLUsed            ' Whether Lord of Light has been used this game
 Dim CompletedHouses     ' Number of completed houses - determines max spinner level and triggers HOTK and Iron Throne modes
+Dim TotalGold           ' Total gold collected in the game
+Dim CurrentGold         ' Current gold balance
+Dim TotalWildfire
+Dim bGoldTargets(5)
 
 ' Player state data
 Dim House(4)  ' Current state of each house - some house modes aren't saved, while others are. May need a Class to save detailed state
@@ -1953,6 +1955,11 @@ Dim SpinnerLevel
 Dim DroppedTargets      ' Number of targets dropped
 Dim ComboMultiplier(5)
 Dim bWildfireLit
+Dim bMysteryLit
+Dim bHurryUpActive
+Dim bSwordLit           ' TODO: Saved across balls?
+Dim HouseBattle1        ' When in battle, the primary (top) House
+Dim HouseBattle2        ' When in two-way battle, the second House
 
 HouseColor = Array(white,white,yellow,red,purple,green,amber,blue)
 ' Assignment of centre playfield shields
@@ -1964,7 +1971,9 @@ HouseAbility = Array("","increase winter is coming","advance wall multiball","co
 
 ' Assignment of Lol Target lights
 LoLLights = Array(li17,li20,li23)
-' Map of house name to combo lane
+'Assignment of Gold target lights
+GoldTargetLights = Array(li92,li105,li120,li135,li147)
+' Map of house name to combo lane (Greyjoy is combo lane1, Targaryen is Combo lane2, etc)
 ComboLaneMap = Array(0,4,0,3,1,0,5,2)
 
 
@@ -1980,8 +1989,13 @@ Class cPState
     Dim myLockIsLit
     Dim myBWMultiballsCompleted
     Dim myBallsInLock
+    Dim myGoldTargets(5)
+    Dim myTotalGold
+    Dim myCurrentGold
+    Dim myTotalWildfire
 
     Public Sub Save
+        Dim i
         bWFTargets(0) = bWildfireTargets(0):bWFTargets(1) = bWildfireTargets(1)
         WFTargetsCompleted = WildfireTargetsCompleted
         LTargetsCompleted = LoLTargetsCompleted
@@ -1990,6 +2004,10 @@ Class cPState
         myLockIsLit = bLockIsLit
         myBWMultiballsCompleted = BWMultiballsCompleted
         myBallsInLock = BallsInLock
+        myTotalGold = TotalGold
+        myCurrentGold = CurrentGold
+        myTotalWildfire = TotalWildfire
+        For i = 0 to 5:myGoldTargets(i) = bGoldTargets(i):Next
     End Sub
 
     Public Sub Restore
@@ -2001,6 +2019,8 @@ Class cPState
         bLockIsLit = myLockIsLit
         BWMultiballsCompleted = myBWMultiballsCompleted
         BallsInLock = myBallsInLock
+        For i = 0 to 5:bGoldTargets(i) = myGoldTargets(i):Next
+
     End Sub
 End Class
 
@@ -2132,6 +2152,35 @@ Class cHouse
         End If
     End Sub
 
+    Public Sub GoldHit(n)
+        Dim i,j
+        AddScore 30
+        If PlayerMode > 0 Then
+            If HouseBattle1 = Lannister or HouseBattle2 = Lannister Then
+            'TODO special handling during a Mode
+            ' Light the lanes on either side of the gold target hit
+            End If
+        Else
+            ' Regular mode
+            If HouseSelected = Lannister Then AddGold 22 Else AddGold 15
+            If Not bGoldTargets(n) Then
+                bGoldTargets(n) = True
+                SetLightColor GoldTargetLights(n),yellow,1
+                j = True
+                For i = 0 to 4: If bGoldTargets(n) = False Then j=False: Next
+                If j Then
+                    ' Target bank completed. Light mystery, turn off target lights 
+                    ' Probably need to play a sound here
+                    For i = 0 to 4: bGoldTargets(n) = False: Next
+                    bMysteryLit = True              ' Does this get saved across balls?
+                    SetLightColor li153, white, 2  ' Turn on Mystery light
+                    ' tell the gold target lights to turn off in 1 second. There's a timer on the first light
+                    bGoldTargets(0).TimerInterval = 1000: bGoldTargets(0).TimerEnabled = True
+                End If
+            End If
+        End If
+    End Sub
+
 End Class
 
 Function HouseToString(h)
@@ -2158,7 +2207,9 @@ End Function
 '**************************************************
 
 Sub VPObjects_Init
-'   
+    Dim i
+    BumperWeightTotal = 0
+    For i = 1 To BumperAwards:BumperWeightTotal = BumperWeightTotal + PictoPops(i)(2)
 End Sub
 
 Sub Game_Init()     'called at the start of a new game
@@ -2184,6 +2235,9 @@ Sub ResetForNewGame()
     WildfireTargetsCompleted = 0
     LoLTargetsCompleted = 0
     CompletedHouses = 0
+    TotalGold = 0
+    CurrentGold = 0
+    TotalWildfire = 0
     bLockIsLit = False
     BWMultiballsCompleted = 0
     bWildfireTargets(0) = False:bWildfireTargets(1) = False
@@ -2243,6 +2297,13 @@ Sub ResetForNewPlayerBall()
     'This table doesn't use a skill shot
     bSkillShotReady = False
 
+    bHurryUpActive = False
+
+    bMysteryLit = False     ' TODO: Are these carried over across balls?
+    bSwordLit = False
+
+    HouseBattle1 = 0 : HouseBattle2 = 0
+
     ' Reset Combo multipliers
     ResetComboMultipliers
 
@@ -2263,8 +2324,8 @@ Sub ResetNewBallVariables() 'reset variables for a new ball or player
     dim i
     'turn on or off the needed lights before a new ball is released
     TurnOffPlayfieldLights
+    ResetPictoPops
     ResetDropTargets
-    SetLockLight
      ' Top lanes start out off on the Premium/LE
     For i = 0 to 1 : bTopLanes(i) = False : Next
     'playfield multipiplier
@@ -2275,6 +2336,11 @@ Sub ResetNewBallVariables() 'reset variables for a new ball or player
     UpdatePFXLights(PlayfieldMultiplierVal)
     bWildfireLit = False
     ' TODO: Update playfield lights to their correct status based on current player and state
+    SetLockLight
+    SetOutlaneLights
+    SetMysteryLight
+    SetSwordLight
+    SetGoldTargetLights
 End Sub
 
 ' Create a new ball on the Playfield
@@ -2710,10 +2776,48 @@ Sub RotateLaneLights(dir)
 End Sub
 
 Sub SetLockLight
-    If Not bLockIsLit Then Exit Sub
-    ' Flash the lock light
-    li111.BlinkInterval = 300
-    SetLightColor li111,darkgreen,2
+    If bLockIsLit Then
+        ' Flash the lock light
+        li111.BlinkInterval = 300
+        SetLightColor li111,darkgreen,2
+    Else
+        SetLightColor li111,darkgreen,0
+    End If
+End Sub
+
+Sub SetSwordLight
+    If bSwordLit Then
+        li138.BlinkPattern = 110
+        li138.BlinkInterval = 150
+        SetLightColor li138,yellow,2
+    Else
+        SetLightColor li138,yellow,0
+    End If
+End Sub
+
+Sub SetMysteryLight
+    ' TODO: Figure out mystery light's blink pattern
+    if bMysteryLit Then
+        li153.BlinkInterval = 250
+        SetLightColor li153,white,2
+    Else
+        SetLightColor li153,white,0
+    End If
+End Sub
+
+Sub SetGoldTargetLights
+    Dim i
+    For i=0 to 4
+        SetLightColor GoldTargetLights(i),yellow,ABS(bGoldTargets(i))
+    Next
+End Sub
+
+Sub setEBLight
+    if bEBisLit Then
+        SetLightColor li150,amber,1
+    Else
+        SetLightColor li150,white,0
+    End If
 End Sub
 
 Sub ResetDropTargets
@@ -2753,14 +2857,6 @@ Sub GameGiOff
     Fi006.Visible = 0
 End Sub
 
-' Set the Bonus Multiplier to the specified level AND set any lights accordingly
-' There is no bonus multiplier lights in this table
-
-Sub SetBonusMultiplier(Level)
-    ' Set the multiplier to the specified level
-    BonusMultiplier(CurrentPlayer) = Level
-End Sub
-
 Sub UpdatePFXLights(Level)
     ' Update the playfield multiplier lights
     Select Case Level
@@ -2777,6 +2873,24 @@ Sub CheckActionButton
 'TODO
 End Sub
 
+' Set the Bonus Multiplier to the specified level AND set any lights accordingly
+' There is no bonus multiplier lights in this table
+
+Sub SetBonusMultiplier(Level)
+    ' Set the multiplier to the specified level
+    BonusMultiplier(CurrentPlayer) = Level
+End Sub
+
+Sub IncreaseBonusMultiplier(bx)
+    BonusMultiplier = BonusMultiplier + bx
+    'TODO: Play increase bonus animation (and sound?)
+End Sub
+
+Sub IncreaseGold(g)
+    TotalGold = TotalGold + g
+    CurrentGold = CurrentGold + g
+    'TODO: Play IncreasedGold animation
+End Sub
 
 ' Check for key presses specific to this game.
 ' If PlayerMode is < 0, in a 'Select' state, so use flippers to toggle
@@ -2930,6 +3044,7 @@ Sub Target44_Hit
 End Sub
 
 Sub doWFTargetHit(t)
+    If Tilted then Exit Sub
     Dim t1:t1=1
     If t Then t1=0
     AddScore 230
@@ -2947,6 +3062,9 @@ Sub doWFTargetHit(t)
         debug.print "wf targets completed"
         FlashForMs li80,1000,2000,0
         FlashForMs li83,1000,2000,0
+        ' Lights don't always seem to restore their state properly after flashing, so stick a timer on it
+        li80.TimerInterval = 1100
+        li80.TimerEnabled = True
         bWildfireTargets(0)=False:bWildfireTargets(1)=False
         House(CurrentPlayer).RegisterHit(Tyrell)
         bWildfireLit = True: SetLightColor li126, darkgreen, 1
@@ -2960,6 +3078,22 @@ Sub doWFTargetHit(t)
                 FlashForMs li83,1000,100,2
         End Select
     End If
+End Sub
+
+'WF target light timer
+Sub li80_Timer
+    if Not li80.State = ABS(bWildfireTargets(0)) or Not  li83.State = ABS(bWildfireTargets(1)) Then
+        li80.State = ABS(bWildfireTargets(0))
+        li83.State = ABS(bWildfireTargets(1))
+        debug.print "WF target lights were out of sync"
+    End If
+    Me.TimerEnabled = False
+End Sub
+
+'Gold target light timer
+Sub li92_Timer
+    Me.TimerEnabled = False
+    SetGoldTargetLights
 End Sub
 
 Sub LightLock
@@ -2985,6 +3119,7 @@ End Sub
 ' 5 main shot hits
 '******************
 Sub LOrbitSW30_Hit
+    If Tilted then Exit Sub
     AddScore 1000
     House(CurrentPlayer).RegisterHit(Greyjoy)
     LastSwitchHit = "LOrbitSW30"
@@ -2992,6 +3127,7 @@ End Sub
 
 ' Left ramp switch
 Sub sw39_Hit
+    If Tilted then Exit Sub
     AddScore 1000
     House(CurrentPlayer).RegisterHit(Lannister)
     'TODO: This ramp shot kicks off lots of other actions too
@@ -3001,12 +3137,14 @@ End Sub
 
 'Right ramp switch
 Sub sw42_Hit
+    If Tilted then Exit Sub
     AddScore 1000
     House(CurrentPlayer).RegisterHit(Stark)
     LastSwitchHit = "sw40"
 End Sub
 
 Sub ROrbitsw31_Hit
+    If Tilted then Exit Sub
     If LastSwitchHit <> "swPlungerRest" Then 
         AddScore 1000
         House(CurrentPlayer).RegisterHit(Martell)
@@ -3019,6 +3157,7 @@ End Sub
 '******************
 
 Sub Kicker37_Hit
+    If Tilted then Exit Sub
     AddScore 1000
     House(CurrentPlayer).RegisterHit(Targaryen)
     PlaySoundAt "fx_kicker",kicker37
@@ -3029,6 +3168,7 @@ End Sub
 ' lock switch
 '******************
 Sub sw48_Hit
+    If Tilted then Exit Sub
     ' Debounce - ignore if the ramp switch wasn't just hit
     If sw48.UserValue <> "sw39" Then Exit Sub
     sw48.UserValue = ""
@@ -3047,6 +3187,229 @@ Sub sw48_Hit
         ReleaseLockedBall 0
     End If
         
+End Sub
+
+'*****************
+' Gold targets hit
+'*****************
+Sub Target32_Hit
+    GoldHit 0
+End Sub
+Sub Target33_Hit
+    GoldHit 1
+End Sub
+Sub Target34_Hit
+    GoldHit 2
+End Sub
+Sub Target35_Hit
+    GoldHit 3
+End Sub
+Sub Target36_Hit
+    GoldHit 4
+End Sub
+
+Sub GoldHit(n)
+    If Tilted then Exit Sub
+    PlaySoundVol "gotfx-coins" & n+1
+    House(CurrentPlayer).GoldHit(n)
+End Sub
+
+
+'**************
+'Bumper Hits
+'**************
+Sub Bumper1_Hit
+    If Tilted then Exit Sub
+    PlaySoundAt "fx_bumper",Bumper1
+    doPictoPops 0
+End Sub
+
+Sub Bumper2_Hit
+    If Tilted then Exit Sub
+    PlaySoundAt "fx_bumper",Bumper1
+    doPictoPops 1
+End Sub
+
+Sub Bumper3_Hit
+    If Tilted then Exit Sub
+    PlaySoundAt "fx_bumper",Bumper1
+    doPictoPops 2
+End Sub
+
+'********************************
+' PictoPops support!
+' (that's what Stern calls their 
+'  rotating award pop bumpers)
+'********************************
+' From the GoT ROM code, here's the awards seen:
+' Add_A_Ball
+' Add_Mode_Time
+' Advance_Toward_Wall_Multiball
+' Award_3_Bonus_Multipliers
+' Award_5_Wild_Fire
+' Award_Big_Points
+' Award_Bonus_Multiplier
+' Award_Gold
+' Award_Special
+' Bump_Wall_Jackpot_Value
+' Bump_Winter_Is_Comming_Value
+' LIGHT_SWORDS
+' Light_Extra_ball
+' Light_Lock
+' Light_Lord_Of_Light
+' Light_Mystery
+' Light_Wild_Fire
+'
+' Here's how the algorithm works:
+' Each award carries a weight indicating how preferred it is as a random selection
+' Whenever a pop bumper is hit, a random number is generated between 0 and the sum of all weights
+' Each weight is subtracted from the random number until the number is less than the weight of the next item.
+' That item is the selected choice.
+' If a chosen item can't be awarded at this time (e.g. Add a Ball during regular play), repeat the process
+'
+' Once an award has been given, generate 3 new random awards for the bumpers. At least one should be different
+'
+' The weights are predefined in an array and the sum can be calculated at table_init
+
+Const BumperAwards = 17
+Dim BumperWeightTotal
+Dim BumperVals(2)
+Dim PictoPops(BumperAwards) 'Each element represents one pop award which is an array of 'long name','short name','weight', and 'mode'
+                  'Mode determines when the award can be won. 0=anytime, 1=during multiball, 2=not multiball and not LockIsLit, 
+                  ' 3=during mode or hurry-up, 4=after LoLused, 5=mystery not lit, 6=swords not lit, 7=wild-fire not lit
+PictoPops(1) = Array("+1 BONUS X","+1X",20,0)
+PictoPops(2) = Array("+5 \nWILDFIRE","+WFIRE",20,0)
+PictoPops(3) = Array("+150\nGOLD","+GOLD",20,0)
+PictoPops(4) = Array("LIGHT \nSWORDS","L.SWORD",20,6)
+PictoPops(5) = Array("INCREASE\nWINTER IS\nCOMING","+WINTER",20,0) ' may need to change this if winter has come
+PictoPops(6) = Array("INCREASE\nWALL\nJACKPOT","+POT",20,0) ''Battle for Wall Value Increases. Value=xxx'
+PictoPops(7) = Array("LIGHT\nLOCK","L.LOCK",20,2)
+PictoPops(8) = Array("BIG\nPOINTS","+1M",20,0)
+PictoPops(9) = Array("+3 BONUS X","+3X",12,0)
+PictoPops(10) = Array("ADD TIME","+TIME",50,3) ' Higher weight, but only valid during Modes
+PictoPops(11) = Array("ADD A BALL","+BALL",20,1)
+PictoPops(12) = Array("ADVANCE\nWALL\nMULTIBALL","+WALL MB",20,0) '
+PictoPops(13) = Array("LIGHT\nEXTRA\nBALL","EB LIT",12,0)
+PictoPops(14) = Array("LORD\nOF\nLIGHT","LoL",10,4)
+PictoPops(15) = Array("LIGHT\nMYSTERY","MYSTERY",20,5)
+PictoPops(16) = Array("LIGHT\nWILDFIRE","WF LIT",20,7)
+PictoPops(17) = Array("AWARD\nSPECIAL","SPECIAL",5,0)
+
+
+Sub doPictoPops(b)
+    Dim i,tmp
+    ' Pick a random drum sound effect
+    i = RndNbr(9)
+    PlaySoundVol "gotfx-drum"&i,VolDef
+    AddScore 1000
+
+    Dim b1,b2:b1=1:b2=2
+    Select Case b
+        Case 1
+            b1=0
+        Case 2
+            b2=0            
+    End Select
+
+    If (BumperVals(b) = BumperVals(b1) or BumperVals(b) = BumperVals(b2)) Then
+        ' This bumper already matches one other. Check to make sure the value they're locked to is still valid
+        If Not CheckPictoAward(BumperVals(b1)) Then GeneratePictoAward b1
+        If Not CheckPictoAward(BumperVals(b2)) Then GeneratePictoAward b2
+        Exit Sub
+    End If
+    GeneratePictoAward b
+    DMDPictoScene
+
+    ' Check to see whether all 3 match
+    If (BumperVals(b) <> BumperVals(b1) or BumperVals(b) <> BumperVals(b2)) Then Exit Sub
+    ' We have a winner!
+    i = BumperVals(0)
+    ResetPictoPops  ' Get em ready for the next round
+    Select Case i    
+        Case 1      ' Increase bonus multiplier
+            IncreaseBonusMultiplier 1
+        Case 2      ' Increase wildfire
+            TotalWildfire = TotalWildfire + 5
+        Case 3      ' Increase Gold
+            If SelectedHouse = Lannister Then IncreaseGold 250 Else IncreaseGold 150
+        Case 4      ' Light Swords
+            bSwordLit = True: SetSwordLight
+        Case 5      ' Increase Winter Is Coming value
+            IncreaseWinterIsComing
+        Case 6      ''Battle for Wall Value Increases. Value=xxx'
+            IncreaseWallJackpot
+        Case 7
+            LightLock
+        Case 8
+            AddScore 1000000
+            DMD "BIG POINTS",FormatScore(1000000*PlayfieldMultiplierVal),"",eNone,eNone,eNone,1000
+        Case 9
+            IncreaseBonusMultiplier 3
+        Case 10     ' Add Time (to mode or Hurry Up)
+            'TODO: Add Time to timers
+        Case 11
+            If bMultiBallMode Then
+                AddMultiballFast 1
+                DMD "","ADD A BALL","",eNone,eNone,eNone,1000
+                'TODO Play a sound?
+            End If
+        Case 12
+            DecreaseWallMultiball
+        Case 13
+            bEBisLit = True:SetEBLight
+            'TODO: Play an animation?
+        Case 14
+            bLoLLit = True:SetOutlaneLights
+            'TODO: Play sound or animation?
+        Case 15
+            bMysteryLit = True: SetMysteryLight
+        Case 16
+            bWildfireLit = True: SetLightColor li126, darkgreen, 1
+        Case 17
+            AwardSpecial
+    End Select
+End Sub
+
+Sub GeneratePictoAward(b)
+    Dim i,tmp,foundval: foundval = False
+    Do While foundval = False
+        tmp = RndNbr(BumperWeightTotal)
+        For i = 1 to BumperAwards
+            If tmp < PictoPops(i)(2) Then Exit For
+            tmp = tmp - PictoPops(i)(2)
+        Next
+        ' Check to see if the new award is valid right now
+        foundval = CheckPictoAward(i)
+    Loop 
+    BumperVals(b) = foundval
+End Sub
+
+Function CheckPictoAward(val)
+    CheckPictoAward = True
+    Select Case PictoPops(val)(3)
+        Case 1
+            CheckPictoAward = bMultiBallMode
+        Case 2
+            CheckPictoAward = Not bMultiBallMode And Not LockIsLit
+        Case 3
+            If PlayerMode <> 1 And bHurryUpActive = False Then CheckPictoAward = False
+        Case 4
+            CheckPictoAward = bLoLUsed
+        Case 5
+            CheckPictoAward = Not bMysteryLit
+        Case 6
+            CheckPictoAward = Not bSwordLit
+        Case 7
+            CheckPictoAward = Not bWildfireLit
+    End Select
+End Function
+
+' Set new random values on the Pictopops. Ensure at least one is different
+Sub ResetPictoPops
+    Dim i
+    Do
+        For i = 0 to 2:GeneratePictoAward i: Next
+    Loop While BumperVals(0) = BumperVals(1) And BumperVals(0) = BumperVals(2)
 End Sub
 
 Sub LockBall
@@ -3126,7 +3489,26 @@ Sub tmrBWmultiballRelease_Timer
     If BallsInLock > 0 Then AddMultiball BallsInLock
 End Sub
 
+Sub IncreaseWinterIsComing
+    'TODO Handle Winter Is Coming increase (likely move inside House Class)
+    ' Play sound & animation
+End Sub
 
+Sub IncreaseWallJackpot
+    ' Increase the Battle Of the Wall Value (by how much?)
+    ' Play animation (Jon Snow waving sword)
+End Sub
+
+Sub DecreaseWallMultiball
+    'Countdown to Wall Multiball
+    ' Play rotating clock animation based on where we're at
+    ' If we're at Zero then
+
+
+Sub AwardSpecial
+    'TODO Play Special animation and sound
+    ' Knock Knocker
+End Sub
 
 '**************************
 ' Game-specific DMD support
@@ -3168,6 +3550,67 @@ Sub DMDChooseScene2(line0,line1,line2)
     Else
         DisplayDMDText line1, line2, 0
     End if
+End Sub
+
+' PictoPops Scene is a 3-frame layout with award for each
+' pop in each frame. If all 3 awards match, flash text for 1 second
+' If no FlexDMD, use short text on one line
+Sub DMDPictoScene
+    Dim matched:matched=False
+    Dim i
+    Dim Frame(2),scene
+    Dim PopsFont
+    If BumperVals(0) = BumperVals(1) And BumperVals(0) = BumperVals(2) Then matched=True 'And Flash too
+    If bUseFlexDMD Then
+        'TODO: Implement 3-frame scene
+        Set scene = FlexDMD.NewGroup("pops")
+
+        ' Create 3 frames. In each frame, put the text of the corresponding bumper award
+        Dim af,blink,poplabel
+        For i = 0 to 2
+            scene.AddActor FlexDMD.NewFrame("popbox" & i)
+	        With scene.GetFrame("popbox" & i)
+                .Thickness = 1
+	            .SetBounds i*42, 0, 43, 32      ' Each frame is 43W by 32H, and offset by 0, 42, or 84 pixels
+                .AddActor FlexDMD.NewLabel("pop"&i, FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0), PictoPops(BumperVals(i)(0)))
+            End With
+            ' Place the text in the middle of the frame and let FlexDMD figure it out
+            Set poplabel = scene.GetLabel("pop"&i)
+            poplabel.SetAlignedPosition 21, 16, FlexDMD_Align_Center
+            ' If the bumpers all match, flash the text
+            If matched Then
+	            'Set af = poplabel.ActionFactory
+	            'Set blink = af.Sequence()
+                'blink.Add af.Show(True)
+                'blink.Add af.Wait(0.1)
+                'blink.Add af.Show(False)
+                'blink.Add af.Wait(0.1)
+                poplabel.AddAction poplabel.ActionFactory.Blink(0.1, 0.1, 5)
+            End If
+        Next
+
+        Set af = scene.ActionFactory
+        Set blink = af.Sequence()
+        blink.Add af.Show(True)
+        if matched Then
+            blink.Add af.Wait(1)
+        Else
+            blink.Add af.Wait(0.25)
+        End If
+        blink.Add af.Show(False)
+        scene.addAction blink
+        'TODO: Move the scene to a queue, rather than clobbering the existing stage
+        FlexDMD.LockRenderThread
+        FlexDMD.RenderMode = FlexDMD_RenderMode_DMD_GRAY_4
+        FlexDMD.Stage.RemoveAll
+        FlexDMD.Stage.AddActor scene
+        FlexDMD.Show = True
+        FlexDMD.UnlockRenderThread
+
+    Else
+        'TODO: Needs work, as default DMD display may have too big a font for 24 chars across
+        DMD "",CL(PictoPops(BumperVals(0))(1) & " " &  PictoPops(BumperVals(1))(1) & " " PictoPops(BumperVals(2))(1)),"",eNone,eNone,eNone,to
+    End If
 End Sub
 
 '*****************
