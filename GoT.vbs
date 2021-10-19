@@ -2167,7 +2167,9 @@ Class cHouse
                 bGoldTargets(n) = True
                 SetLightColor GoldTargetLights(n),yellow,1
                 j = True
-                For i = 0 to 4: If bGoldTargets(n) = False Then j=False: Next
+                For i = 0 to 4 
+                    If bGoldTargets(n) = False Then j=False
+                Next
                 If j Then
                     ' Target bank completed. Light mystery, turn off target lights 
                     ' Probably need to play a sound here
@@ -2175,7 +2177,7 @@ Class cHouse
                     bMysteryLit = True              ' Does this get saved across balls?
                     SetLightColor li153, white, 2  ' Turn on Mystery light
                     ' tell the gold target lights to turn off in 1 second. There's a timer on the first light
-                    bGoldTargets(0).TimerInterval = 1000: bGoldTargets(0).TimerEnabled = True
+                    GoldTargetLights(0).TimerInterval = 1000: GoldTargetLights(0).TimerEnabled = True
                 End If
             End If
         End If
@@ -2209,7 +2211,7 @@ End Function
 Sub VPObjects_Init
     Dim i
     BumperWeightTotal = 0
-    For i = 1 To BumperAwards:BumperWeightTotal = BumperWeightTotal + PictoPops(i)(2)
+    For i = 1 To BumperAwards:BumperWeightTotal = BumperWeightTotal + PictoPops(i)(2): Next
 End Sub
 
 Sub Game_Init()     'called at the start of a new game
@@ -2882,11 +2884,11 @@ Sub SetBonusMultiplier(Level)
 End Sub
 
 Sub IncreaseBonusMultiplier(bx)
-    BonusMultiplier = BonusMultiplier + bx
+    BonusMultiplier(CurrentPlayer) = BonusMultiplier(CurrentPlayer) + bx
     'TODO: Play increase bonus animation (and sound?)
 End Sub
 
-Sub IncreaseGold(g)
+Sub AddGold(g)
     TotalGold = TotalGold + g
     CurrentGold = CurrentGold + g
     'TODO: Play IncreasedGold animation
@@ -3210,7 +3212,7 @@ End Sub
 
 Sub GoldHit(n)
     If Tilted then Exit Sub
-    PlaySoundVol "gotfx-coins" & n+1
+    PlaySoundVol "gotfx-coins" & n+1,VolDef
     House(CurrentPlayer).GoldHit(n)
 End Sub
 
@@ -3274,32 +3276,32 @@ End Sub
 Const BumperAwards = 17
 Dim BumperWeightTotal
 Dim BumperVals(2)
-Dim PictoPops(BumperAwards) 'Each element represents one pop award which is an array of 'long name','short name','weight', and 'mode'
+Dim PictoPops(17) 'Each element represents one pop award which is an array of 'long name','short name','weight', and 'mode'
                   'Mode determines when the award can be won. 0=anytime, 1=during multiball, 2=not multiball and not LockIsLit, 
                   ' 3=during mode or hurry-up, 4=after LoLused, 5=mystery not lit, 6=swords not lit, 7=wild-fire not lit
 PictoPops(1) = Array("+1 BONUS X","+1X",20,0)
-PictoPops(2) = Array("+5 \nWILDFIRE","+WFIRE",20,0)
-PictoPops(3) = Array("+150\nGOLD","+GOLD",20,0)
-PictoPops(4) = Array("LIGHT \nSWORDS","L.SWORD",20,6)
-PictoPops(5) = Array("INCREASE\nWINTER IS\nCOMING","+WINTER",20,0) ' may need to change this if winter has come
-PictoPops(6) = Array("INCREASE\nWALL\nJACKPOT","+POT",20,0) ''Battle for Wall Value Increases. Value=xxx'
-PictoPops(7) = Array("LIGHT\nLOCK","L.LOCK",20,2)
-PictoPops(8) = Array("BIG\nPOINTS","+1M",20,0)
+PictoPops(2) = Array("+5 "&vbLf&"WILDFIRE","+WFIRE",20,0)
+PictoPops(3) = Array("+150"&vbLf&"GOLD","+GOLD",20,0)
+PictoPops(4) = Array("LIGHT "&vbLf&"SWORDS","L.SWORD",20,6)
+PictoPops(5) = Array("INCREASE"&vbLf&"WINTER IS"&vbLf&"COMING","+WINTER",20,0) ' may need to change this if winter has come
+PictoPops(6) = Array("INCREASE"&vbLf&"WALL"&vbLf&"JACKPOT","+POT",20,0) ''Battle for Wall Value Increases. Value=xxx'
+PictoPops(7) = Array("LIGHT"&vbLf&"LOCK","L.LOCK",20,2)
+PictoPops(8) = Array("BIG"&vbLf&"POINTS","+1M",20,0)
 PictoPops(9) = Array("+3 BONUS X","+3X",12,0)
 PictoPops(10) = Array("ADD TIME","+TIME",50,3) ' Higher weight, but only valid during Modes
 PictoPops(11) = Array("ADD A BALL","+BALL",20,1)
-PictoPops(12) = Array("ADVANCE\nWALL\nMULTIBALL","+WALL MB",20,0) '
-PictoPops(13) = Array("LIGHT\nEXTRA\nBALL","EB LIT",12,0)
-PictoPops(14) = Array("LORD\nOF\nLIGHT","LoL",10,4)
-PictoPops(15) = Array("LIGHT\nMYSTERY","MYSTERY",20,5)
-PictoPops(16) = Array("LIGHT\nWILDFIRE","WF LIT",20,7)
-PictoPops(17) = Array("AWARD\nSPECIAL","SPECIAL",5,0)
+PictoPops(12) = Array("ADVANCE"&vbLf&"WALL"&vbLf&"MULTIBALL","+WALL MB",20,0) '
+PictoPops(13) = Array("LIGHT"&vbLf&"EXTRA"&vbLf&"BALL","EB LIT",12,0)
+PictoPops(14) = Array("LORD"&vbLf&"OF"&vbLf&"LIGHT","LoL",10,4)
+PictoPops(15) = Array("LIGHT"&vbLf&"MYSTERY","MYSTERY",20,5)
+PictoPops(16) = Array("LIGHT"&vbLf&"WILDFIRE","WF LIT",20,7)
+PictoPops(17) = Array("AWARD"&vbLf&"SPECIAL","SPECIAL",5,0)
 
 
 Sub doPictoPops(b)
     Dim i,tmp
     ' Pick a random drum sound effect
-    i = RndNbr(9)
+    i = RndNbr(10)
     PlaySoundVol "gotfx-drum"&i,VolDef
     AddScore 1000
 
@@ -3315,6 +3317,7 @@ Sub doPictoPops(b)
         ' This bumper already matches one other. Check to make sure the value they're locked to is still valid
         If Not CheckPictoAward(BumperVals(b1)) Then GeneratePictoAward b1
         If Not CheckPictoAward(BumperVals(b2)) Then GeneratePictoAward b2
+        DMDPictoScene
         Exit Sub
     End If
     GeneratePictoAward b
@@ -3324,6 +3327,7 @@ Sub doPictoPops(b)
     If (BumperVals(b) <> BumperVals(b1) or BumperVals(b) <> BumperVals(b2)) Then Exit Sub
     ' We have a winner!
     i = BumperVals(0)
+    debug.print "PictoPops: Award " & PictoPops(i)(0)
     ResetPictoPops  ' Get em ready for the next round
     Select Case i    
         Case 1      ' Increase bonus multiplier
@@ -3331,7 +3335,7 @@ Sub doPictoPops(b)
         Case 2      ' Increase wildfire
             TotalWildfire = TotalWildfire + 5
         Case 3      ' Increase Gold
-            If SelectedHouse = Lannister Then IncreaseGold 250 Else IncreaseGold 150
+            If SelectedHouse = Lannister Then AddGold 250 Else AddGold 150
         Case 4      ' Light Swords
             bSwordLit = True: SetSwordLight
         Case 5      ' Increase Winter Is Coming value
@@ -3342,7 +3346,7 @@ Sub doPictoPops(b)
             LightLock
         Case 8
             AddScore 1000000
-            DMD "BIG POINTS",FormatScore(1000000*PlayfieldMultiplierVal),"",eNone,eNone,eNone,1000
+            DMD "BIG POINTS",FormatScore(1000000*PlayfieldMultiplierVal),"",eNone,eNone,eNone,1000,True,""
         Case 9
             IncreaseBonusMultiplier 3
         Case 10     ' Add Time (to mode or Hurry Up)
@@ -3350,7 +3354,7 @@ Sub doPictoPops(b)
         Case 11
             If bMultiBallMode Then
                 AddMultiballFast 1
-                DMD "","ADD A BALL","",eNone,eNone,eNone,1000
+                DMD "","ADD A BALL","",eNone,eNone,eNone,1000,True,""
                 'TODO Play a sound?
             End If
         Case 12
@@ -3379,9 +3383,10 @@ Sub GeneratePictoAward(b)
             tmp = tmp - PictoPops(i)(2)
         Next
         ' Check to see if the new award is valid right now
+debug.print "pictopops: b=" & b & "; i="&i
         foundval = CheckPictoAward(i)
     Loop 
-    BumperVals(b) = foundval
+    BumperVals(b) = i
 End Sub
 
 Function CheckPictoAward(val)
@@ -3390,7 +3395,7 @@ Function CheckPictoAward(val)
         Case 1
             CheckPictoAward = bMultiBallMode
         Case 2
-            CheckPictoAward = Not bMultiBallMode And Not LockIsLit
+            CheckPictoAward = Not bMultiBallMode And Not bLockIsLit
         Case 3
             If PlayerMode <> 1 And bHurryUpActive = False Then CheckPictoAward = False
         Case 4
@@ -3503,7 +3508,7 @@ Sub DecreaseWallMultiball
     'Countdown to Wall Multiball
     ' Play rotating clock animation based on where we're at
     ' If we're at Zero then
-
+End Sub
 
 Sub AwardSpecial
     'TODO Play Special animation and sound
@@ -3572,32 +3577,35 @@ Sub DMDPictoScene
 	        With scene.GetFrame("popbox" & i)
                 .Thickness = 1
 	            .SetBounds i*42, 0, 43, 32      ' Each frame is 43W by 32H, and offset by 0, 42, or 84 pixels
-                .AddActor FlexDMD.NewLabel("pop"&i, FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0), PictoPops(BumperVals(i)(0)))
             End With
+            scene.AddActor FlexDMD.NewLabel("pop"&i, FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0), PictoPops(BumperVals(i))(0))
+            
             ' Place the text in the middle of the frame and let FlexDMD figure it out
             Set poplabel = scene.GetLabel("pop"&i)
-            poplabel.SetAlignedPosition 21, 16, FlexDMD_Align_Center
+            poplabel.SetAlignedPosition i*42+21, 16, FlexDMD_Align_Center
             ' If the bumpers all match, flash the text
             If matched Then
-	            'Set af = poplabel.ActionFactory
-	            'Set blink = af.Sequence()
-                'blink.Add af.Show(True)
-                'blink.Add af.Wait(0.1)
-                'blink.Add af.Show(False)
-                'blink.Add af.Wait(0.1)
-                poplabel.AddAction poplabel.ActionFactory.Blink(0.1, 0.1, 5)
+	            Set af = poplabel.ActionFactory
+	            Set blink = af.Sequence()
+                blink.Add af.Show(True)
+                blink.Add af.Wait(0.1)
+                blink.Add af.Show(False)
+                blink.Add af.Wait(0.1)
+                poplabel.AddAction af.Repeat(blink,5)
+                ' Blink action is only supported in FlexDMD 1.9+
+                ' poplabel.AddAction af.Blink(0.1, 0.1, 5)
             End If
         Next
 
         Set af = scene.ActionFactory
         Set blink = af.Sequence()
         blink.Add af.Show(True)
-        if matched Then
+        'if matched Then
             blink.Add af.Wait(1)
-        Else
+        'Else
             blink.Add af.Wait(0.25)
-        End If
-        blink.Add af.Show(False)
+        'End If
+        'blink.Add af.Show(False)
         scene.addAction blink
         'TODO: Move the scene to a queue, rather than clobbering the existing stage
         FlexDMD.LockRenderThread
@@ -3606,10 +3614,9 @@ Sub DMDPictoScene
         FlexDMD.Stage.AddActor scene
         FlexDMD.Show = True
         FlexDMD.UnlockRenderThread
-
     Else
         'TODO: Needs work, as default DMD display may have too big a font for 24 chars across
-        DMD "",CL(PictoPops(BumperVals(0))(1) & " " &  PictoPops(BumperVals(1))(1) & " " PictoPops(BumperVals(2))(1)),"",eNone,eNone,eNone,to
+        DMD "",CL(0,PictoPops(BumperVals(0))(1) & " " &  PictoPops(BumperVals(1))(1) & " " & PictoPops(BumperVals(2))(1)),"",eNone,eNone,eNone,250,True,""
     End If
 End Sub
 
