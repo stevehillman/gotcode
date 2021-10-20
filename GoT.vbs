@@ -1274,6 +1274,7 @@ Sub DMDEnqueueScene(scene,pri,mint,maxt,waitt,sound)
         debug.print "DMDSceneQueue too big! Discarding new queued items"
         DMDqTail = 64
     End if
+    debug.print "Enqueued scene at "&i
 End Sub
 
 ' Check the queue to see whether a scene willing to wait 'waitt' time would play
@@ -1308,54 +1309,66 @@ Sub tmrDMDUpdate_Timer
         if bDefaultScene or IsEmpty(DefaultScene) then Exit Sub
         ' No queued scenes. If we're in a game, show the score. If not, show the Game Over scene
         bDefaultScene = True
-        DMDDisplayScene DefaultScene
+        If DefaultScene Is Not Null Then
+            debug.print "Default scene score: " & DefaultScene.GetLabel("Score").Text
+            DMDDisplayScene DefaultScene
+        Else
+            debug.print "Default scene is null!!"
+        End If
     Else
         ' Process queue
-        ' Check to see whether there are any queued scenes with equal or higher priority than currently playing one
-        bEqual = False: bHigher = False
-        If DMDqTail > DMDqHead+1 Then
-            For i = DMDqHead+1 to DMDqTail-1
-                If DMDSceneQueue(i,1) < DMDSceneQueue(DMDqHead,1) Then bHigher=True:Exit For
-                If DMDSceneQueue(i,1) = DMDSceneQueue(DMDqHead,1) Then bEqual = True:Exit For
-            Next
-        End If
-        If bHigher Or (bEqual And (DMDSceneQueue(DMDqHead,6)+DMDSceneQueue(DMDqHead,2) <= DMDtimestamp)) Or _ 
-                (DMDSceneQueue(DMDqHead,6)+DMDSceneQueue(DMDqHead,3) <= DMDtimestamp) Then 'Current scene has played for long enough
-
-            ' Skip over any queued scenes whose wait times have expired
-            Do 
-                DMDqHead = DMDqHead+1
-            Loop While DMDSceneQueue(DMDqHead,4) < DMDtimestamp And DMDqHead < DMDqTail
-                
-            If DMDqHead > 64 Then       ' Ran past the end of the queue!
-                debug.print "DMDSceneQueue too big! Resetting"
-                DMDqHead = 0:DMDqTail = 0
-                Exit Sub
-            End If
-            If DMDqHead = DMDqTail Then ' queue is empty
-                DMDqHead = 0:DMDqTail = 0
-                Exit Sub
-            End If
-
-            ' Find the next scene with the highest priority
-            j = DMDqHead
-            For i = DMDqHead to DMDqTail
-                If DMDSceneQueue(i,1) < DMDSceneQueue(j,1) Then j=i
-            Next
-
-            ' Play the scene, and a sound if there's one to accompany it
+        ' Check to see if queue is idle (default scene on). If so, immediately play first item
+        If bDefaultScene Then
             bDefaultScene = False
-            DMDDisplayScene DMDSceneQueue(j,0)
-            DMDSceneQueue(j,6) = DMDtimestamp
-            If DMDSceneQueue(j,5) <> ""  Then PlaySoundVol DMDSceneQueue(j,5),VolDef
+            DMDDisplayScene DMDSceneQueue(DMDqHead,0)
+            DMDSceneQueue(DMDqHead,6) = DMDtimestamp
+            If DMDSceneQueue(DMDqHead,5) <> ""  Then PlaySoundVol DMDSceneQueue(DMDqHead,5),VolDef
+        Else
+            ' Check to see whether there are any queued scenes with equal or higher priority than currently playing one
+            bEqual = False: bHigher = False
+            If DMDqTail > DMDqHead+1 Then
+                For i = DMDqHead+1 to DMDqTail-1
+                    If DMDSceneQueue(i,1) < DMDSceneQueue(DMDqHead,1) Then bHigher=True:Exit For
+                    If DMDSceneQueue(i,1) = DMDSceneQueue(DMDqHead,1) Then bEqual = True:Exit For
+                Next
+            End If
+            If bHigher Or (bEqual And (DMDSceneQueue(DMDqHead,6)+DMDSceneQueue(DMDqHead,2) <= DMDtimestamp)) Or _ 
+                    (DMDSceneQueue(DMDqHead,6)+DMDSceneQueue(DMDqHead,3) <= DMDtimestamp) Then 'Current scene has played for long enough
+
+                ' Skip over any queued scenes whose wait times have expired
+                Do 
+                    DMDqHead = DMDqHead+1
+                Loop While DMDSceneQueue(DMDqHead,4) < DMDtimestamp And DMDqHead < DMDqTail
+                    
+                If DMDqHead > 64 Then       ' Ran past the end of the queue!
+                    debug.print "DMDSceneQueue too big! Resetting"
+                    DMDqHead = 0:DMDqTail = 0
+                    Exit Sub
+                End If
+                If DMDqHead = DMDqTail Then ' queue is empty
+                    DMDqHead = 0:DMDqTail = 0
+                    Exit Sub
+                End If
+
+                ' Find the next scene with the highest priority
+                j = DMDqHead
+                For i = DMDqHead to DMDqTail
+                    If DMDSceneQueue(i,1) < DMDSceneQueue(j,1) Then j=i
+                Next
+
+                ' Play the scene, and a sound if there's one to accompany it
+                bDefaultScene = False
+                DMDDisplayScene DMDSceneQueue(j,0)
+                DMDSceneQueue(j,6) = DMDtimestamp
+                If DMDSceneQueue(j,5) <> ""  Then PlaySoundVol DMDSceneQueue(j,5),VolDef
+            End If
         End If
     End If
 End Sub
     
 Dim DisplayingScene     ' Currentl displaying scene
 Sub DMDDisplayScene(scene)
-    If Not IsEmpty(DisplayingScene) Then Exit Sub
-    If DisplayingScene Is scene Then Exit Sub
+    If Not IsEmpty(DisplayingScene) Then If DisplayingScene Is scene Then Exit Sub
     FlexDMD.LockRenderThread
     FlexDMD.RenderMode = FlexDMD_RenderMode_DMD_GRAY_4
     FlexDMD.Stage.RemoveAll
@@ -1366,54 +1379,31 @@ Sub DMDDisplayScene(scene)
 End Sub
 
 ' Setting defaultscene to scorescene
-' pictopops: b=0; i=10
-' pictopops: b=0; i=8
-' pictopops: b=1; i=10
-' pictopops: b=1; i=7
-' pictopops: b=2; i=4
 ' playing defaultscene
 ' playing defaultscene
 ' Setting defaultscene to scorescene
-' pictopops: b=2; i=15
 ' Enqueued scene at 0
 ' playing defaultscene
 ' playing defaultscene
 ' Setting defaultscene to scorescene
 ' Setting defaultscene to scorescene
-' Request to play "gotfx-wftarget-hit", but sound not found.
-' wftarget 0 hit
-' prev hitstate 0: False 1: False
 ' Setting defaultscene to scorescene
 ' Setting defaultscene to scorescene
 ' Setting defaultscene to scorescene
-' Request to play "gotfx-wftarget-hit", but sound not found.
-' wftarget 1 hit
-' prev hitstate 0: True 1: False
-' wf targets completed
 ' Setting defaultscene to scorescene
 ' Enqueued scene at 0
 ' Setting defaultscene to scorescene
 ' Setting defaultscene to scorescene
-' Request to play "gotfx-wftarget-hit", but sound not found.
-' wftarget 0 hit
-' prev hitstate 0: False 1: False
 ' Setting defaultscene to scorescene
 ' Setting defaultscene to scorescene
 ' Enqueued scene at 0
 ' Setting defaultscene to scorescene
-' pictopops: b=2; i=17
 ' Enqueued scene at 0
 ' Setting defaultscene to scorescene
-' pictopops: b=2; i=1
 ' Enqueued scene at 0
 ' Setting defaultscene to scorescene
-' pictopops: b=2; i=10
-' pictopops: b=2; i=11
-' pictopops: b=2; i=8
 ' Enqueued scene at 0
 ' Setting defaultscene to scorescene
-' pictopops: b=1; i=10
-' pictopops: b=1; i=3
 ' Enqueued scene at 0
 ' Setting defaultscene to scorescene
 ' Enqueued scene at 0
