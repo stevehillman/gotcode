@@ -1263,7 +1263,7 @@ Sub DMDEnqueueScene(scene,pri,mint,maxt,waitt,sound)
     ' Check to see whether the scene is worth queuing
     If Not DMDCheckQueue(pri,waitt) Then Exit Sub
     i = DMDqTail:DMDqTail = DMDqTail + 1
-    DMDSceneQueue(i,0) = scene
+    Set DMDSceneQueue(i,0) = scene
     DMDSceneQueue(i,1) = pri
     DMDSceneQueue(i,2) = mint
     DMDSceneQueue(i,3) = maxt
@@ -1279,7 +1279,7 @@ End Sub
 ' Check the queue to see whether a scene willing to wait 'waitt' time would play
 Function DMDCheckQueue(pri,waitt)
     Dim i,wait:wait=0
-    If DMDqTail=0 Then DMDCheckQueue = True: Exit Sub
+    If DMDqTail=0 Then DMDCheckQueue = True: Exit Function
     DMDCheckQueue = False
     For i = DMDqHead to DMDqTail
         If DMDSceneQueue(i,4) > DMDtimestamp Then 
@@ -1288,7 +1288,7 @@ Function DMDCheckQueue(pri,waitt)
             ElseIf DMDSceneQueue(i,1) < pri Then    'higher priority queued scene
                 wait = wait + DMDSceneQueue(i,3)
             End If
-            If wait > waitt Then Exit Sub
+            If wait > waitt Then Exit Function
         End If
         
     Next
@@ -1301,11 +1301,11 @@ End Function
 ' If it has, move to next spot in queue and search all of the queue for scene with highest priority, skipping any scenes that have timed out while waiting
 Dim bDefaultScene,DefaultScene
 Sub tmrDMDUpdate_Timer
-    Dim i,j,bHigher,bEqual,scene,sound
+    Dim i,j,bHigher,bEqual
     DMDtimestamp = DMDtimestamp + 100   ' Set this to whatever frequency the timer uses
     If DMDqTail = 0 Then
         ' Exit fast if defaultscene is already showing
-        if bDefaultScene then Exit Sub
+        if bDefaultScene or IsEmpty(DefaultScene) then Exit Sub
         ' No queued scenes. If we're in a game, show the score. If not, show the Game Over scene
         bDefaultScene = True
         DMDDisplayScene DefaultScene
@@ -1345,16 +1345,17 @@ Sub tmrDMDUpdate_Timer
 
             ' Play the scene, and a sound if there's one to accompany it
             bDefaultScene = False
-            DMDDisplayScene scene
+            DMDDisplayScene DMDSceneQueue(j,0)
             DMDSceneQueue(j,6) = DMDtimestamp
-            If DMDSceneQueue(j,5) <> "" And DMDSceneQueue(j,5) Is Not Null Then PlaySoundVol DMDSceneQueue(j,5),VolDef
+            If DMDSceneQueue(j,5) <> ""  Then PlaySoundVol DMDSceneQueue(j,5),VolDef
         End If
     End If
 End Sub
     
 Dim DisplayingScene     ' Currentl displaying scene
 Sub DMDDisplayScene(scene)
-    If DisplayingScene = scene Then Exit Sub
+    If Not IsEmpty(DisplayingScene) Then Exit Sub
+    If DisplayingScene Is scene Then Exit Sub
     FlexDMD.LockRenderThread
     FlexDMD.RenderMode = FlexDMD_RenderMode_DMD_GRAY_4
     FlexDMD.Stage.RemoveAll
@@ -1363,6 +1364,79 @@ Sub DMDDisplayScene(scene)
     FlexDMD.UnlockRenderThread
     Set DisplayingScene = scene
 End Sub
+
+' Setting defaultscene to scorescene
+' pictopops: b=0; i=10
+' pictopops: b=0; i=8
+' pictopops: b=1; i=10
+' pictopops: b=1; i=7
+' pictopops: b=2; i=4
+' playing defaultscene
+' playing defaultscene
+' Setting defaultscene to scorescene
+' pictopops: b=2; i=15
+' Enqueued scene at 0
+' playing defaultscene
+' playing defaultscene
+' Setting defaultscene to scorescene
+' Setting defaultscene to scorescene
+' Request to play "gotfx-wftarget-hit", but sound not found.
+' wftarget 0 hit
+' prev hitstate 0: False 1: False
+' Setting defaultscene to scorescene
+' Setting defaultscene to scorescene
+' Setting defaultscene to scorescene
+' Request to play "gotfx-wftarget-hit", but sound not found.
+' wftarget 1 hit
+' prev hitstate 0: True 1: False
+' wf targets completed
+' Setting defaultscene to scorescene
+' Enqueued scene at 0
+' Setting defaultscene to scorescene
+' Setting defaultscene to scorescene
+' Request to play "gotfx-wftarget-hit", but sound not found.
+' wftarget 0 hit
+' prev hitstate 0: False 1: False
+' Setting defaultscene to scorescene
+' Setting defaultscene to scorescene
+' Enqueued scene at 0
+' Setting defaultscene to scorescene
+' pictopops: b=2; i=17
+' Enqueued scene at 0
+' Setting defaultscene to scorescene
+' pictopops: b=2; i=1
+' Enqueued scene at 0
+' Setting defaultscene to scorescene
+' pictopops: b=2; i=10
+' pictopops: b=2; i=11
+' pictopops: b=2; i=8
+' Enqueued scene at 0
+' Setting defaultscene to scorescene
+' pictopops: b=1; i=10
+' pictopops: b=1; i=3
+' Enqueued scene at 0
+' Setting defaultscene to scorescene
+' Enqueued scene at 0
+' Setting defaultscene to scorescene
+' pictopops: b=1; i=1
+' Enqueued scene at 1
+' Playing new scene 2
+' Setting defaultscene to scorescene
+' Enqueued scene at 2
+' Playing new scene 3
+' Setting defaultscene to scorescene
+' pictopops: b=1; i=4
+' Enqueued scene at 3
+' Setting defaultscene to scorescene
+' Setting defaultscene to scorescene
+' pictopops: b=1; i=14
+' pictopops: b=1; i=13
+' Playing new scene 4
+' Setting defaultscene to scorescene
+' Enqueued scene at 4
+' Playing new scene 5
+' playing defaultscene
+' playing defaultscene
 
 '*********
 '   LUT
@@ -3495,7 +3569,7 @@ End Sub
 Sub GeneratePictoAward(b)
     Dim i,tmp,foundval: foundval = False
     Do While foundval = False
-        tmp = RndNbr(BumperWeightTotal)
+        tmp = RndNbr(BumperWeightTotal)-1
         For i = 1 to BumperAwards
             If tmp < PictoPops(i)(2) Then Exit For
             tmp = tmp - PictoPops(i)(2)
@@ -3650,11 +3724,11 @@ End Sub
 Sub DMDComboScene(line0,line1,line2,combox,combotext,duration,sound)
     Dim ComboScene,HouseFont,ScoreFont,ActionFont,ComboFont,CombotextFont
     if bUseFlexDMD Then
-        Set ComboScene = New FlexDMD.NewGroup("ComboScene")
-        Set HouseFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0)
+        Set ComboScene = FlexDMD.NewGroup("ComboScene")
+        Set HouseFont  = FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0)
         Set ActionFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0)
-        Set ScoreFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbWhite, 0) 
-        Set ComboFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f12by24.fnt", vbWhite, vbWhite, 0) 
+        Set ScoreFont  = FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbWhite, 0) 
+        Set ComboFont  = FlexDMD.NewFont("FlexDMD.Resources.udmd-f12by24.fnt", vbWhite, vbWhite, 0) 
     
         ' Add Text labels
         ComboScene.AddActor FlexDMD.NewLabel("House", HouseFont, "0")
@@ -3680,7 +3754,7 @@ Sub DMDComboScene(line0,line1,line2,combox,combotext,duration,sound)
             .SetAlignedPosition 40,4,FlexDMD_Align_Center
         End With
         With ComboScene.GetLabel("Combo")
-            .Text = combo & "X"
+            .Text = combox & "X"
             .SetAlignedPosition 40,4,FlexDMD_Align_Center
         End With
         DMDEnqueueScene ComboScene,1,1000,2000,2500,sound
@@ -3723,7 +3797,7 @@ End Sub
 Sub DMDPictoScene
     Dim matched:matched=False
     Dim i
-    Dim Frame(2),scene,
+    Dim Frame(2),scene
     Dim pri,mintime:mintime=250:pri=3
     Dim PopsFont
     If BumperVals(0) = BumperVals(1) And BumperVals(0) = BumperVals(2) Then matched=True 'And Flash too
@@ -3779,8 +3853,8 @@ End Sub
 Dim ScoreScene
 Sub DMDLocalScore
     Dim ComboFont,ScoreFont,i
-    If ScoreScene Is Nothing Then
-        Set ScoreScene = New FlexDMD.NewGroup("ScoreScene")
+    If IsEmpty(ScoreScene) Then
+        Set ScoreScene = FlexDMD.NewGroup("ScoreScene")
         Set ComboFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0)
 	    Set ScoreFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbWhite, 0) 
         ' Score text
@@ -3804,7 +3878,7 @@ Sub DMDLocalScore
     If Not bFreePlay Then ScoreScene.GetLabel("Credit").Text = "Credits " & Credits
     ' Realign them 
     ' TODO: Do we need to do this each time text is changed or just once?
-    ScoreScene.GetLabel("Score").SetAlignedPosition 80,0, FlexDMD_Align_Right
+    ScoreScene.GetLabel("Score").SetAlignedPosition 80,0, FlexDMD_Align_TopRight
     ScoreScene.GetLabel("Ball").SetAlignedPosition 32,20, FlexDMD_Align_Center
     ScoreScene.GetLabel("Credit").SetAlignedPosition 96,20, FlexDMD_Align_Center
     ' Update combo x
@@ -3814,6 +3888,7 @@ Sub DMDLocalScore
             .SetAlignedPosition i*25,31,FlexDMD_Align_BottomLeft
         End With
     Next
+    debug.print "Setting defaultscene to scorescene"
     Set DefaultScene = ScoreScene
 End Sub
 
