@@ -1050,19 +1050,14 @@ Sub LoadFlexDMD
 End Sub
 
 Sub DMD_Clearforhighscore()
-	if (bUseFlexDMD) then
-		UltraDMD.CancelRendering
-		UltraDMD.Clear
-	End If
+	DMDClearQueue
 End Sub
 
-Sub DMDClearQueue				' It looks like if we call this too fast it will cancel the ULTRA DMD logo scene
-	if bUseFlexDMD and UltraDMDVideos Then
-		If UltraDMD.IsRendering Then
-			UltraDMD.CancelRendering
-			'FlexDMD.CancelRenderingWithId video
-			'FlexDMD.Clear
-		End If
+Sub DMDClearQueue				
+	if bUseFlexDMD Then
+		DMDqHead=0:DMDqTail=0
+        FlexDMD.Stage.RemoveAll
+        bDefaultScene = False
 	End If
 End Sub
 
@@ -1241,6 +1236,133 @@ Function FL(id, aString, bString) 'fill line
     tmpStr = aString & Space(tmp) & bString
     FL = tmpStr
 End Function
+
+
+'*************************
+' FlexDMD Queue Management
+'*************************
+'
+' FlexDMD supports queued scenes using its built-in Sequence class. However, there's no way to set priorities
+' to allow new scenes to override playing scenes. In addition, there's no support for 'minimum play time' vs
+' 'total play time'. We want the ability to let a scene of a given priority play for at least 'minimum play time'
+' as long as no scene of higher priority gets queued. If another scene of equal priority is queued, the playing scene
+' will be replaced once it has played for 'minimum play time' ms.
+' Queued higher priority scenes immediately replace playing lower priority scenes
+' When no scenes are queued, show default scene (Score or GameOver)
+'
+' If a scene gets queued that would take too long before it can be played due to items ahead of it, it gets dropped
+
+Dim DMDSceneQueue(64,6)     ' Queue of scenes. Each entry has 7 fields: 0=Scene, 1=priority, 2=mintime, 3=maxtime, 4=waittime, 5=optionalSound, 6=timestamp
+Dim DMDqHead,DMDqTail
+Dim DMDtimestamp
+
+'Queue up a FlexDMD scene in a virtual queue. 
+
+Sub DMDEnqueueScene(scene,pri,mint,maxt,waitt,sound)
+    Dim i
+    ' Check to see whether the scene is worth queuing
+    If Not DMDCheckQueue(pri,waitt) Then Exit Sub
+    i = DMDqTail:DMDqTail = DMDqTail + 1
+    DMDSceneQueue(i,0) = scene
+    DMDSceneQueue(i,1) = pri
+    DMDSceneQueue(i,2) = mint
+    DMDSceneQueue(i,3) = maxt
+    DMDSceneQueue(i,4) = DMDtimestamp + waitt
+    DMDSceneQueue(i,5) = sound
+    DMDSceneQueue(i,6) = 0
+    If DMDqTail > 64 Then       ' Ran past the end of the queue!
+        debug.print "DMDSceneQueue too big! Discarding new queued items"
+        DMDqTail = 64
+    End if
+End Sub
+
+' Check the queue to see whether a scene willing to wait 'waitt' time would play
+Function DMDCheckQueue(pri,waitt)
+    Dim i,wait:wait=0
+    If DMDqTail=0 Then DMDCheckQueue = True: Exit Sub
+    DMDCheckQueue = False
+    For i = DMDqHead to DMDqTail
+        If DMDSceneQueue(i,4) > DMDtimestamp Then 
+            If DMDSceneQueue(i,1) = pri Then        'equal priority queued scene
+                wait = wait + DMDSceneQueue(i,2)    ' so use mintime
+            ElseIf DMDSceneQueue(i,1) < pri Then    'higher priority queued scene
+                wait = wait + DMDSceneQueue(i,3)
+            End If
+            If wait > waitt Then Exit Sub
+        End If
+        
+    Next
+    DMDCheckQueue = True
+End Function
+            
+' Update DMD Scene
+' Most of the work is done here. If scene queue is empty, display default scene (score or Game Over)
+' If scene queue isn't empty, check to see whether current scene has been on long enough or overwridden by a higher priority scene
+' If it has, move to next spot in queue and search all of the queue for scene with highest priority, skipping any scenes that have timed out while waiting
+Dim bDefaultScene,DefaultScene
+Sub tmrDMDUpdate_Timer
+    Dim i,j,bHigher,bEqual,scene,sound
+    DMDtimestamp = DMDtimestamp + 100   ' Set this to whatever frequency the timer uses
+    If DMDqTail = 0 Then
+        ' Exit fast if defaultscene is already showing
+        if bDefaultScene then Exit Sub
+        ' No queued scenes. If we're in a game, show the score. If not, show the Game Over scene
+        bDefaultScene = True
+        DMDDisplayScene DefaultScene
+    Else
+        ' Process queue
+        ' Check to see whether there are any queued scenes with equal or higher priority than currently playing one
+        bEqual = False: bHigher = False
+        If DMDqTail > DMDqHead+1 Then
+            For i = DMDqHead+1 to DMDqTail-1
+                If DMDSceneQueue(i,1) < DMDSceneQueue(DMDqHead,1) Then bHigher=True:Exit For
+                If DMDSceneQueue(i,1) = DMDSceneQueue(DMDqHead,1) Then bEqual = True:Exit For
+            Next
+        End If
+        If bHigher Or (bEqual And (DMDSceneQueue(DMDqHead,6)+DMDSceneQueue(DMDqHead,2) <= DMDtimestamp)) Or _ 
+                (DMDSceneQueue(DMDqHead,6)+DMDSceneQueue(DMDqHead,3) <= DMDtimestamp) Then 'Current scene has played for long enough
+
+            ' Skip over any queued scenes whose wait times have expired
+            Do 
+                DMDqHead = DMDqHead+1
+            Loop While DMDSceneQueue(DMDqHead,4) < DMDtimestamp And DMDqHead < DMDqTail
+                
+            If DMDqHead > 64 Then       ' Ran past the end of the queue!
+                debug.print "DMDSceneQueue too big! Resetting"
+                DMDqHead = 0:DMDqTail = 0
+                Exit Sub
+            End If
+            If DMDqHead = DMDqTail Then ' queue is empty
+                DMDqHead = 0:DMDqTail = 0
+                Exit Sub
+            End If
+
+            ' Find the next scene with the highest priority
+            j = DMDqHead
+            For i = DMDqHead to DMDqTail
+                If DMDSceneQueue(i,1) < DMDSceneQueue(j,1) Then j=i
+            Next
+
+            ' Play the scene, and a sound if there's one to accompany it
+            bDefaultScene = False
+            DMDDisplayScene scene
+            DMDSceneQueue(j,6) = DMDtimestamp
+            If DMDSceneQueue(j,5) <> "" And DMDSceneQueue(j,5) Is Not Null Then PlaySoundVol DMDSceneQueue(j,5),VolDef
+        End If
+    End If
+End Sub
+    
+Dim DisplayingScene     ' Currentl displaying scene
+Sub DMDDisplayScene(scene)
+    If DisplayingScene = scene Then Exit Sub
+    FlexDMD.LockRenderThread
+    FlexDMD.RenderMode = FlexDMD_RenderMode_DMD_GRAY_4
+    FlexDMD.Stage.RemoveAll
+    FlexDMD.Stage.AddActor scene
+    FlexDMD.Show = True
+    FlexDMD.UnlockRenderThread
+    Set DisplayingScene = scene
+End Sub
 
 '*********
 '   LUT
@@ -2104,7 +2226,6 @@ Class cHouse
         if PlayerMode = 0 Then
             if QualifyCount(h) < 3 Then
                 QualifyCount(h) = QualifyCount(h) + 1
-                PlayExistingSoundVol "gotfx-qualify-sword-hit1", VolDef, 0
 
                 If ComboLaneMap(h) Then combo = ComboMultiplier(ComboLaneMap(h))
 
@@ -2129,7 +2250,7 @@ Class cHouse
                 Elseif PlayfieldMultiplierVal > 1 Then
                     combotext = "playfield"
                 End If
-                DMDComboScene line0,line1,line2,combo*PlayfieldMultiplierVal,combotext,3000
+                DMDComboScene line0,line1,line2,combo*PlayfieldMultiplierVal,combotext,3000,"gotfx-qualify-sword-hit1"
 
                  ' Increase Qualify value for next shot. Lots of randomness seems to factor in here
                 if QualifyValue = 100000 Then
@@ -2386,13 +2507,10 @@ Sub AddScore(points)
 
         Score(CurrentPlayer) = Score(CurrentPlayer) + points * PlayfieldMultiplierVal	'only for this table
 
-        ' update the score displays
-        DMDScore
+        ' update the score display
+        DMDLocalScore
 
     End If
-    
-
-
 End Sub
 
 sub ResetBallSearch()
@@ -3442,9 +3560,12 @@ Sub LockBall
 End Sub
 
 Sub StartBWMultiball
-    'TODO Play animation
     bMultiBallMode = True
-    PlaySoundVol "gotfx-blackwater-multiball-start",VolDef
+    Dim scene
+    Set scene = FlexDMD.NewGroup("bwmb")
+    scene.AddActor FlexDMD.NewImage("bwmbgif","VPX.blackwatermb")
+    DMDEnqueueScene scene,0,2000,4000,500,"gotfx-blackwater-multiball-start"
+    'PlaySoundVol "gotfx-blackwater-multiball-start",VolDef
     PlaySong "got-track4"
     'TODO Trigger a light sequence
   	tmrBWmultiballRelease.Interval = 5000	' Long initial delay to give sequence time to complete
@@ -3525,9 +3646,48 @@ End Sub
 '      SCORE 12x7 digits     X multi (10x18 (or so) charset)
 '     LINE 3 5x3 Charset
 '
-Sub DMDComboScene(line0,line1,line2,combox,combotext,duration)
-    ' TODO: Convert this to using FlexDMD Stages, Groups, and Actors
-    DisplayDMDText line0 & "  " & combotext, line1 & "   " & combox & "X", duration
+
+Sub DMDComboScene(line0,line1,line2,combox,combotext,duration,sound)
+    Dim ComboScene,HouseFont,ScoreFont,ActionFont,ComboFont,CombotextFont
+    if bUseFlexDMD Then
+        Set ComboScene = New FlexDMD.NewGroup("ComboScene")
+        Set HouseFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0)
+        Set ActionFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0)
+        Set ScoreFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbWhite, 0) 
+        Set ComboFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f12by24.fnt", vbWhite, vbWhite, 0) 
+    
+        ' Add Text labels
+        ComboScene.AddActor FlexDMD.NewLabel("House", HouseFont, "0")
+        ComboScene.AddActor FlexDMD.NewLabel("Score", ScoreFont, "0")
+        ComboScene.AddActor FlexDMD.NewLabel("Action", ActionFont, "0")
+        ComboScene.AddActor FlexDMD.NewLabel("ComboText", HouseFont, "0")
+        ComboScene.AddActor FlexDMD.NewLabel("Combo", ComboFont, "0")
+        ' Fill in text and align
+        With ComboScene.GetLabel("House")
+            .Text = line0
+            .SetAlignedPosition 40,4,FlexDMD_Align_Center
+        End With
+        With ComboScene.GetLabel("Score")
+            .Text = line1
+            .SetAlignedPosition 40,4,FlexDMD_Align_Center
+        End With
+        With ComboScene.GetLabel("Action")
+            .Text = line2
+            .SetAlignedPosition 40,4,FlexDMD_Align_Center
+        End With
+        With ComboScene.GetLabel("ComboText")
+            .Text = combotext
+            .SetAlignedPosition 40,4,FlexDMD_Align_Center
+        End With
+        With ComboScene.GetLabel("Combo")
+            .Text = combo & "X"
+            .SetAlignedPosition 40,4,FlexDMD_Align_Center
+        End With
+        DMDEnqueueScene ComboScene,1,1000,2000,2500,sound
+    Else
+        DisplayDMDText line0 & "  " & combotext, line1 & "   " & combox & "X", duration
+        PlaySoundVol sound,VolDef
+    End If
 End Sub
 
 ' Choose Scene is used for choosing your house at the beginning of game. Format is
@@ -3563,7 +3723,8 @@ End Sub
 Sub DMDPictoScene
     Dim matched:matched=False
     Dim i
-    Dim Frame(2),scene
+    Dim Frame(2),scene,
+    Dim pri,mintime:mintime=250:pri=3
     Dim PopsFont
     If BumperVals(0) = BumperVals(1) And BumperVals(0) = BumperVals(2) Then matched=True 'And Flash too
     If bUseFlexDMD Then
@@ -3594,6 +3755,7 @@ Sub DMDPictoScene
                 poplabel.AddAction af.Repeat(blink,5)
                 ' Blink action is only supported in FlexDMD 1.9+
                 ' poplabel.AddAction af.Blink(0.1, 0.1, 5)
+                mintime=1000:pri=1
             End If
         Next
 
@@ -3607,18 +3769,54 @@ Sub DMDPictoScene
         'End If
         'blink.Add af.Show(False)
         scene.addAction blink
-        'TODO: Move the scene to a queue, rather than clobbering the existing stage
-        FlexDMD.LockRenderThread
-        FlexDMD.RenderMode = FlexDMD_RenderMode_DMD_GRAY_4
-        FlexDMD.Stage.RemoveAll
-        FlexDMD.Stage.AddActor scene
-        FlexDMD.Show = True
-        FlexDMD.UnlockRenderThread
+        DMDEnqueueScene scene,pri,mintime,1000,300,""
     Else
         'TODO: Needs work, as default DMD display may have too big a font for 24 chars across
         DMD "",CL(0,PictoPops(BumperVals(0))(1) & " " &  PictoPops(BumperVals(1))(1) & " " & PictoPops(BumperVals(2))(1)),"",eNone,eNone,eNone,250,True,""
     End If
 End Sub
+
+Dim ScoreScene
+Sub DMDLocalScore
+    Dim ComboFont,ScoreFont,i
+    If ScoreScene Is Nothing Then
+        Set ScoreScene = New FlexDMD.NewGroup("ScoreScene")
+        Set ComboFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0)
+	    Set ScoreFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbWhite, 0) 
+        ' Score text
+        ScoreScene.AddActor FlexDMD.NewLabel("Score", ScoreFont, "0")
+        ' Ball, credits
+        ScoreScene.AddActor FlexDMD.NewLabel("Ball", ComboFont, "0")
+        ScoreScene.AddActor FlexDMD.NewLabel("Credit", ComboFont, "0")
+        If bFreePlay Then ScoreScene.GetLabel("Credit").Text = "Free Play"
+        ' Divider
+        ScoreScene.AddActor FlexDMD.NewFrame("HSeparator")
+	    ScoreScene.GetFrame("HSeparator").Thickness = 1
+	    ScoreScene.GetFrame("HSeparator").SetBounds 0, 24, 128,1
+        ' Combo Multipliers
+        For i = 0 to 4
+            ScoreScene.AddActor FlexDMD.NewLabel("combo"&i, ComboFont, "0")
+        Next
+    End If
+    ' Update fields
+    ScoreScene.GetLabel("Score").Text = FormatScore(Score(CurrentPlayer))
+    ScoreScene.GetLabel("Ball").Text = "Ball " & BallsRemaining(CurrentPlayer) - BallsPerGame
+    If Not bFreePlay Then ScoreScene.GetLabel("Credit").Text = "Credits " & Credits
+    ' Realign them 
+    ' TODO: Do we need to do this each time text is changed or just once?
+    ScoreScene.GetLabel("Score").SetAlignedPosition 80,0, FlexDMD_Align_Right
+    ScoreScene.GetLabel("Ball").SetAlignedPosition 32,20, FlexDMD_Align_Center
+    ScoreScene.GetLabel("Credit").SetAlignedPosition 96,20, FlexDMD_Align_Center
+    ' Update combo x
+    For i = 0 to 4
+        With ScoreScene.GetLabel("combo"&i)
+            .Text = ComboMultiplier(i)&"X"
+            .SetAlignedPosition i*25,31,FlexDMD_Align_BottomLeft
+        End With
+    Next
+    Set DefaultScene = ScoreScene
+End Sub
+
 
 '*****************
 ' PinUP Support
