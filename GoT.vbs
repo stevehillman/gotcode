@@ -1058,6 +1058,7 @@ Sub DMDClearQueue
 		DMDqHead=0:DMDqTail=0
         FlexDMD.Stage.RemoveAll
         bDefaultScene = False
+        DisplayingScene = Empty
 	End If
 End Sub
 
@@ -1261,7 +1262,12 @@ Dim DMDtimestamp
 Sub DMDEnqueueScene(scene,pri,mint,maxt,waitt,sound)
     Dim i
     ' Check to see whether the scene is worth queuing
-    If Not DMDCheckQueue(pri,waitt) Then Exit Sub
+    'TODO if enqueing an existing scene, replace it in the queue
+    'TODO if the enqueued scene is already playing, update it in place
+    If Not DMDCheckQueue(pri,waitt) Then 
+        debug.print "Discarding scene request with priority " & pri & " and waitt "&waitt
+        Exit Sub
+    End If
     i = DMDqTail:DMDqTail = DMDqTail + 1
     Set DMDSceneQueue(i,0) = scene
     DMDSceneQueue(i,1) = pri
@@ -1309,17 +1315,18 @@ Sub tmrDMDUpdate_Timer
         if bDefaultScene or IsEmpty(DefaultScene) then Exit Sub
         ' No queued scenes. If we're in a game, show the score. If not, show the Game Over scene
         bDefaultScene = True
-        If DefaultScene Is Not Null Then
+        If TypeName(DefaultScene) = "Object" Then
             debug.print "Default scene score: " & DefaultScene.GetLabel("Score").Text
             DMDDisplayScene DefaultScene
         Else
-            debug.print "Default scene is null!!"
+            debug.print "DefaultScene is not an object!"
         End If
     Else
         ' Process queue
         ' Check to see if queue is idle (default scene on). If so, immediately play first item
         If bDefaultScene Then
             bDefaultScene = False
+            debug.print "Displaying scene at " & DMDqHead
             DMDDisplayScene DMDSceneQueue(DMDqHead,0)
             DMDSceneQueue(DMDqHead,6) = DMDtimestamp
             If DMDSceneQueue(DMDqHead,5) <> ""  Then PlaySoundVol DMDSceneQueue(DMDqHead,5),VolDef
@@ -1352,12 +1359,13 @@ Sub tmrDMDUpdate_Timer
 
                 ' Find the next scene with the highest priority
                 j = DMDqHead
-                For i = DMDqHead to DMDqTail
+                For i = DMDqHead to DMDqTail-1
                     If DMDSceneQueue(i,1) < DMDSceneQueue(j,1) Then j=i
                 Next
 
                 ' Play the scene, and a sound if there's one to accompany it
                 bDefaultScene = False
+                debug.print "Displaying scene at " &j
                 DMDDisplayScene DMDSceneQueue(j,0)
                 DMDSceneQueue(j,6) = DMDtimestamp
                 If DMDSceneQueue(j,5) <> ""  Then PlaySoundVol DMDSceneQueue(j,5),VolDef
@@ -1368,6 +1376,13 @@ End Sub
     
 Dim DisplayingScene     ' Currentl displaying scene
 Sub DMDDisplayScene(scene)
+    If TypeName(scene) <> "Object" then
+		debug.print "DMDDisplayScene: scene is a number! Type=" & TypeName(scene)
+		exit sub
+	ElseIf scene Is Nothing or IsEmpty(scene) Then
+		debug.print "DMDDisplayScene: scene is empty!"
+		exit Sub
+	End If
     If Not IsEmpty(DisplayingScene) Then If DisplayingScene Is scene Then Exit Sub
     FlexDMD.LockRenderThread
     FlexDMD.RenderMode = FlexDMD_RenderMode_DMD_GRAY_4
@@ -1378,55 +1393,6 @@ Sub DMDDisplayScene(scene)
     Set DisplayingScene = scene
 End Sub
 
-' Setting defaultscene to scorescene
-' playing defaultscene
-' playing defaultscene
-' Setting defaultscene to scorescene
-' Enqueued scene at 0
-' playing defaultscene
-' playing defaultscene
-' Setting defaultscene to scorescene
-' Setting defaultscene to scorescene
-' Setting defaultscene to scorescene
-' Setting defaultscene to scorescene
-' Setting defaultscene to scorescene
-' Setting defaultscene to scorescene
-' Enqueued scene at 0
-' Setting defaultscene to scorescene
-' Setting defaultscene to scorescene
-' Setting defaultscene to scorescene
-' Setting defaultscene to scorescene
-' Enqueued scene at 0
-' Setting defaultscene to scorescene
-' Enqueued scene at 0
-' Setting defaultscene to scorescene
-' Enqueued scene at 0
-' Setting defaultscene to scorescene
-' Enqueued scene at 0
-' Setting defaultscene to scorescene
-' Enqueued scene at 0
-' Setting defaultscene to scorescene
-' Enqueued scene at 0
-' Setting defaultscene to scorescene
-' pictopops: b=1; i=1
-' Enqueued scene at 1
-' Playing new scene 2
-' Setting defaultscene to scorescene
-' Enqueued scene at 2
-' Playing new scene 3
-' Setting defaultscene to scorescene
-' pictopops: b=1; i=4
-' Enqueued scene at 3
-' Setting defaultscene to scorescene
-' Setting defaultscene to scorescene
-' pictopops: b=1; i=14
-' pictopops: b=1; i=13
-' Playing new scene 4
-' Setting defaultscene to scorescene
-' Enqueued scene at 4
-' Playing new scene 5
-' playing defaultscene
-' playing defaultscene
 
 '*********
 '   LUT
@@ -2353,7 +2319,7 @@ Class cHouse
                 SetLightColor GoldTargetLights(n),yellow,1
                 j = True
                 For i = 0 to 4 
-                    If bGoldTargets(n) = False Then j=False
+                    If bGoldTargets(i) = False Then j=False
                 Next
                 If j Then
                     ' Target bank completed. Light mystery, turn off target lights 
@@ -3244,8 +3210,8 @@ Sub doWFTargetHit(t)
         'Target bank completed
         'Light both lights for 1 second, then shut them off
         debug.print "wf targets completed"
-        FlashForMs li80,1000,2000,0
-        FlashForMs li83,1000,2000,0
+        FlashForMs li80,1000,1000,0
+        FlashForMs li83,1000,1000,0
         ' Lights don't always seem to restore their state properly after flashing, so stick a timer on it
         li80.TimerInterval = 1100
         li80.TimerEnabled = True
@@ -3266,7 +3232,7 @@ End Sub
 
 'WF target light timer
 Sub li80_Timer
-    if Not li80.State = ABS(bWildfireTargets(0)) or Not  li83.State = ABS(bWildfireTargets(1)) Then
+    if li80.State <> ABS(bWildfireTargets(0)) or li83.State <> ABS(bWildfireTargets(1)) Then
         li80.State = ABS(bWildfireTargets(0))
         li83.State = ABS(bWildfireTargets(1))
         debug.print "WF target lights were out of sync"
@@ -3626,6 +3592,7 @@ End Sub
 Sub StartBWMultiball
     bMultiBallMode = True
     Dim scene
+    'TODO make background image conditional on folder being present
     Set scene = FlexDMD.NewGroup("bwmb")
     scene.AddActor FlexDMD.NewImage("bwmbgif","VPX.blackwatermb")
     DMDEnqueueScene scene,0,2000,4000,500,"gotfx-blackwater-multiball-start"
