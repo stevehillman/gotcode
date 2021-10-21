@@ -1261,14 +1261,36 @@ Dim DMDtimestamp
 
 Sub DMDEnqueueScene(scene,pri,mint,maxt,waitt,sound)
     Dim i
+    If scene.onStage() Then
+        ' Already playing. Update it
+        DMDSceneQueue(DMDqHead,1) = pri
+        DMDSceneQueue(DMDqHead,2) = mint
+        DMDSceneQueue(DMDqHead,3) = maxt
+        DMDSceneQueue(DMDqHead,4) = DMDtimestamp + waitt
+        DMDSceneQueue(DMDqHead,5) = sound
+        DMDSceneQueue(DMDqHead,6) = 0
+        Exit Sub
+    End If
+
     ' Check to see whether the scene is worth queuing
-    'TODO if enqueing an existing scene, replace it in the queue
-    'TODO if the enqueued scene is already playing, update it in place
     If Not DMDCheckQueue(pri,waitt) Then 
         debug.print "Discarding scene request with priority " & pri & " and waitt "&waitt
         Exit Sub
     End If
-    i = DMDqTail:DMDqTail = DMDqTail + 1
+
+    ' Check to see if this is an update to an existing queued scene (e.g pictopops)
+    Dim found:found=False
+    If DMDqTail <> 0 Then
+        For i = DMDqHead to DMqTail-1
+            If DMDSceneQueue(i,0) Is scene Then 
+                Found=True
+                debug.print "Updating existing scene "&i
+                Exit For
+            End If
+        Next
+    End If
+    'Otherwise add to end of queue
+    If Not Found Then i = DMDqTail:DMDqTail = DMDqTail + 1
     Set DMDSceneQueue(i,0) = scene
     DMDSceneQueue(i,1) = pri
     DMDSceneQueue(i,2) = mint
@@ -1310,10 +1332,9 @@ Dim bDefaultScene,DefaultScene
 Sub tmrDMDUpdate_Timer
     Dim i,j,bHigher,bEqual
     DMDtimestamp = DMDtimestamp + 100   ' Set this to whatever frequency the timer uses
-    If DMDqTail = 0 Then
+    If DMDqTail = 0 Then ' Queue is empty - show default scene
         ' Exit fast if defaultscene is already showing
         if bDefaultScene or IsEmpty(DefaultScene) then Exit Sub
-        ' No queued scenes. If we're in a game, show the score. If not, show the Game Over scene
         bDefaultScene = True
         If TypeName(DefaultScene) = "Object" Then
             debug.print "Default scene score: " & DefaultScene.GetLabel("Score").Text
@@ -1374,10 +1395,10 @@ Sub tmrDMDUpdate_Timer
     End If
 End Sub
     
-Dim DisplayingScene     ' Currentl displaying scene
+Dim DisplayingScene     ' Currently displaying scene
 Sub DMDDisplayScene(scene)
     If TypeName(scene) <> "Object" then
-		debug.print "DMDDisplayScene: scene is a number! Type=" & TypeName(scene)
+		debug.print "DMDDisplayScene: scene is not an object! Type=" & TypeName(scene)
 		exit sub
 	ElseIf scene Is Nothing or IsEmpty(scene) Then
 		debug.print "DMDDisplayScene: scene is empty!"
@@ -2368,6 +2389,7 @@ End Sub
 Sub Game_Init()     'called at the start of a new game
     Dim i, j
     TurnOffPlayfieldLights()
+    ResetComboMultipliers
 End Sub
 
 ' Initialise the Table for a new Game
@@ -3691,7 +3713,7 @@ Sub DMDComboScene(line0,line1,line2,combox,combotext,duration,sound)
         ComboScene.AddActor FlexDMD.NewLabel("House", HouseFont, "0")
         ComboScene.AddActor FlexDMD.NewLabel("Score", ScoreFont, "0")
         ComboScene.AddActor FlexDMD.NewLabel("Action", ActionFont, "0")
-        ComboScene.AddActor FlexDMD.NewLabel("ComboText", HouseFont, "0")
+        ComboScene.AddActor FlexDMD.NewLabel("ComboText", ActionFont, "0")
         ComboScene.AddActor FlexDMD.NewLabel("Combo", ComboFont, "0")
         ' Fill in text and align
         With ComboScene.GetLabel("House")
@@ -3700,19 +3722,19 @@ Sub DMDComboScene(line0,line1,line2,combox,combotext,duration,sound)
         End With
         With ComboScene.GetLabel("Score")
             .Text = line1
-            .SetAlignedPosition 40,4,FlexDMD_Align_Center
+            .SetAlignedPosition 40,16,FlexDMD_Align_Center
         End With
         With ComboScene.GetLabel("Action")
             .Text = line2
-            .SetAlignedPosition 40,4,FlexDMD_Align_Center
+            .SetAlignedPosition 40,25,FlexDMD_Align_Center
         End With
         With ComboScene.GetLabel("ComboText")
             .Text = combotext
-            .SetAlignedPosition 40,4,FlexDMD_Align_Center
+            .SetAlignedPosition 104,3,FlexDMD_Align_Center
         End With
         With ComboScene.GetLabel("Combo")
             .Text = combox & "X"
-            .SetAlignedPosition 40,4,FlexDMD_Align_Center
+            .SetAlignedPosition 104,19,FlexDMD_Align_Center
         End With
         DMDEnqueueScene ComboScene,1,1000,2000,2500,sound
     Else
@@ -3751,56 +3773,70 @@ End Sub
 ' PictoPops Scene is a 3-frame layout with award for each
 ' pop in each frame. If all 3 awards match, flash text for 1 second
 ' If no FlexDMD, use short text on one line
+Dim PictoScene
 Sub DMDPictoScene
     Dim matched:matched=False
     Dim i
-    Dim Frame(2),scene
+    Dim Frame(2)
     Dim pri,mintime:mintime=250:pri=3
     Dim PopsFont
-    If BumperVals(0) = BumperVals(1) And BumperVals(0) = BumperVals(2) Then matched=True 'And Flash too
+    If BumperVals(0) = BumperVals(1) And BumperVals(0) = BumperVals(2) Then matched=True:mintime=1000:pri=1 'And Flash too
     If bUseFlexDMD Then
-        'TODO: Implement 3-frame scene
-        Set scene = FlexDMD.NewGroup("pops")
+        If IsEmpty(PictoScene) Then
+            ' Create the scene
+            Set PictoScene = FlexDMD.NewGroup("pops")
 
-        ' Create 3 frames. In each frame, put the text of the corresponding bumper award
-        Dim af,blink,poplabel
-        For i = 0 to 2
-            scene.AddActor FlexDMD.NewFrame("popbox" & i)
-	        With scene.GetFrame("popbox" & i)
-                .Thickness = 1
-	            .SetBounds i*42, 0, 43, 32      ' Each frame is 43W by 32H, and offset by 0, 42, or 84 pixels
-            End With
-            scene.AddActor FlexDMD.NewLabel("pop"&i, FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0), PictoPops(BumperVals(i))(0))
-            
-            ' Place the text in the middle of the frame and let FlexDMD figure it out
-            Set poplabel = scene.GetLabel("pop"&i)
-            poplabel.SetAlignedPosition i*42+21, 16, FlexDMD_Align_Center
-            ' If the bumpers all match, flash the text
-            If matched Then
-	            Set af = poplabel.ActionFactory
-	            Set blink = af.Sequence()
-                blink.Add af.Show(True)
-                blink.Add af.Wait(0.1)
-                blink.Add af.Show(False)
-                blink.Add af.Wait(0.1)
-                poplabel.AddAction af.Repeat(blink,5)
-                ' Blink action is only supported in FlexDMD 1.9+
-                ' poplabel.AddAction af.Blink(0.1, 0.1, 5)
-                mintime=1000:pri=1
-            End If
-        Next
+            ' Create 3 frames. In each frame, put the text of the corresponding bumper award
+            Dim af,blink,poplabel
+            For i = 0 to 2
+                PictoScene.AddActor FlexDMD.NewFrame("popbox" & i)
+                With PictoScene.GetFrame("popbox" & i)
+                    .Thickness = 1
+                    .SetBounds i*42, 0, 43, 32      ' Each frame is 43W by 32H, and offset by 0, 42, or 84 pixels
+                End With
+                PictoScene.AddActor FlexDMD.NewLabel("pop"&i, FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0), PictoPops(BumperVals(i))(0))
+                
+                ' Place the text in the middle of the frame and let FlexDMD figure it out
+                PictoScene.GetLabel("pop"&i).SetAlignedPosition i*42+21, 16, FlexDMD_Align_Center
+                If matched Then
+                    Set af = PictoScene.GetLabel("pop"&i).ActionFactory
+                    Set blink = af.Sequence()
+                    blink.Add af.Show(True)
+                    blink.Add af.Wait(0.1)
+                    blink.Add af.Show(False)
+                    blink.Add af.Wait(0.1)
+                    poplabel.AddAction af.Repeat(blink,5)
+                    ' Blink action is only supported in FlexDMD 1.9+
+                    ' poplabel.AddAction af.Blink(0.1, 0.1, 5)
+                End If
+            Next
+        Else
+            ' Existing scene. Update the text
+            FlexDMD.LockRenderThread
+            For i = 0 to 2
+                With PictoScene.GetLabel("pop"&i)
+                    .Text = PictoPops(BumperVals(i))(0)
+                ' Remove any existing action
+                    .ClearActions()
+                End With
+                ' If the bumpers all match, flash the text
+                If matched Then
+                    Set af = poplabel.ActionFactory
+                    Set blink = af.Sequence()
+                    blink.Add af.Show(True)
+                    blink.Add af.Wait(0.1)
+                    blink.Add af.Show(False)
+                    blink.Add af.Wait(0.1)
+                    poplabel.AddAction af.Repeat(blink,5)
+                    ' Blink action is only supported in FlexDMD 1.9+
+                    ' poplabel.AddAction af.Blink(0.1, 0.1, 5)
+                    mintime=1000:pri=1
+                End If
+            Next
+            FlexDMD.UnlockRenderThread
+        End If
 
-        Set af = scene.ActionFactory
-        Set blink = af.Sequence()
-        blink.Add af.Show(True)
-        'if matched Then
-            blink.Add af.Wait(1)
-        'Else
-            blink.Add af.Wait(0.25)
-        'End If
-        'blink.Add af.Show(False)
-        scene.addAction blink
-        DMDEnqueueScene scene,pri,mintime,1000,300,""
+        DMDEnqueueScene PictoScene,pri,mintime,1000,300,""
     Else
         'TODO: Needs work, as default DMD display may have too big a font for 24 chars across
         DMD "",CL(0,PictoPops(BumperVals(0))(1) & " " &  PictoPops(BumperVals(1))(1) & " " & PictoPops(BumperVals(2))(1)),"",eNone,eNone,eNone,250,True,""
@@ -3820,6 +3856,10 @@ Sub DMDLocalScore
         ScoreScene.AddActor FlexDMD.NewLabel("Ball", ComboFont, "0")
         ScoreScene.AddActor FlexDMD.NewLabel("Credit", ComboFont, "0")
         If bFreePlay Then ScoreScene.GetLabel("Credit").Text = "Free Play"
+        ' Align them 
+        ScoreScene.GetLabel("Score").SetAlignedPosition 80,0, FlexDMD_Align_TopRight
+        ScoreScene.GetLabel("Ball").SetAlignedPosition 32,20, FlexDMD_Align_Center
+        ScoreScene.GetLabel("Credit").SetAlignedPosition 96,20, FlexDMD_Align_Center
         ' Divider
         ScoreScene.AddActor FlexDMD.NewFrame("HSeparator")
 	    ScoreScene.GetFrame("HSeparator").Thickness = 1
@@ -3829,23 +3869,19 @@ Sub DMDLocalScore
             ScoreScene.AddActor FlexDMD.NewLabel("combo"&i, ComboFont, "0")
         Next
     End If
+    FlexDMD.LockRenderThread
     ' Update fields
     ScoreScene.GetLabel("Score").Text = FormatScore(Score(CurrentPlayer))
     ScoreScene.GetLabel("Ball").Text = "Ball " & BallsRemaining(CurrentPlayer) - BallsPerGame
     If Not bFreePlay Then ScoreScene.GetLabel("Credit").Text = "Credits " & Credits
-    ' Realign them 
-    ' TODO: Do we need to do this each time text is changed or just once?
-    ScoreScene.GetLabel("Score").SetAlignedPosition 80,0, FlexDMD_Align_TopRight
-    ScoreScene.GetLabel("Ball").SetAlignedPosition 32,20, FlexDMD_Align_Center
-    ScoreScene.GetLabel("Credit").SetAlignedPosition 96,20, FlexDMD_Align_Center
     ' Update combo x
     For i = 0 to 4
         With ScoreScene.GetLabel("combo"&i)
             .Text = ComboMultiplier(i)&"X"
             .SetAlignedPosition i*25,31,FlexDMD_Align_BottomLeft
         End With
-    Next
-    debug.print "Setting defaultscene to scorescene"
+    Next        
+    FlexDMD.UnlockRenderThread
     Set DefaultScene = ScoreScene
 End Sub
 
