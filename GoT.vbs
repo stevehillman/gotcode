@@ -1047,6 +1047,7 @@ Sub LoadFlexDMD
 		.Run = True
 	End With	
 
+    Dim fso
     Set fso = CreateObject("Scripting.FileSystemObject")
     curDir = fso.GetAbsolutePathName(".")
     FlexPath = curDir & "\"&cGameName &".FlexDMD\"
@@ -1267,15 +1268,17 @@ Dim DMDtimestamp
 
 Sub DMDEnqueueScene(scene,pri,mint,maxt,waitt,sound)
     Dim i
-    If bDefaultScene = False And DisplayingScene is scene Then
-        ' Already playing. Update it
-        DMDSceneQueue(DMDqHead,1) = pri
-        DMDSceneQueue(DMDqHead,2) = mint
-        DMDSceneQueue(DMDqHead,3) = maxt
-        DMDSceneQueue(DMDqHead,4) = DMDtimestamp + waitt
-        DMDSceneQueue(DMDqHead,5) = sound
-        DMDSceneQueue(DMDqHead,6) = DMDtimestamp
-        Exit Sub
+    If bDefaultScene = False And Not IsEmpty(DisplayingScene) Then
+        If DisplayingScene is scene Then
+            ' Already playing. Update it
+            DMDSceneQueue(DMDqHead,1) = pri
+            DMDSceneQueue(DMDqHead,2) = mint
+            DMDSceneQueue(DMDqHead,3) = maxt
+            DMDSceneQueue(DMDqHead,4) = DMDtimestamp + waitt
+            DMDSceneQueue(DMDqHead,5) = sound
+            DMDSceneQueue(DMDqHead,6) = DMDtimestamp
+            Exit Sub
+        End If
     End If
 
     ' Check to see whether the scene is worth queuing
@@ -1343,7 +1346,6 @@ Sub tmrDMDUpdate_Timer
         if bDefaultScene or IsEmpty(DefaultScene) then Exit Sub
         bDefaultScene = True
         If TypeName(DefaultScene) = "Object" Then
-            debug.print "Default scene score: " & DefaultScene.GetLabel("Score").Text
             DMDDisplayScene DefaultScene
         Else
             debug.print "DefaultScene is not an object!"
@@ -2189,7 +2191,7 @@ HouseShield = Array(li141,li141,li26,li114,li86,li77,li156,li98)
 HouseAbility = Array("","increase winter is coming","advance wall multiball","collect more gold","plunder rival abilities","increase hand of the king","action button = add a ball","")
 
 BattleObjectives = Array("", _ 
-            "ARYA BECOMES AN ASSASSIN"&vbLf&"RAMPS BUILD VALUE"&vbLf&"ORBITS COLLECT VALUE" _
+            "ARYA BECOMES AN ASSASSIN"&vbLf&"RAMPS BUILD VALUE"&vbLf&"ORBITS COLLECT VALUE", _
             "STANNIS VS THE WILDLINGS"&vbLf&"SPINNER BUILDS VALUE"&vbLf&"COLLECT AT THE 3 TARGETS", _
             "BRING BACK MYRCELLA"&vbLf&"GOLD TARGETS LIGHT RED SHOTS"&vbLf&"5 RED SHOTS TO FINISH", _
             "GREYJOY TAKES WINTERFELL"&vbLf&"5 SHOTS TO FINISH"&vbLf&"TIMER RESETS AFTER EACH", _
@@ -2277,6 +2279,7 @@ Class cHouse
         HouseSelected = 0
         QualifyValue = 100000
         bBattleReady = True
+        LockWall.collidable = True
 	End Sub
 
     Public Property Let MyHouse(h) 
@@ -2287,7 +2290,10 @@ Class cHouse
     End Property
 	Public Property Get MyHouse : MyHouse = HouseSelected : End Property
 
-    Public Property Let BattleReady(e) : bBattleReady = e: End Property
+    Public Property Let BattleReady(e) 
+        bBattleReady = e
+        if (e) Then LockWall.collidable = True
+    End Property
 
     Public Property Get Qualified(h) : Qualified = bQualified(h) : End Property
 
@@ -2470,7 +2476,7 @@ Sub VPObjects_Init
     Dim i
     BumperWeightTotal = 0
     For i = 1 To BumperAwards:BumperWeightTotal = BumperWeightTotal + PictoPops(i)(2): Next
-    For i = 0 to MaxTimers: Set TimerReference(i) = GetRef(TimerSubroutine(i)) : Next
+    'For i = 0 to MaxTimers: Set TimerReference(i) = GetRef(TimerSubroutine(i)) : Next
 End Sub
 
 Sub Game_Init()     'called at the start of a new game
@@ -3392,6 +3398,7 @@ Sub LightLock
                 SetLightColor li108,white,2
                 Exit For
             End If
+        Next
     End If 
 End Sub
 
@@ -3779,13 +3786,24 @@ Sub tmrGame_Timer
     Dim i
     GameTimeStamp = GameTimeStamp + 1
     if bGameTimersEnabled = False Then Exit Sub
+    bGameTimersEnabled = False
     For i = 1 to MaxTimers
-        If (TimerFlags(i) AND 1) = 1 And TimerTimestamp(i) <= GameTimeStamp Then
-            TimerFlags(i) = TimerFlags(i) AND 254   ' Seto bit0 to 0: Disable timer
-            Call TimerReference(i)
+        If (TimerFlags(i) AND 1) = 1 Then 
+            bGameTimersEnabled = True
+            If TimerTimestamp(i) <= GameTimeStamp Then
+                TimerFlags(i) = TimerFlags(i) AND 254   ' Set bit0 to 0: Disable timer
+                'Call TimerReference(i)
+                Execute(TimerSubroutine(i))
+            End If
         End if
         If (TimerFlags(i) AND 2) = 2 Then TimerTimestamp(i) = TimerTimestamp(i) + 1 ' "Frozen" timer - increase its expiry by 1 step
     Next
+End Sub
+
+Sub SetGameTimer(tmr,val)
+    TimerTimestamp(tmr) = GameTimeStamp + val
+    TimerFlags(tmr) = TimerFlags(tmr) or 1
+    bGameTimersEnabled = True
 End Sub
 
 
@@ -3834,14 +3852,16 @@ Sub StartChooseBattle
         BattleChoices(0) = 0:TotalBattleChoices = 1 ' Pass For Now is allowed
     Else
         TotalBattleChoices = 0
+    End if
     For i = 0 to 7
-        If SelectedHouse=Greyjoy and i > 0 then Next    ' Greyjoy can't stack house battles
-        For j = 1 to 7
-            If House(CurrentPlayer).Qualified(j) And House(CurrentPlayer).Completed(j) = False And j<>i Then 
-                BattleChoices(TotalBattleChoices) = i*7+j
-                TotalBattleChoices = TotalBattleChoices + 1
-            End If
-        Next
+        If (SelectedHouse <> Greyjoy And House(CurrentPlayer).Qualified(i)) or i = 0 then   ' Greyjoy can't stack house battles
+            For j = 1 to 7
+                If House(CurrentPlayer).Qualified(j) And House(CurrentPlayer).Completed(j) = False And j<>i Then 
+                    BattleChoices(TotalBattleChoices) = i*7+j
+                    TotalBattleChoices = TotalBattleChoices + 1
+                End If
+            Next
+        End If
     Next
     CurrentBattleChoice = 1
 
@@ -3851,14 +3871,14 @@ Sub StartChooseBattle
         tmrval = 120
     Else
         tmrval = 200
+    End if
 
     ' Set up the launch timer
-    TimerTimestamp(tmrChooseBattle) = GameTimeStamp + tmrval
-    TimerFlags(tmrChooseBattle) = 1
+    SetGameTimer tmrChooseBattle,tmrval
         
     ' Set up the update timer to update after instructions have been displayed for 1.5 seconds
-    vpmTimer.AddTimer 1500, "UpdateChooseBattleScene() '"
-    PlaySong "got-choose-battle"
+    vpmTimer.AddTimer 1500, "UpdateChooseBattle() '"
+    PlaySong "got-track-choosebattle"
 End Sub
 
 ' UpdateChooseBattle
@@ -3868,13 +3888,14 @@ End Sub
 
 Sub UpdateChooseBattle
     Dim house1, house2, tmr
-    Set DefaultScene = CBScene
 
     ' Enable the game timer to call this sub again in 1 second
-    TimerTimestamp(tmrUpdateChooseBattle) = GameTimeStamp + 10
-    TimerFlags(tmrUpdateChooseBattle) = 1
+    SetGameTimer tmrUpdateChooseBattle,10
 
-    HouseBattle1 = BattleChoices(CurrentBattleChoice)%7
+    If IsEmpty(CBScene) Then Exit Sub
+    Set DefaultScene = CBScene
+
+    HouseBattle1 = BattleChoices(CurrentBattleChoice) MOD 7
     HouseBattle2 = Int(BattleChoices(CurrentBattleChoice)/7)
     house2 = ""
     If HouseBattle1 = 0 Then
@@ -3916,7 +3937,7 @@ Sub LaunchBattleMode
     DMDHouseBattleScene HouseBattle2
     
     PlayerMode = 1
-    DefaultScene = ScoreScene
+    Set DefaultScene = ScoreScene
     ' TODO: Set up Mode timer(s)
 
     If bLockIsLit Then
@@ -4004,8 +4025,9 @@ Sub DMDChooseScene1(line0,line1,line2,sigil)    ' sigil is an image name
             Set DefaultScene = ChooseHouseScene
             DMDFlush
         Else
+			Set sigilimage = ChooseHouseScene.GetImage("sigil")
+            If Not sigilimage Is Nothing Then ChooseHouseScene.RemoveActor(sigilimage)
             Set sigilimage = FlexDMD.NewImage("sigil","sigil_"&sigil)
-            If ChooseHouseScene.HasChild("sigil") Then ChooseHouseScene.RemoveActor(ChooseHouseScene.GetImage("sigil"))
             If Not (sigilimage Is Nothing) Then ChooseHouseScene.AddActor sigilimage
             ChooseHouseScene.GetLabel("house").Text = line1
             ChooseHouseScene.GetLabel("action").Text = line2
@@ -4034,7 +4056,7 @@ Sub DMDChooseBattleScene(line0,line1,line2,tmr)
                     "CHOOSE YOUR BATTLE" & vbLf & "USE FLIPPERS TO" & vbLf & "CHANGE YOUR CHOICE" )
             instscene.GetLabel("instructions").SetAlignedPosition 64,16,FlexDMD_Align_Center
             DMDFlush
-            DMDEnqueueScene(instscene,0,1500,1500,100,"")
+            DMDEnqueueScene instscene,0,1500,1500,100,""
 
             ' Create ChooseBattle scene
             If IsEmpty(CBScene) Then
@@ -4049,17 +4071,17 @@ Sub DMDChooseBattleScene(line0,line1,line2,tmr)
                 CBScene.AddActor FlexDMD.NewLabel("and",fatfont,"AND")
                 With CBScene.GetLabel("and")
                     .SetAlignedPosition 64,20,FlexDMD_Align_Center
-                    .Visibility = False
+                    .Visible = False
                 End With
                 CBScene.AddActor FlexDMD.NewLabel("house2",font,"")   ' TODO: needs fatter font
                 With CBScene.GetLabel("house2")
                     .SetAlignedPosition 64,28,FlexDMD_Align_Center
-                    .Visibility = False
+                    .Visible = False
                 End With
-                CBScene.AddActor FlexDMD.NewLabel("tmrl",smlfont,"10")
-                CBScene.GetLabel("tmrl").SetAlignedPosition 64,28,FlexDMD_Align_Center
-                CBScene.AddActor FlexDMD.NewLabel("tmrr",smlfont,"10")
-                CBScene.GetLabel("tmrr").SetAlignedPosition 64,28,FlexDMD_Align_Center
+                CBScene.AddActor FlexDMD.NewLabel("tmrl",smlfont,"")
+                CBScene.GetLabel("tmrl").SetAlignedPosition 8,28,FlexDMD_Align_Center
+                CBScene.AddActor FlexDMD.NewLabel("tmrr",smlfont,"")
+                CBScene.GetLabel("tmrr").SetAlignedPosition 120,28,FlexDMD_Align_Center
             End If
             Set DefaultScene = CBScene
         Else ' No FlexDMD
@@ -4070,16 +4092,16 @@ Sub DMDChooseBattleScene(line0,line1,line2,tmr)
             CBScene.GetLabel("house1").Text = line1
             If line2 = "" Then
                 CBScene.GetLabel("house1").SetAlignedPosition 64,20,FlexDMD_Align_Center
-                CBScene.GetLabel("and").Visibility = False
-                CBScene.GetLabel("house2").Visibility = False
+                CBScene.GetLabel("and").Visible = False
+                CBScene.GetLabel("house2").Visible = False
             Else
                 CBScene.GetLabel("house1").SetAlignedPosition 64,12,FlexDMD_Align_Center
-                CBScene.GetLabel("and").Visibility = True
-                CBScene.GetLabel("house2").Visibility = True
+                CBScene.GetLabel("and").Visible = True
+                CBScene.GetLabel("house2").Visible = True
                 CBScene.GetLabel("house2").Text = line2
             End If
-            CBScene.GetLabel("tmrl").Text = tmr
-            CBScene.GetLabel("tmrr").Text = tmr
+            CBScene.GetLabel("tmrl").Text = FormatNumber(tmr)
+            CBScene.GetLabel("tmrr").Text = FormatNumber(tmr)
         Else
             If line2="" Then
                 DisplayDMDText line0, line1, 0
@@ -4100,8 +4122,8 @@ Sub DMDHouseBattleScene(h)
     If h = 0 Then Exit Sub    
     If bUseFlexDMD Then
         hname = HouseToString(h)
-        scene = NewSceneWithVideo hname&"battleintro",hname&"battleintro"
-        Set vid = scene.Get(hname&"battleintrovid")
+        Set scene = NewSceneWithVideo(hname&"battleintro",hname&"battleintro")
+        Set vid = scene.GetVideo(hname&"battleintrovid")
         scene.AddActor FlexDMD.NewLabel("objective",FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by5.png", vbWhite, vbWhite, 0),BattleObjectives(h))
         With scene.GetLabel("objective")
             .SetAlignedPosition 64,16, FlexDMD_Align_Center
@@ -4173,7 +4195,8 @@ Sub DMDPictoScene
             ' Existing scene. Update the text
             FlexDMD.LockRenderThread
             For i = 0 to 2
-                With PictoScene.GetLabel("pop"&i)
+                Set poplabel = PictoScene.GetLabel("pop"&i)
+                With poplabel
                     .Text = PictoPops(BumperVals(i))(0)
                 ' Remove any existing action
                     .ClearActions()
