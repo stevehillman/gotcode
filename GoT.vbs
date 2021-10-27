@@ -1353,7 +1353,7 @@ Sub tmrDMDUpdate_Timer
     Else
         ' Process queue
         ' Check to see if queue is idle (default scene on). If so, immediately play first item
-        If bDefaultScene Then
+        If bDefaultScene or (IsEmpty(DisplayingScene) And DMDqHead = 0) Then
             bDefaultScene = False
             debug.print "Displaying scene at " & DMDqHead
             DMDDisplayScene DMDSceneQueue(DMDqHead,0)
@@ -3926,7 +3926,7 @@ Sub LaunchBattleMode
         PlaySong "got-track1"
         If bLockIsLit Then 
             LockBall
-        ElseIf RealBallsInLock > 0 Then     ' Lock isn't lit but we have a ball locked
+        Else                        ' Lock isn't lit but we have a ball locked
             ReleaseLockedBall 0
         End If
         Exit Sub
@@ -3939,10 +3939,11 @@ Sub LaunchBattleMode
     PlayerMode = 1
     Set DefaultScene = ScoreScene
     ' TODO: Set up Mode timer(s)
+    ' TODO: ScoreScene changes during a mode
 
     If bLockIsLit Then
         LockBall
-    ElseIf RealBallsInLock > 0 Then     ' Lock isn't lit but we have a ball locked
+    Else                            ' Lock isn't lit but we have a ball locked
         ReleaseLockedBall 0
     End If
 End Sub
@@ -4062,10 +4063,10 @@ Sub DMDChooseBattleScene(line0,line1,line2,tmr)
             If IsEmpty(CBScene) Then
                 Set CBScene = FlexDMD.NewGroup("choosebattle")
                 Set font = FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0)
-                Set fatfont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by5.png", vbWhite, vbWhite, 0)
-                Set smlfont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.png", vbWhite, vbWhite, 0)
-                CBScene.AddActor FlexDMD.NewLabel("choose",fatfont,"CHOOSE YOUR BATTLE") 
-                CBScene.GetLabel("choose").SetAlignedPosition 64,3,FlexDMD_Align_Center
+                Set fatfont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by5.fnt", vbWhite, vbWhite, 0)
+                Set smlfont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0)
+                CBScene.AddActor FlexDMD.NewLabel("choose",font,"CHOOSE YOUR BATTLE") 
+                CBScene.GetLabel("choose").SetAlignedPosition 64,4,FlexDMD_Align_Center
                 CBScene.AddActor FlexDMD.NewLabel("house1",font,"")   ' TODO: needs fatter font
                 CBScene.GetLabel("house1").SetAlignedPosition 64,20,FlexDMD_Align_Center
                 CBScene.AddActor FlexDMD.NewLabel("and",fatfont,"AND")
@@ -4079,9 +4080,9 @@ Sub DMDChooseBattleScene(line0,line1,line2,tmr)
                     .Visible = False
                 End With
                 CBScene.AddActor FlexDMD.NewLabel("tmrl",smlfont,"")
-                CBScene.GetLabel("tmrl").SetAlignedPosition 8,28,FlexDMD_Align_Center
+                CBScene.GetLabel("tmrl").SetAlignedPosition 3,28,FlexDMD_Align_BottomLeft
                 CBScene.AddActor FlexDMD.NewLabel("tmrr",smlfont,"")
-                CBScene.GetLabel("tmrr").SetAlignedPosition 120,28,FlexDMD_Align_Center
+                CBScene.GetLabel("tmrr").SetAlignedPosition 123,28,FlexDMD_Align_BottomRight
             End If
             Set DefaultScene = CBScene
         Else ' No FlexDMD
@@ -4100,8 +4101,8 @@ Sub DMDChooseBattleScene(line0,line1,line2,tmr)
                 CBScene.GetLabel("house2").Visible = True
                 CBScene.GetLabel("house2").Text = line2
             End If
-            CBScene.GetLabel("tmrl").Text = FormatNumber(tmr)
-            CBScene.GetLabel("tmrr").Text = FormatNumber(tmr)
+            CBScene.GetLabel("tmrl").Text = CStr(abs(tmr))
+            CBScene.GetLabel("tmrr").Text = CStr(abs(tmr))
         Else
             If line2="" Then
                 DisplayDMDText line0, line1, 0
@@ -4124,7 +4125,7 @@ Sub DMDHouseBattleScene(h)
         hname = HouseToString(h)
         Set scene = NewSceneWithVideo(hname&"battleintro",hname&"battleintro")
         Set vid = scene.GetVideo(hname&"battleintrovid")
-        scene.AddActor FlexDMD.NewLabel("objective",FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by5.png", vbWhite, vbWhite, 0),BattleObjectives(h))
+        scene.AddActor FlexDMD.NewLabel("objective",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0),BattleObjectives(h))
         With scene.GetLabel("objective")
             .SetAlignedPosition 64,16, FlexDMD_Align_Center
             .Visible = False
@@ -4254,8 +4255,8 @@ Sub DMDLocalScore
     FlexDMD.LockRenderThread
     ' Update fields
     ScoreScene.GetLabel("Score").Text = FormatScore(Score(CurrentPlayer))
-    ScoreScene.GetLabel("Ball").Text = "Ball " & BallsRemaining(CurrentPlayer) - BallsPerGame
-    If Not bFreePlay Then ScoreScene.GetLabel("Credit").Text = "Credits " & Credits
+    ScoreScene.GetLabel("Ball").Text = "Ball " & CStr(BallsRemaining(CurrentPlayer) - BallsPerGame)
+    If Not bFreePlay Then ScoreScene.GetLabel("Credit").Text = "Credits " & CStr(Credits)
     ' Update combo x
     For i = 0 to 4
         With ScoreScene.GetLabel("combo"&i)
