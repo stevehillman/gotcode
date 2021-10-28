@@ -1433,7 +1433,7 @@ Function NewSceneWithVideo(name,videofile)
     Set actor = FlexDMD.NewVideo(name&"vid",FlexPath & videofile & ".gif")
     If actor is Nothing Then
         debug.print "Warning: "&videofile&".gif not found in "&FlexPath
-        Set actor = FlexDMD.NewImage(name&"vid","VPX."&videofile)
+        Set actor = FlexDMD.NewImage(name&"img","VPX."&videofile)
         if actor is Nothing Then Exit Function
     End If
     NewSceneWithVideo.AddActor actor
@@ -1444,12 +1444,30 @@ End Function
 Function NewSceneWithImage(name,imagefile)
     Dim actor
     Set NewSceneWithImage = FlexDMD.NewGroup(name)
-    Set actor = FlexDMD.NewImage(name&"vid","VPX."&imagefile)
+    Set actor = FlexDMD.NewImage(name&"img","VPX."&imagefile)
     if actor is Nothing Then Exit Function
     NewSceneWithImage.AddActor actor
 End Function
 
-
+' Add a blink action to an Actor in a FlexDMD scene. 
+' Usage: BlinkActor scene.GetActor("name"),blink-interval-in-seconds,repetitions 
+' Blink action is only natively supported in FlexDMD 1.9+
+' poplabel.AddAction af.Blink(0.1, 0.1, 5)
+Sub BlinkActor(actor,interval,times)
+    If FlexDMD.Version < 1900 Then
+        Dim af,blink
+        Set af = actor.ActionFactory
+        Set blink = af.Sequence()
+        blink.Add af.Show(True)
+        blink.Add af.Wait(interval)
+        blink.Add af.Show(False)
+        blink.Add af.Wait(interval)
+        actor.AddAction af.Repeat(blink,times)
+    Else
+    ' 1.9+
+        actor.AddAction af.Blink(interval, interval, times)
+    End If
+End Sub
 '*********
 '   LUT
 '*********
@@ -3732,7 +3750,10 @@ End Sub
 Sub StartBWMultiball
     bMultiBallMode = True
     Dim scene
-    Set scene = NewSceneWithVideo("bwmb","blackwatermb")
+    Set scene = NewSceneWithVideo("bwmb","got-blackwatermb")
+    scene.AddActor FlexDMD.NewLabel("balllock", FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0) ,"Ball 3"&vbLf&"Locked")
+    scene.GetLabel("balllock").SetAlignedPosition 126,30,FlexDMD_Align_BottomRight
+    BlinkActor scene.GetLabel("balllock"),0.1,12
     DMDEnqueueScene scene,0,2000,4000,500,"gotfx-blackwater-multiball-start"
     'PlaySoundVol "gotfx-blackwater-multiball-start",VolDef
     PlaySong "got-track4"
@@ -4110,11 +4131,16 @@ Sub DMDChooseBattleScene(line0,line1,line2,tmr)
             Else
                 CBScene.GetLabel("house1").SetAlignedPosition 64,12,FlexDMD_Align_Center
                 CBScene.GetLabel("and").Visible = True
-                CBScene.GetLabel("house2").Visible = True
-                CBScene.GetLabel("house2").Text = line2
+                With CBScene.GetLabel("house2")
+                    .Visible = True
+                    .Text = line2
+                    .SetAlignedPosition 64,28,FlexDMD_Align_Center
+                End With
             End If
             CBScene.GetLabel("tmrl").Text = CStr(abs(tmr))
+            CBScene.GetLabel("tmrl").SetAlignedPosition 3,28,FlexDMD_Align_BottomLeft
             CBScene.GetLabel("tmrr").Text = CStr(abs(tmr))
+            CBScene.GetLabel("tmrr").SetAlignedPosition 123,28,FlexDMD_Align_BottomRight
         Else
             If line2="" Then
                 DisplayDMDText line0, line1, 0
@@ -4136,7 +4162,8 @@ Sub DMDHouseBattleScene(h)
     If bUseFlexDMD Then
         hname = HouseToString(h)
         Set scene = NewSceneWithVideo(hname&"battleintro",hname&"battleintro")
-        Set vid = scene.Get(hname&"battleintrovid")
+        Set vid = scene.GetVideo(hname&"battleintrovid")
+        If vid is Nothing Then Set vid = scene.getImage(hname&"battleintroimg")
         scene.AddActor FlexDMD.NewLabel("objective",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0),BattleObjectives(h))
         With scene.GetLabel("objective")
             .SetAlignedPosition 64,16, FlexDMD_Align_Center
@@ -4181,7 +4208,7 @@ Sub DMDPictoScene
             Set PictoScene = FlexDMD.NewGroup("pops")
 
             ' Create 3 frames. In each frame, put the text of the corresponding bumper award
-            Dim af,blink,poplabel
+            Dim poplabel
             For i = 0 to 2
                 PictoScene.AddActor FlexDMD.NewFrame("popbox" & i)
                 With PictoScene.GetFrame("popbox" & i)
@@ -4193,17 +4220,7 @@ Sub DMDPictoScene
                 ' Place the text in the middle of the frame and let FlexDMD figure it out
                 Set poplabel = PictoScene.GetLabel("pop"&i)
                 poplabel.SetAlignedPosition i*42+21, 16, FlexDMD_Align_Center
-                If matched Then
-                    Set af = poplabel.ActionFactory
-                    Set blink = af.Sequence()
-                    blink.Add af.Show(True)
-                    blink.Add af.Wait(0.1)
-                    blink.Add af.Show(False)
-                    blink.Add af.Wait(0.1)
-                    poplabel.AddAction af.Repeat(blink,5)
-                    ' Blink action is only supported in FlexDMD 1.9+
-                    ' poplabel.AddAction af.Blink(0.1, 0.1, 5)
-                End If
+                If matched Then BlinkActor poplabel,0.1,5
             Next
         Else
             ' Existing scene. Update the text
@@ -4212,23 +4229,13 @@ Sub DMDPictoScene
                 Set poplabel = PictoScene.GetLabel("pop"&i)
                 With poplabel
                     .Text = PictoPops(BumperVals(i))(0)
+                    .SetAlignedPosition i*42+21, 16, FlexDMD_Align_Center
                 ' Remove any existing action
                     .ClearActions()
                 End With
-                ' If the bumpers all match, flash the text
-                If matched Then
-                    Set af = poplabel.ActionFactory
-                    Set blink = af.Sequence()
-                    blink.Add af.Show(True)
-                    blink.Add af.Wait(0.1)
-                    blink.Add af.Show(False)
-                    blink.Add af.Wait(0.1)
-                    poplabel.AddAction af.Repeat(blink,5)
-                    ' Blink action is only supported in FlexDMD 1.9+
-                    ' poplabel.AddAction af.Blink(0.1, 0.1, 5)
-                    mintime=1000:pri=1
-                End If
-                debug.print "pop"&i&": W:" & poplabel.TextWidth & " H:" & poplabel.TextHeight
+                ' If the bumpers all match, flash the text and keep scene on screen for a second
+                If matched Then BlinkActor poplabel,0.1,5:mintime=1000:pri=1
+                debug.print "pop"&i&": X:" & poplabel.X & " Y:" & poplabel.Y
             Next
             FlexDMD.UnlockRenderThread
         End If
@@ -4269,6 +4276,7 @@ Sub DMDLocalScore
     FlexDMD.LockRenderThread
     ' Update fields
     ScoreScene.GetLabel("Score").Text = FormatScore(Score(CurrentPlayer))
+    ScoreScene.GetLabel("Score").SetAlignedPosition 80,0, FlexDMD_Align_TopRight
     ScoreScene.GetLabel("Ball").Text = "Ball " & CStr(BallsRemaining(CurrentPlayer) - BallsPerGame + 1)
     If Not bFreePlay Then ScoreScene.GetLabel("Credit").Text = "Credits " & CStr(Credits)
     ' Update combo x
