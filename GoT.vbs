@@ -3926,8 +3926,9 @@ Sub UpdateChooseBattle
     If HouseBattle1 = 0 Then
         house1 = "PASS FOR NOW"
     Else
-        house1 = HouseToString(HouseBattle1)
+        house1 = "HOUSE "&HouseToString(HouseBattle1)
         house2 = HouseToString(HouseBattle2)
+        If house2 <> "" Then house2 = "HOUSE "&house2
     End If
     tmr = Int( (TimerTimestamp(tmrChooseBattle)-GameTimeStamp) / 10) + 1
     DMDChooseBattleScene "CHOOSE YOUR BATTLE", house1, house2, tmr
@@ -3941,7 +3942,7 @@ End Sub
 ' Check if we locked a ball and if so, do lock ball processing
 
 Sub LaunchBattleMode
-    Dim scene
+    Dim scene,tmr
     TimerFlags(tmrUpdateChooseBattle) = 0
     TimerFlags(tmrChooseBattle) = 0
     If BattleChoices(CurrentBattleChoice) = 0 Then ' Pass for now
@@ -3952,7 +3953,7 @@ Sub LaunchBattleMode
         If bLockIsLit Then 
             LockBall
         Else                        ' Lock isn't lit but we have a ball locked
-            ReleaseLockedBall 0
+            vpmTimer.AddTimer 1500, "ReleaseLockedBall 0"
         End If
         Exit Sub
     End If
@@ -3960,6 +3961,9 @@ Sub LaunchBattleMode
     ' Start battle!
     DMDHouseBattleScene HouseBattle1
     DMDHouseBattleScene HouseBattle2
+
+    tmr = 7000
+    If HouseBattle2 > 0 Then tmr=12000
     
     PlayerMode = 1
     Set DefaultScene = ScoreScene
@@ -3969,9 +3973,9 @@ Sub LaunchBattleMode
     PlaySong "got-track5"   ' guessing at the right song here
 
     If bLockIsLit Then
-        LockBall
+        vpmTimer.AddTimer tmr, "LockBall "
     Else                            ' Lock isn't lit but we have a ball locked
-        ReleaseLockedBall 0
+        vpmTimer.AddTimer 5000, "ReleaseLockedBall 0"
     End If
 End Sub
 
@@ -4161,10 +4165,10 @@ Sub DMDHouseBattleScene(h)
     If h = 0 Then Exit Sub    
     If bUseFlexDMD Then
         hname = HouseToString(h)
-        Set scene = NewSceneWithVideo(hname&"battleintro",hname&"battleintro")
+        Set scene = NewSceneWithVideo(hname&"battleintro","got-"&hname&"battleintro")
         Set vid = scene.GetVideo(hname&"battleintrovid")
         If vid is Nothing Then Set vid = scene.getImage(hname&"battleintroimg")
-        scene.AddActor FlexDMD.NewLabel("objective",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0),BattleObjectives(h))
+        scene.AddActor FlexDMD.NewLabel("objective",FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0),BattleObjectives(h))
         With scene.GetLabel("objective")
             .SetAlignedPosition 64,16, FlexDMD_Align_Center
             .Visible = False
