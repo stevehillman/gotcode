@@ -1078,7 +1078,7 @@ Sub PlayDMDScene(video, timeMs)
 End Sub
 
 Sub DisplayDMDText(Line1, Line2, duration)
-	'debug.print "DMDText " & Line1 & " " & Line2
+	debug.print "OldDMDText " & Line1 & " " & Line2
 	if bUseFlexDMD Then
 		UltraDMD.DisplayScene00 "", Line1, 15, Line2, 15, 14, duration, 14
 	Elseif bUsePUPDMD Then
@@ -1088,7 +1088,9 @@ Sub DisplayDMDText(Line1, Line2, duration)
 			else
 				pupDMDDisplay "-", Line1 & "^" & Line2, "" ,Duration/1000, 0, 10
 			End If 
-		End If 
+		End If
+    Else
+        'TODO: Display on built-in DMD device 
 	End If
 End Sub
 
@@ -3135,7 +3137,7 @@ Sub UpdatePFXLights(Level)
 End Sub
 
 Sub CheckActionButton
-    If PlayerMode = -1 Then LaunchBattleMode
+    If PlayerMode = -2 Then LaunchBattleMode
 'TODO: Check Actions
 End Sub
 
@@ -3844,6 +3846,8 @@ Sub StartChooseBattle
     Dim i,j,tmrval
     HouseBattle1 = Empty
     HouseBattle2 = Empty
+
+    PlayerMode = -2
     
     DMDChooseBattleScene "","","",10
 
@@ -3941,12 +3945,20 @@ Sub LaunchBattleMode
     ' TODO: Set up Mode timer(s)
     ' TODO: ScoreScene changes during a mode
 
+    PlaySong "got-track5"   ' guessing at the right song here
+
     If bLockIsLit Then
         LockBall
     Else                            ' Lock isn't lit but we have a ball locked
         ReleaseLockedBall 0
     End If
 End Sub
+
+'TODO: End battle mode
+' - if a second battle mode is not still active then
+'    - set PlayerMode to 0
+'    - change song
+' - Show summary screen with points earned for this battle
 
 '**************************
 ' Game-specific DMD support
@@ -4124,13 +4136,14 @@ Sub DMDHouseBattleScene(h)
     If bUseFlexDMD Then
         hname = HouseToString(h)
         Set scene = NewSceneWithVideo(hname&"battleintro",hname&"battleintro")
-        Set vid = scene.GetVideo(hname&"battleintrovid")
+        Set vid = scene.Get(hname&"battleintrovid")
         scene.AddActor FlexDMD.NewLabel("objective",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0),BattleObjectives(h))
         With scene.GetLabel("objective")
             .SetAlignedPosition 64,16, FlexDMD_Align_Center
             .Visible = False
         End With
-        If Not vid Is Nothing Then
+        ' After 3 seconds, disable video/image and enable text objective
+        If Not (vid Is Nothing) Then
             Set af = vid.ActionFactory
             Set blink = af.Sequence()
             blink.Add af.Wait(3)
@@ -4215,6 +4228,7 @@ Sub DMDPictoScene
                     ' poplabel.AddAction af.Blink(0.1, 0.1, 5)
                     mintime=1000:pri=1
                 End If
+                debug.print "pop"&i&": W:" & poplabel.TextWidth & " H:" & poplabel.TextHeight
             Next
             FlexDMD.UnlockRenderThread
         End If
@@ -4255,7 +4269,7 @@ Sub DMDLocalScore
     FlexDMD.LockRenderThread
     ' Update fields
     ScoreScene.GetLabel("Score").Text = FormatScore(Score(CurrentPlayer))
-    ScoreScene.GetLabel("Ball").Text = "Ball " & CStr(BallsRemaining(CurrentPlayer) - BallsPerGame)
+    ScoreScene.GetLabel("Ball").Text = "Ball " & CStr(BallsRemaining(CurrentPlayer) - BallsPerGame + 1)
     If Not bFreePlay Then ScoreScene.GetLabel("Credit").Text = "Credits " & CStr(Credits)
     ' Update combo x
     For i = 0 to 4
@@ -4264,6 +4278,7 @@ Sub DMDLocalScore
             .SetAlignedPosition i*25,31,FlexDMD_Align_BottomLeft
         End With
     Next        
+    'TODO: During modes, the Score scene has a different layout - smaller score, and text objectives in the middle
     FlexDMD.UnlockRenderThread
     Set DefaultScene = ScoreScene
 End Sub
