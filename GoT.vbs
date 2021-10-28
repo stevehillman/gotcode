@@ -1454,20 +1454,17 @@ End Function
 ' Blink action is only natively supported in FlexDMD 1.9+
 ' poplabel.AddAction af.Blink(0.1, 0.1, 5)
 Sub BlinkActor(actor,interval,times)
-    If FlexDMD.Version < 1900 Then
-        Dim af,blink
-        Set af = actor.ActionFactory
-        Set blink = af.Sequence()
-        blink.Add af.Show(True)
-        blink.Add af.Wait(interval)
-        blink.Add af.Show(False)
-        blink.Add af.Wait(interval)
-        actor.AddAction af.Repeat(blink,times)
-    Else
-    ' 1.9+
-        actor.AddAction af.Blink(interval, interval, times)
-    End If
+    Dim af,blink
+    Set af = actor.ActionFactory
+    Set blink = af.Sequence()
+    blink.Add af.Show(True)
+    blink.Add af.Wait(interval)
+    blink.Add af.Show(False)
+    blink.Add af.Wait(interval)
+    actor.AddAction af.Repeat(blink,times)
 End Sub
+
+
 '*********
 '   LUT
 '*********
@@ -2601,6 +2598,7 @@ Sub ResetForNewPlayerBall()
         PlayerMode = -1
         SelectedHouse = 1
         FlashShields SelectedHouse,1
+        ChooseHouse 0
     Else 
         PlayerState(CurrentPlayer).Restore
         PlayerMode = 0
@@ -3153,6 +3151,99 @@ Sub UpdatePFXLights(Level)
     End Select
 ' show the multiplier in the DMD?
 End Sub
+
+' During Battle mode, Shield lights may be in one of several states
+' They may also alternate colour. To deal with this, create an array of
+' light states and set a timer on each light to cycle through its states
+Dim ModeLightState(7,10)
+Dim ModeTotalLightStates
+Sub SetModeLights
+    Dim i
+    For i = 1 to 7
+        HouseShield(i).TimerInterval = 100
+        HouseShield(i).TimerEnabled = True
+    Next
+End Sub
+
+' House Shield light timers. Used to cycle through color states during battle mode
+'HouseShield = Array(li141,li141,li26,li114,li86,li77,li156,li98)
+Sub li141_Timer
+    Dim uv
+    uv = Me.UserValue
+    Me.TimerEnabled = False
+    If ModeLightState(1,uv) > 0 Then SetLightColor Me,ModeLightState(1,uv),1 Else Me.state=0
+    uv = uv + 1
+    If uv = ModeTotalLightStates Then uv = 0
+    Me.UserValue = uv
+    Me.TimerEnabled = True
+End Sub
+
+Sub li26_Timer
+    Dim uv
+    uv = Me.UserValue
+    Me.TimerEnabled = False
+    If ModeLightState(1,uv) > 0 Then SetLightColor Me,ModeLightState(1,uv),1 Else Me.state=0
+    uv = uv + 1
+    If uv = ModeTotalLightStates Then uv = 0
+    Me.UserValue = uv
+    Me.TimerEnabled = True
+End Sub
+
+Sub li114_Timer
+    Dim uv
+    uv = Me.UserValue
+    Me.TimerEnabled = False
+    If ModeLightState(1,uv) > 0 Then SetLightColor Me,ModeLightState(1,uv),1 Else Me.state=0
+    uv = uv + 1
+    If uv = ModeTotalLightStates Then uv = 0
+    Me.UserValue = uv
+    Me.TimerEnabled = True
+End Sub
+
+Sub li86_Timer
+    Dim uv
+    uv = Me.UserValue
+    Me.TimerEnabled = False
+    If ModeLightState(1,uv) > 0 Then SetLightColor Me,ModeLightState(1,uv),1 Else Me.state=0
+    uv = uv + 1
+    If uv = ModeTotalLightStates Then uv = 0
+    Me.UserValue = uv
+    Me.TimerEnabled = True
+End Sub
+
+Sub li77_Timer
+    Dim uv
+    uv = Me.UserValue
+    Me.TimerEnabled = False
+    If ModeLightState(1,uv) > 0 Then SetLightColor Me,ModeLightState(1,uv),1 Else Me.state=0
+    uv = uv + 1
+    If uv = ModeTotalLightStates Then uv = 0
+    Me.UserValue = uv
+    Me.TimerEnabled = True
+End Sub
+
+Sub li156_Timer
+    Dim uv
+    uv = Me.UserValue
+    Me.TimerEnabled = False
+    If ModeLightState(1,uv) > 0 Then SetLightColor Me,ModeLightState(1,uv),1 Else Me.state=0
+    uv = uv + 1
+    If uv = ModeTotalLightStates Then uv = 0
+    Me.UserValue = uv
+    Me.TimerEnabled = True
+End Sub
+
+Sub li98_Timer
+    Dim uv
+    uv = Me.UserValue
+    Me.TimerEnabled = False
+    If ModeLightState(1,uv) > 0 Then SetLightColor Me,ModeLightState(1,uv),1 Else Me.state=0
+    uv = uv + 1
+    If uv = ModeTotalLightStates Then uv = 0
+    Me.UserValue = uv
+    Me.TimerEnabled = True
+End Sub
+
 
 Sub CheckActionButton
     If PlayerMode = -2 Then LaunchBattleMode
@@ -4052,7 +4143,7 @@ Sub DMDChooseScene1(line0,line1,line2,sigil)    ' sigil is an image name
     If bUseFlexDMD Then
         If IsEmpty(ChooseHouseScene) Then
             Set ChooseHouseScene = FlexDMD.NewGroup("choosehouse")
-            Set sigilimage = FlexDMD.NewImage("sigil","sigil_"&sigil)
+            Set sigilimage = FlexDMD.NewImage("sigil",&sigil)
             If Not (sigilimage Is Nothing) Then ChooseHouseScene.AddActor sigilimage
             ChooseHouseScene.AddActor FlexDMD.NewLabel("choosetxt", FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0) ,"CHOOSE YOUR HOUSE")
             ChooseHouseScene.AddActor FlexDMD.NewLabel("house", FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0) ,line1)
