@@ -2157,6 +2157,7 @@ Dim bTopLanes(2)        ' State of top lanes
 Dim LoLTargetsCompleted ' Number of times the target bank has been completed
 Dim WildfireTargetsCompleted ' Number of times wildfire target bank has been completed
 Dim BWMultiballsCompleted
+Dim bBWMultiballActive
 Dim bLockIsLit
 Dim bEBisLit            ' TODO: Find out whether this carries over
 Dim bWildfireTargets(2) ' State of Wildfire targets
@@ -2333,6 +2334,7 @@ Class cHouse
     ' Set the shield/sigil lights to the houses' current state
     Public Sub ResetLights
         If HouseSelected = 0 Then Exit Sub       ' Do nothing if we're still in Choose House mode
+        If PlayerMode = 1 Then SetModeLights : Exit Sub
         Dim i
         Dim j
         j=0
@@ -2464,6 +2466,61 @@ Class cHouse
 
 End Class
 
+Class cBattleState
+    Dim StarkRamps
+    Dim LannisterShots          ' Total shots accumulated in Lannister battle
+    Dim LannisterMask           ' bitmask of shots that have been lit up
+    Dim LannisterGreyjoyMask    ' bitmask of shots completed
+    Dim GreyjoyMask             ' Mask of shots completed
+    Dim CompletedDragons
+    Dim TargaryenState
+    Dim MyHouse                 ' The house associated with this BattleState instance
+    Dim State                   ' Current state of this house's battle
+    Dim ModeLightPattern
+    'Each number is a bit mask of which shields light up for the given mode
+    'TODO Initial mode light pattern could be affected by saved state
+    'TODO Targaryen light pattern needs more investigation
+    ModeLightPattern = Array(0,10,16,0,218,138,80,218)
+
+    Private Sub Class_Initialize(  )
+        StarkRamps = 0
+        LannisterShots = 0
+        LannisterGreyjoyMask = 0
+        GreyjoyMask = 0
+        CompletedDragons = 0
+        TargaryenState = 0
+    End Sub
+
+    Public Property Let House(h) 
+        MyHouse = h
+    End Property
+	Public Property Get MyHouse : House = MyHouse : End Property
+
+    Public Sub SetModeLights
+        Dim mask
+        ' Load the starting state mask
+        mask = ModeLightPattern(MyHouse)
+        ' Adjust based on house and state
+        Select Case MyHouse
+            Case Stark
+                If State = 2 Then mask = mask or 80     ' Light the orbits for State 2
+            Case Baratheon
+                If State = 2 Then mask = mask or 128    ' Light dragon shot
+                If State = 3 Then mask = mask or 4      ' Light LoL target bank
+            Case Lannister
+                mask = LannisterMask
+            Case Greyjoy
+                mask = mask xor GreyjoyMask             ' Turn off lights that have been completed
+            Case Tyrell
+        End Select
+
+        For i = 1 to 7
+            If mask & (2^i) > 0 Then 
+                ModeLightState(i,(ModeLightState(i,0))) = HouseColor(HouseBattle1) 
+                ModeLightState(i,0) = ModeLightState(i,0) + 1
+            End If
+        Next
+    End Sub
 ' BattleState
 ' Initialize:
     ' Set Stark ramp count to 3
@@ -2475,8 +2532,8 @@ End Class
     ' Start: Set X to 3, or to 1 if restarting
     ' State 1: shoot ramps at least X times, then start counting assassinations, set State to 2
     ' State 2: ramp shots continue to accumulate. Orbit shot scores accumulated value, complete’s House
-' Timer ends mode after 40 seconds
-    ' Baratheon: 3 states
+    ' Timer ends mode after 40 seconds
+' Baratheon: 3 states
     ' Start: Set State to 1, set base spinner value, open top gates 
     ' State 1: Spinner builds value, Set state to 2
     ' State 2: Spinner builds value. If SelectedHouse=Greyjoy then Dragon Shot + Left Ramp shot sets State to 3, else Dragon shot sets state to 3. Light target bank for State 3
@@ -2525,7 +2582,6 @@ End Class
     ' Timer on Level 3: If you take too long, you are attacked with “DRAGON FIRE”, and wave restarts with new randomly chosen shots (State 1, but same Wave)
     ' Greyjoy players have a Hurry-Up to hit any target to start State 1 on each Level
 
-Class cBattleState
 
 End Class
 
@@ -2650,6 +2706,7 @@ Sub ResetForNewPlayerBall()
     bSkillShotReady = False
 
     bHurryUpActive = False
+    bBWMultiballActive = False
 
     bMysteryLit = False     ' TODO: Are these carried over across balls?
     bSwordLit = False
@@ -3111,6 +3168,7 @@ End Sub
 ' Called when the last ball of multiball is lost
 Sub StopMBmodes
 ' TODO: Need to do anything here? E.g. reset lighting, restore pre-mb state?
+    bBWMultiballActive = False
     PlaySong "got-track1"
 End Sub
 
@@ -3221,40 +3279,26 @@ End Sub
 ' They may also alternate colour. To deal with this, create an array of
 ' light states and set a timer on each light to cycle through its states
 ' 1st element of array is number of states for this light
+' This Sub sets the jackpot light. The SetModeLights in the BattleState class
+' handles all of the battle-related colours
 Dim ModeLightState(7,10)
 Dim ModeLightPattern
-' Each number is a bit mask of which shields light up for the given mode
-'TODO Initial mode light pattern could be affected by saved state
-'TODO Targaryen light pattern needs more investigation
-'TODO this should probably all move to a BattleState Class
-ModeLightPattern = Array(0,10,16,0,218,138,80,218)
 Sub SetModeLights
     Dim i,j
-    If bMultiBallMode 
-        If bBWMultiballActive Then
-            For i = 1 to 7
-                if i = Baratheon or i = Tyrell      ' Drop targets don't get jackpots
-                    ModeLightState(i,0) = 1
-                    ModeLightState(i,1) = 0
-                Else
-                    ModeLightState(i,1) = green
-                    ModeLightState(i,2) = 0
-                    ModeLightState(i,0) = 2
-                End If
-            Next
+    For i = 1 to 7
+        if bBWMultiballActive = False or i = Baratheon or i = Tyrell Then     ' Drop targets don't get jackpots
+            ModeLightState(i,0) = 1
+            ModeLightState(i,1) = 0
+        Elseif bBWMultiballActive Then
+            ModeLightState(i,1) = green
+            ModeLightState(i,2) = 0
+            ModeLightState(i,0) = 2
+        
         'TODO Jackpot light states for other multiball modes
         End If
-    End If
+    Next
 
     For i = 1 to 7
-        If ModeLightPattern(HouseBattle1) & (2^i) > 0 Then 
-            ModeLightState(i,(ModeLightState(i,0))) = HouseColor(HouseBattle1) 
-            ModeLightState(i,0) = ModeLightState(i,0) + 1
-        End If
-        If ModeLightPattern(HouseBattle2) & (2^i) > 0 Then 
-            ModeLightState(i,(ModeLightState(i,0))) = HouseColor(HouseBattle2) 
-            ModeLightState(i,0) = ModeLightState(i,0) + 1
-        End If
         HouseShield(i).TimerInterval = 100
         HouseShield(i).TimerEnabled = True
         HouseShield(i).UserValue = 1
@@ -3947,6 +3991,7 @@ Sub StartBWMultiball
     'TODO Trigger a light sequence
   	tmrBWmultiballRelease.Interval = 5000	' Long initial delay to give sequence time to complete
     tmrBWmultiballRelease.Enabled = True
+    bBWMultiballActive = True
 End Sub
 
 ' Handle physically releasing a locked ball, as well as any sound effects needed
