@@ -2464,6 +2464,71 @@ Class cHouse
 
 End Class
 
+' BattleState
+' Initialize:
+    ' Set Stark ramp count to 3
+    ' Set Lannister CompletedShots count to 0
+    ' Set LannisterGreyjoy CompletedShots mask to 0
+    ' Set Greyjoy CompletedShots mask to 0
+    ' Set CompletedDragons to 0
+' Stark: 2 states
+    ' Start: Set X to 3, or to 1 if restarting
+    ' State 1: shoot ramps at least X times, then start counting assassinations, set State to 2
+    ' State 2: ramp shots continue to accumulate. Orbit shot scores accumulated value, complete’s House
+' Timer ends mode after 40 seconds
+    ' Baratheon: 3 states
+    ' Start: Set State to 1, set base spinner value, open top gates 
+    ' State 1: Spinner builds value, Set state to 2
+    ' State 2: Spinner builds value. If SelectedHouse=Greyjoy then Dragon Shot + Left Ramp shot sets State to 3, else Dragon shot sets state to 3. Light target bank for State 3
+    ' State 3: Any target on target bank awards value, completes mode. Close gates upon mode completion
+    ' Timer ends mode after 40 seconds
+' Lannister: 1 state
+    ' Start: Set lit shots to 0
+    ' State 1: 
+    ' Gold target hit lights shield shot on either side
+    ' Hitting lit shot advances CompletedShots and increases Shot Value. Also track which shots have been made
+    ' All houses except Greyjoy: Mode is complete when CompletedShots=5
+    ' Greyjoy: Mode is complete when all shots have been made at least once
+    ' Timer ends mode after 40 seconds
+' Greyjoy: 1 state
+    ' Start: Set lit shots according to bitmask. Open top gates
+    ' State 1:
+    ' Hitting lit shot sets bitmask for that shot, resets timer
+    ' Mode is complete when bitmask AND 0XDA = 0XDA
+    ' Timer ends mode after 15 seconds
+' Tyrell: 6 states
+    ' Start: Set lit shots according to last completed state
+    ' State 1:
+    ' Targaryen, Stark, Lannister shots lit. Make any shot to advance to State 2
+    ' State 2,4,6
+    ' Tyrell target bank lit. Complete bank to advance State
+    ' State 3:
+    ' Stark, Lannister shots lit. Make either shot to advance to State 4
+    ' State 5:
+    ' Stark shot lit. Make shot to advance to State 6
+    ' Timer ends mode after 40 seconds. Last completed state is saved
+' Martell: 2 states
+    ' Start: Open top gates
+    ' State 1: Hit either orbit 3 times within 10 seconds. After either shot, reset main mode timer if < 10 seconds left. After second shot, reset 10s timer. After 3 shots, advance to State 2 but also mark mode as completed
+    ' State 2: Hurry-Up on either ramp shot. Trigger timer to complete mode when timer runs out
+    ' Timer ends mode after 30 seconds.
+' Targaryen: 3 LEVELS, each with 3 waves, each with 2 states - 18 states total
+    ' Level 1 Start: light 5 main shots
+    ' State 1:Shoot at least one ramp and one loop to advance to State 2
+    ' State 2: Start hurry-up on Dragon. 
+    ' Repeat States 1 & 2  for 3 waves. After 3rd wave, mode ends until restarted for next level
+    ' Level 2: Repeat Level 1, but require all 4 shots in State 1
+    ' Level 3: Light 3 random shots as hurry-ups (mode ends if hurry-ups timeout?)
+    ' State 1: Shoot all 3 hurry-ups. Shooting Dragon spots a hurry-up
+    ' State 2: Shoot Dragon hurry-up
+    ' Repeat States 1 & 2 for 4 waves. After 4th wave, mode is complete!
+    ' Timer on Level 3: If you take too long, you are attacked with “DRAGON FIRE”, and wave restarts with new randomly chosen shots (State 1, but same Wave)
+    ' Greyjoy players have a Hurry-Up to hit any target to start State 1 on each Level
+
+Class cBattleState
+
+End Class
+
 Function HouseToString(h)
     Select Case h
         Case 0
@@ -3155,13 +3220,44 @@ End Sub
 ' During Battle mode, Shield lights may be in one of several states
 ' They may also alternate colour. To deal with this, create an array of
 ' light states and set a timer on each light to cycle through its states
+' 1st element of array is number of states for this light
 Dim ModeLightState(7,10)
-Dim ModeTotalLightStates
+Dim ModeLightPattern
+' Each number is a bit mask of which shields light up for the given mode
+'TODO Initial mode light pattern could be affected by saved state
+'TODO Targaryen light pattern needs more investigation
+'TODO this should probably all move to a BattleState Class
+ModeLightPattern = Array(0,10,16,0,218,138,80,218)
 Sub SetModeLights
-    Dim i
+    Dim i,j
+    If bMultiBallMode 
+        If bBWMultiballActive Then
+            For i = 1 to 7
+                if i = Baratheon or i = Tyrell      ' Drop targets don't get jackpots
+                    ModeLightState(i,0) = 1
+                    ModeLightState(i,1) = 0
+                Else
+                    ModeLightState(i,1) = green
+                    ModeLightState(i,2) = 0
+                    ModeLightState(i,0) = 2
+                End If
+            Next
+        'TODO Jackpot light states for other multiball modes
+        End If
+    End If
+
     For i = 1 to 7
+        If ModeLightPattern(HouseBattle1) & (2^i) > 0 Then 
+            ModeLightState(i,(ModeLightState(i,0))) = HouseColor(HouseBattle1) 
+            ModeLightState(i,0) = ModeLightState(i,0) + 1
+        End If
+        If ModeLightPattern(HouseBattle2) & (2^i) > 0 Then 
+            ModeLightState(i,(ModeLightState(i,0))) = HouseColor(HouseBattle2) 
+            ModeLightState(i,0) = ModeLightState(i,0) + 1
+        End If
         HouseShield(i).TimerInterval = 100
         HouseShield(i).TimerEnabled = True
+        HouseShield(i).UserValue = 1
     Next
 End Sub
 
@@ -3173,7 +3269,7 @@ Sub li141_Timer
     Me.TimerEnabled = False
     If ModeLightState(1,uv) > 0 Then SetLightColor Me,ModeLightState(1,uv),1 Else Me.state=0
     uv = uv + 1
-    If uv = ModeTotalLightStates Then uv = 0
+    If uv >= ModeLightState(1,0) Then uv = 1
     Me.UserValue = uv
     Me.TimerEnabled = True
 End Sub
@@ -3182,9 +3278,9 @@ Sub li26_Timer
     Dim uv
     uv = Me.UserValue
     Me.TimerEnabled = False
-    If ModeLightState(1,uv) > 0 Then SetLightColor Me,ModeLightState(1,uv),1 Else Me.state=0
+    If ModeLightState(2,uv) > 0 Then SetLightColor Me,ModeLightState(2,uv),1 Else Me.state=0
     uv = uv + 1
-    If uv = ModeTotalLightStates Then uv = 0
+    If uv >= ModeTotalLightStates Then uv = 1
     Me.UserValue = uv
     Me.TimerEnabled = True
 End Sub
@@ -3193,9 +3289,9 @@ Sub li114_Timer
     Dim uv
     uv = Me.UserValue
     Me.TimerEnabled = False
-    If ModeLightState(1,uv) > 0 Then SetLightColor Me,ModeLightState(1,uv),1 Else Me.state=0
+    If ModeLightState(3,uv) > 0 Then SetLightColor Me,ModeLightState(3,uv),1 Else Me.state=0
     uv = uv + 1
-    If uv = ModeTotalLightStates Then uv = 0
+    If uv >= ModeTotalLightStates Then uv = 0
     Me.UserValue = uv
     Me.TimerEnabled = True
 End Sub
@@ -3204,9 +3300,9 @@ Sub li86_Timer
     Dim uv
     uv = Me.UserValue
     Me.TimerEnabled = False
-    If ModeLightState(1,uv) > 0 Then SetLightColor Me,ModeLightState(1,uv),1 Else Me.state=0
+    If ModeLightState(4,uv) > 0 Then SetLightColor Me,ModeLightState(4,uv),1 Else Me.state=0
     uv = uv + 1
-    If uv = ModeTotalLightStates Then uv = 0
+    If uv >= ModeTotalLightStates Then uv = 0
     Me.UserValue = uv
     Me.TimerEnabled = True
 End Sub
@@ -3215,9 +3311,9 @@ Sub li77_Timer
     Dim uv
     uv = Me.UserValue
     Me.TimerEnabled = False
-    If ModeLightState(1,uv) > 0 Then SetLightColor Me,ModeLightState(1,uv),1 Else Me.state=0
+    If ModeLightState(5,uv) > 0 Then SetLightColor Me,ModeLightState(5,uv),1 Else Me.state=0
     uv = uv + 1
-    If uv = ModeTotalLightStates Then uv = 0
+    If uv >= ModeTotalLightStates Then uv = 0
     Me.UserValue = uv
     Me.TimerEnabled = True
 End Sub
@@ -3226,9 +3322,9 @@ Sub li156_Timer
     Dim uv
     uv = Me.UserValue
     Me.TimerEnabled = False
-    If ModeLightState(1,uv) > 0 Then SetLightColor Me,ModeLightState(1,uv),1 Else Me.state=0
+    If ModeLightState(6,uv) > 0 Then SetLightColor Me,ModeLightState(6,uv),1 Else Me.state=0
     uv = uv + 1
-    If uv = ModeTotalLightStates Then uv = 0
+    If uv >= ModeTotalLightStates Then uv = 0
     Me.UserValue = uv
     Me.TimerEnabled = True
 End Sub
@@ -3237,9 +3333,9 @@ Sub li98_Timer
     Dim uv
     uv = Me.UserValue
     Me.TimerEnabled = False
-    If ModeLightState(1,uv) > 0 Then SetLightColor Me,ModeLightState(1,uv),1 Else Me.state=0
+    If ModeLightState(7,uv) > 0 Then SetLightColor Me,ModeLightState(7,uv),1 Else Me.state=0
     uv = uv + 1
-    If uv = ModeTotalLightStates Then uv = 0
+    If uv >= ModeTotalLightStates Then uv = 0
     Me.UserValue = uv
     Me.TimerEnabled = True
 End Sub
@@ -3960,6 +4056,8 @@ Sub StartChooseBattle
     HouseBattle2 = Empty
 
     PlayerMode = -2
+
+    TurnOffPlayfieldLights
     
     DMDChooseBattleScene "","","",10
 
@@ -4003,7 +4101,7 @@ End Sub
 ' Update DMD
 
 Sub UpdateChooseBattle
-    Dim house1, house2, tmr
+    Dim house1, house2, tmr, i
 
     ' Enable the game timer to call this sub again in 1 second
     SetGameTimer tmrUpdateChooseBattle,10
@@ -4021,6 +4119,15 @@ Sub UpdateChooseBattle
         house2 = HouseToString(HouseBattle2)
         If house2 <> "" Then house2 = "HOUSE "&house2
     End If
+
+    ' Flash the shield(s) of the currently selected house(s)
+    For i = 1 to 7
+        If i = HouseBattle1 or i = HouseBattle2 Then
+            SetLightColor HouseSigil(i),HouseColor(i),2
+        Else
+            HouseSigil(i).State = 0
+        End If
+    Next
     tmr = Int( (TimerTimestamp(tmrChooseBattle)-GameTimeStamp) / 10) + 1
     DMDChooseBattleScene "CHOOSE YOUR BATTLE", house1, house2, tmr
 End Sub
