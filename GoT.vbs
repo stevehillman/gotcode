@@ -2147,6 +2147,7 @@ Dim HouseShield
 Dim HouseAbility
 Dim LoLLights
 Dim ComboLaneMap
+Dim ComboLights
 Dim GoldTargetLights
 Dim BattleObjectives
 
@@ -2176,14 +2177,15 @@ Dim TimerFlags(30)      ' Flags for each timer's state
 Dim TimerTimestamp(30)  ' Each timer's end timestamp
 Dim TimerSubroutine     ' Names of subroutines to call when each timer's time expires
 Dim TimerReference(30)  ' Object references to above subroutines (built at table start)
-Const MaxTimers = 6     ' Total number of defined timers. There MUST be a corresponding subroutine for each
-TimerSubroutine = Array("","UpdateChooseBattle","LaunchBattleMode","BattleModeTimer1","BattleModeTimer1","MartellBattleTimer","HurryUpTimer")
+Const MaxTimers = 7     ' Total number of defined timers. There MUST be a corresponding subroutine for each
+TimerSubroutine = Array("","UpdateChooseBattle","LaunchBattleMode","BattleModeTimer1","BattleModeTimer1","MartellBattleTimer","HurryUpTimer"."ResetComboMultipliers")
 Const tmrUpdateChooseBattle = 1
 Const tmrChooseBattle = 2
 Const tmrBattleMode1 = 3
 Const tmrBattleMode2 = 4
 Const tmrMartellBattle = 5
 Const tmrHurryUp = 6
+Const tmrComboMultplier = 7
 
 'HurryUp Support
 Dim HurryUpValue
@@ -2235,6 +2237,8 @@ LoLLights = Array(li17,li20,li23)
 GoldTargetLights = Array(li92,li105,li120,li135,li147)
 ' Map of house name to combo lane (Greyjoy is combo lane1, Targaryen is Combo lane2, etc)
 ComboLaneMap = Array(0,4,0,3,1,0,5,2)
+
+ComboLights = Array(li89,li89,li101,li117,li144,li159)
 
 
 
@@ -2289,7 +2293,7 @@ Class cHouse
     Dim bSaid(7)             ' Whether the house's name has been said yet during ChooseHouse state
     Dim bQualified(7)        ' Whether the house has qualified for battle
     Dim bCompleted(7)        ' Whether battle has been completed
-    Dim BattleState(7)      ' Placeholder for current battle state
+    Dim MyBattleState(7)      ' Placeholder for current battle state
     Dim QualifyCount(7)     ' Count of how many times the qualifying shot has been made for each house
     Dim HouseSelected
     Dim QualifyValue        ' Hold the current value for a qualifying target hit
@@ -2302,7 +2306,7 @@ Class cHouse
             bCompleted(i) = False
             bSaid(i) = False
             QualifyCount(i) = 0
-            Set BattleState(i) = New cBattleState
+            Set MyBattleState(i) = New cBattleState
 		Next
         HouseSelected = 0
         QualifyValue = 100000
@@ -2324,8 +2328,8 @@ Class cHouse
     End Property
 
     Public Property Get Qualified(h) : Qualified = bQualified(h) : End Property
-
     Public Property Get Completed(h) : Completed = bCompleted(h) : End Property
+    Public Property Get BattleState(h) : BattleState = MyBattleState(h) : End Property
 
     ' Say the house name. Include "house " if not said before
     Public Sub Say(h)
@@ -2438,8 +2442,10 @@ Class cHouse
             Else
                 ' TODO: Not in a Mode and house already Qualified. Handle "Iced" targets for Winter-Is-Coming
             End If
-        Else
-            ' TODO: hits do completely different things during Modes
+        ElseIf PlayerMode = 1 Then
+            If HouseBattle1 > 0 Then MyBattleState(HouseBattle1).RegisterHit(h)
+            If HouseBattle2 > 0 Then MyBattleState(HouseBattle2).RegisterHit(h)
+            ' TODO: Add support for other modes (HOTK, IT)
         End If
     End Sub
 
@@ -2821,7 +2827,10 @@ Class cBattleState
             HouseBattle2 = 0
         End If
 
-        If HouseBattle1 = 0 And HouseBattle2 = 0 Then PlayerMode = 0
+        If HouseBattle1 = 0 And HouseBattle2 = 0 Then 
+            PlayerMode = 0
+        If bMultiBallMode = False Then PlaySong "got-track1"
+        SetPlayfieldLights
         ' TODO: Maybe need to modify Scene to remove one or both battle scenes
     End Sub
 
@@ -3012,15 +3021,14 @@ Sub ResetForNewPlayerBall()
         PlayerState(CurrentPlayer).Restore
         PlayerMode = 0
         SelectedHouse = House(CurrentPlayer).MyHouse
-        House(CurrentPlayer).ResetLights
     End If
+    SetPlayfieldLights
     PlaySong("got-track1")
 End Sub
 
 Sub ResetNewBallVariables() 'reset variables for a new ball or player
     dim i
     'turn on or off the needed lights before a new ball is released
-    TurnOffPlayfieldLights
     ResetPictoPops
     ResetDropTargets
      ' Top lanes start out off on the Premium/LE
@@ -3032,12 +3040,23 @@ Sub ResetNewBallVariables() 'reset variables for a new ball or player
     SpinnerValue = 500 + (BallsPerGame-BallsRemaining(CurrentPlayer))*2000 ' Appears to start at 2500 on ball 1 and 4500 on ball 2
     UpdatePFXLights(PlayfieldMultiplierVal)
     bWildfireLit = False
-    ' TODO: Update playfield lights to their correct status based on current player and state
+End Sub
+
+Sub SetPlayfieldLights
+    TurnOffPlayfieldLights
+    If PlayerMode = 1 Then
+        SetModeLights       ' Set Sigils and Shields for battle
+    ElseIf PlayerMode = 0 Then
+        If House(CurrentPlayer).MyHouse > 0 Then House(CurrentPlayer).ResetLights    ' Set Sigils and Shields for normal play
+        SetGoldTargetLights
+    End If
     SetLockLight
     SetOutlaneLights
     SetMysteryLight
     SetSwordLight
-    SetGoldTargetLights
+    SetComboLights
+    ' TODO SetTopLaneLights
+    ' TODO SetUpperPFLights
 End Sub
 
 ' Create a new ball on the Playfield
@@ -3456,7 +3475,9 @@ End Sub
 Sub StopMBmodes
 ' TODO: Need to do anything here? E.g. reset lighting, restore pre-mb state?
     bBWMultiballActive = False
-    PlaySong "got-track1"
+    If PlayerMode = 0 Then
+        PlaySong "got-track1"
+    End If
 End Sub
 
 Sub RotateLaneLights(dir)
@@ -3505,6 +3526,22 @@ Sub SetGoldTargetLights
     Next
 End Sub
 
+' We'll use the timer on each lit combo light to gradually speed up the flashing
+Sub SetComboLights
+    Dim i,stat
+    stat = 0
+    For i = 1 to 5
+        If ComboMultiplier(i) > 1 Then 
+            stat=2
+            ComboLights(i).TimerEnabled = True
+            ComboLights(i).TimerInterval = 1000
+        Else
+            ComboLights(i).TimerEnabled = False
+        End If
+        SetLightColor ComboLights(i),red,stat
+    Next
+End Sub
+
 Sub setEBLight
     if bEBisLit Then
         SetLightColor li150,amber,1
@@ -3532,9 +3569,16 @@ Sub ResetDropTargets
     SetTargetLights
 End Sub
 
+Sub MoveDiverter(o)
+    Dim ang: ang=0
+    if o = True then ang = 22
+    Diverter.ObjRotZ = ang
+End Sub
+
 Sub ResetComboMultipliers
     Dim i
     For i = 0 to 5: ComboMultiplier(i) = 1: Next
+    SetComboLights
 End Sub
 
 Sub GameGiOn
@@ -3681,6 +3725,18 @@ Sub li98_Timer
 End Sub
 
 
+'*******************************************************
+' Combo multiplier light timer
+' Used to speed up the flash rate as the timer runs down
+'*******************************************************
+'ComboLights = Array(li89,li89,li101,li117,li144,li159)
+Sub li89_Timer
+    Dim i
+    For i = 1 to 5
+        If ComboMultiplier(i) > 1 Then ComboLights(i).BlinkInterval = TimerTimestamp(tmrComboMultplier) - GameTimeStamp
+    Next
+End Sub
+
 Sub CheckActionButton
     If PlayerMode = -2 Then LaunchBattleMode
 'TODO: Check Actions
@@ -3697,6 +3753,20 @@ End Sub
 Sub IncreaseBonusMultiplier(bx)
     BonusMultiplier(CurrentPlayer) = BonusMultiplier(CurrentPlayer) + bx
     'TODO: Play increase bonus animation (and sound?)
+End Sub
+
+Sub IncreaseComboMultiplier(h)
+    Dim i,c,hit
+    hit = False
+    c = ComboLaneMap(h)
+    For i = 1 to 5
+        If i <> c and ComboMultiplier(i) < 5 Then 
+            ComboMultiplier(i) = ComboMultiplier(i) + 1
+            hit = True
+        End if
+    Next
+    If hit Then SetGameTimer tmrComboMultplier,150   ' 15 second combo rundown timer - is that right?
+    SetComboLights
 End Sub
 
 Sub AddGold(g)
@@ -3837,10 +3907,12 @@ Sub DoTargetsDropped
     ' In case two targets were hit at once, stop the sound for the first target before playing the one for the second
     StopSound "gotfx-loltarget-hit" & DroppedTargets
     DroppedTargets = DroppedTargets + 1
-    PlaySoundVol "gotfx-loltarget-hit" & DroppedTargets, VolDef
-    SpinnerValue = SpinnerValue + (SpinnerAddValue * RndNbr(10) * SpinnerLevel)
     If PlayerMode > 0 Then
-        'TODO: In a mode. See if it's House Baratheon, and if so, target may collect value
+        If HouseBattle1 > 0 Then House(CurrentPlayer).BattleState(HouseBattle1).RegisterTargetHit 0
+        If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).RegisterTargetHit 0
+    Else ' Only increase Spinner Value and play target dropped sound in regular play mode
+        PlaySoundVol "gotfx-loltarget-hit" & DroppedTargets, VolDef
+        SpinnerValue = SpinnerValue + (SpinnerAddValue * RndNbr(10) * SpinnerLevel)
     End If
     If DroppedTargets = 3 Then
         ' Target bank completed
@@ -3851,7 +3923,7 @@ Sub DoTargetsDropped
             'TODO: Revisit this to see whether LoL lights that are on solid still flash when bank is completed
             FlashForMs LoLLights(i),500,100,2
         Next
-        If SpinnerLevel <= CompletedHouses Then SpinnerLevel = SpinnerLevel + 1
+        If SpinnerLevel <= CompletedHouses Then SpinnerLevel = SpinnerLevel + 1 'TODO: Should SpinnerLevel still increase if in a Mode?
         House(CurrentPlayer).RegisterHit(Baratheon)
     End If
 End Sub
@@ -4578,7 +4650,11 @@ Sub LaunchBattleMode
     
     PlayerMode = 1
     Set DefaultScene = ScoreScene
-    ' TODO: Set up Mode timer(s)
+
+    House(CurrentPlayer).BattleState(HouseBattle1).StartBattleMode
+    If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).StartBattleMode
+    SetModeLights
+    ' TODO: Set up the rest of the Playfield lights - ChooseBattle cleared them all
     ' TODO: ScoreScene changes during a mode
 
     PlaySong "got-track5"   ' guessing at the right song here
@@ -4586,7 +4662,7 @@ Sub LaunchBattleMode
     If bLockIsLit Then
         vpmTimer.AddTimer tmr, "LockBall '"
     Else                            ' Lock isn't lit but we have a ball locked
-        vpmTimer.AddTimer 5000, "ReleaseLockedBall 0'"
+        vpmTimer.AddTimer tmr, "ReleaseLockedBall 0'"
     End If
 End Sub
 
@@ -4841,6 +4917,7 @@ Sub DMDPictoScene
                     .SetAlignedPosition i*42+21, 16, FlexDMD_Align_Center
                 ' Remove any existing action
                     .ClearActions()
+                    .Visible = True
                 End With
                 ' If the bumpers all match, flash the text and keep scene on screen for a second
                 If matched Then BlinkActor poplabel,0.1,5:mintime=1000:pri=1
