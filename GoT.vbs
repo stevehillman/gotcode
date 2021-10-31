@@ -2205,7 +2205,6 @@ Dim DroppedTargets      ' Number of targets dropped
 Dim ComboMultiplier(5)
 Dim bWildfireLit
 Dim bMysteryLit
-Dim bHurryUpActive
 Dim bSwordLit           ' TODO: Saved across balls?
 Dim HouseBattle1        ' When in battle, the primary (top) House
 Dim HouseBattle2        ' When in two-way battle, the second House
@@ -2303,7 +2302,7 @@ Class cHouse
             bCompleted(i) = False
             bSaid(i) = False
             QualifyCount(i) = 0
-            BattleState(i) = New cBattleState
+            Set BattleState(i) = New cBattleState
 		Next
         HouseSelected = 0
         QualifyValue = 100000
@@ -2484,6 +2483,16 @@ Class cHouse
 
 End Class
 
+Dim ModeLightPattern
+Dim AryaKills
+'Each number is a bit mask of which shields light up for the given mode
+'TODO Initial mode light pattern could be affected by saved state
+'TODO Targaryen light pattern needs more investigation
+ModeLightPattern = Array(0,10,16,0,218,138,80,10)
+
+AryaKills = Array("","","joffrey","cercai","walder frey","tywin","the red woman","beric dondarrion","Thoros of Myr", _
+                "meryn trant","the hound", "the mountain","rorge","ilyn payne","polliver")
+
 Class cBattleState
     Dim CompletedShots          ' Total shots accumulated for this battle
     Dim ShotMask           ' bitmask of shots that have been lit up
@@ -2492,22 +2501,13 @@ Class cBattleState
     Dim CompletedDragons
     Dim MyHouse                 ' The house associated with this BattleState instance
     Dim State                   ' Current state of this house's battle
-    Dim ModeLightPattern
-    Dim AryaKills
     Dim bComplete               ' Battle is complete
     Dim TotalScore              ' Total score accumulated battling this house
     Dim HouseValue              ' Most houses build value as the battle progresses. Stored here
     Dim HouseValueIncrement     ' Amount house value builds by, per shot, if machine-generated
     Dim MyHurryUps(3)           ' Holds the index values of any running HurryUps. Only Targaryen has more than one concurrently 
 
-    'Each number is a bit mask of which shields light up for the given mode
-    'TODO Initial mode light pattern could be affected by saved state
-    'TODO Targaryen light pattern needs more investigation
-    ModeLightPattern = Array(0,10,16,0,218,138,80,10)
-
-    AryaKills = Array("","","joffrey","cercai","walder frey","tywin","the red woman","beric dondarrion","Thoros of Myr", _
-                    "meryn trant","the hound", "the mountain","rorge","ilyn payne","polliver")
-
+    
     Private Sub Class_Initialize(  )
         CompletedShots = 0
         LannisterGreyjoyMask = 0
@@ -2517,14 +2517,13 @@ Class cBattleState
         State = 0
         bComplete = False
         TotalScore = 0
-        BaseSpinnerValue = 25000    ' TODO: Find out what base Spinner Value should be for battle mode
         HouseValueIncrement = 0
     End Sub
 
     Public Property Let House(h) 
         MyHouse = h
     End Property
-	Public Property Get MyHouse : House = MyHouse : End Property
+	Public Property Get House : House = MyHouse : End Property
 
     Public Sub SetBattleLights
         Dim mask
@@ -2596,7 +2595,7 @@ Class cBattleState
     ' Update the state machine based on the ball hitting a target
     Public Sub RegisterHit(h)
         Dim hit,done
-        Exit Sub if bComplete
+        if bComplete Then Exit Sub
         Select Case MyHouse
             Case Stark
                 If h = Lannister or h = Stark Then
@@ -2619,8 +2618,9 @@ Class cBattleState
                         ' Render battle hit scene. 'House,Scene #, Score, Text1, Text2, Score+Text1 text justification, text2 justification,sound
                         DMDBattleHitScene Stark,CompletedShots-2,HouseValue,"Stark Value Grows",AryaKills(CompletedShots),just1,just2,"say-aryakill"&CompletedShots-2
                     End If
-                ElseIf State = 2 And (h = Greyjoy or h = Martell)
+                ElseIf State = 2 And (h = Greyjoy or h = Martell) Then
                     DoCompleteMode h
+                End if
 
             Case Baratheon
                 If State = 2 Then
@@ -2703,6 +2703,7 @@ Class cBattleState
                             SetGameTimer tmrBattleMode2,300
                         End If
                     End If
+                End if
                 If State = 2 And (h = Stark or h = Lannister) Then
                     huvalue = HurryUpValue(MyHurryUps(0))
                     If huvalue > 0 Then
@@ -2826,7 +2827,11 @@ Class cBattleState
 
     ' Called by the timer when the mode timer has expired
     Public Sub BattleTimerExpired
-        If MyHouse = Martell And State = 2 Then DoCompleteMode Else EndBattleMode
+        If MyHouse = Martell And State = 2 Then 
+            DoCompleteMode 
+        Else 
+            EndBattleMode
+        End if
     End Sub
 
     ' Some battles involve the spinner
@@ -3508,7 +3513,7 @@ Sub setEBLight
     End If
 End Sub
 
-Sub OpenTopGates: topgatel.open = True: topgater.open = True: Exit Sub
+Sub OpenTopGates: topgatel.open = True: topgater.open = True: End Sub
 Sub CloseTopGates
     topgater.open = False
     If bEBisLit or bMysteryLit Then Exit Sub
@@ -3571,7 +3576,6 @@ End Sub
 ' This Sub sets the jackpot light. The SetModeLights in the BattleState class
 ' handles all of the battle-related colours
 Dim ModeLightState(7,10)
-Dim ModeLightPattern
 Sub SetModeLights
     Dim i,j
     For i = 1 to 7
@@ -3741,7 +3745,7 @@ Sub ChooseHouse(ByVal keycode)
         FlashShields SelectedHouse,True
         House(CurrentPlayer).Say(SelectedHouse)
     End If
-    DMDChooseScene1 "choose your house",HouseToString(SelectedHouse), HouseAbility(SelectedHouse),"sigil_" & HouseToString(SelectedHouse)
+    DMDChooseScene1 "choose your house",HouseToString(SelectedHouse), HouseAbility(SelectedHouse),"got-sigil-" & HouseToString(SelectedHouse)
 End Sub
 
 ' Turn on the flashing shield sigils when choosing a house
@@ -4179,12 +4183,19 @@ Sub doPictoPops(b)
         Case 9
             IncreaseBonusMultiplier 3
         Case 10     ' Add Time (to mode or Hurry Up)
-            'TODO: Add Time to timers
+            If PlayerMode = 1 Then
+                If TimerFlags(tmrBattleMode1) And 1 = 1 Then TimerTimestamp(tmrBattleMode1) = TimerTimestamp(tmrBattleMode1) + 100
+                If TimerFlags(tmrBattleMode2) And 1 = 1 Then TimerTimestamp(tmrBattleMode2) = TimerTimestamp(tmrBattleMode2) + 100
+            End IF
+            If bHurryUpActive Then
+                'TODO: Add "Time" to HurryUp
+            End if
+            'TODO: pLay an "Add Time" scene with two hourglasses
         Case 11
             If bMultiBallMode Then
                 AddMultiballFast 1
                 DMD "","ADD A BALL","",eNone,eNone,eNone,1000,True,""
-                'TODO Play a sound?
+                'TODO Add-A-Ball: Set BallSaver timers
             End If
         Case 12
             DecreaseWallMultiball
@@ -4553,7 +4564,7 @@ Sub LaunchBattleMode
         If bLockIsLit Then 
             LockBall
         Else                        ' Lock isn't lit but we have a ball locked
-            vpmTimer.AddTimer 1500, "ReleaseLockedBall 0"
+            vpmTimer.AddTimer 1500, "ReleaseLockedBall 0'"
         End If
         Exit Sub
     End If
@@ -4573,9 +4584,9 @@ Sub LaunchBattleMode
     PlaySong "got-track5"   ' guessing at the right song here
 
     If bLockIsLit Then
-        vpmTimer.AddTimer tmr, "LockBall "
+        vpmTimer.AddTimer tmr, "LockBall '"
     Else                            ' Lock isn't lit but we have a ball locked
-        vpmTimer.AddTimer 5000, "ReleaseLockedBall 0"
+        vpmTimer.AddTimer 5000, "ReleaseLockedBall 0'"
     End If
 End Sub
 
@@ -4646,7 +4657,7 @@ Sub DMDChooseScene1(line0,line1,line2,sigil)    ' sigil is an image name
     If bUseFlexDMD Then
         If IsEmpty(ChooseHouseScene) Then
             Set ChooseHouseScene = FlexDMD.NewGroup("choosehouse")
-            Set sigilimage = FlexDMD.NewImage("sigil",&sigil)
+            Set sigilimage = FlexDMD.NewImage("sigil",sigil)
             If Not (sigilimage Is Nothing) Then ChooseHouseScene.AddActor sigilimage
             ChooseHouseScene.AddActor FlexDMD.NewLabel("choosetxt", FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0) ,"CHOOSE YOUR HOUSE")
             ChooseHouseScene.AddActor FlexDMD.NewLabel("house", FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0) ,line1)
@@ -4659,7 +4670,7 @@ Sub DMDChooseScene1(line0,line1,line2,sigil)    ' sigil is an image name
         Else
 			Set sigilimage = ChooseHouseScene.GetImage("sigil")
             If Not sigilimage Is Nothing Then ChooseHouseScene.RemoveActor(sigilimage)
-            Set sigilimage = FlexDMD.NewImage("sigil","sigil_"&sigil)
+            Set sigilimage = FlexDMD.NewImage("sigil",sigil)
             If Not (sigilimage Is Nothing) Then ChooseHouseScene.AddActor sigilimage
             ChooseHouseScene.GetLabel("house").Text = line1
             ChooseHouseScene.GetLabel("action").Text = line2
@@ -4865,7 +4876,7 @@ Sub DMDStarkBattleScene(house,num,score,line1,line2,just1,just2,sound)
         j3 = just1 + 6  ' Put Score on the same side as Line1 text, but at the bottom
         x1 = 2: x2 = 126
         If just1 = FlexDMD_Align_TopRight Then x1=126:x2=2
-        scene = NewSceneWithVideo(HouseToString(house)&"hit","got-"&HouseToString(house)&"battlehit"&num)
+        Set scene = NewSceneWithVideo(HouseToString(house)&"hit","got-"&HouseToString(house)&"battlehit"&num)
         scene.AddActor FlexDMD.NewLabel("score",FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbWhite, 0),score)
         scene.AddActor FlexDMD.NewLabel("line1", FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0),line1)
         scene.AddActor FlexDMD.NewLabel("line2", FlexDMD.NewFont("FlexDMD.Resources.udmd-f3by5.fnt", vbWhite, vbWhite, 0),line2)
