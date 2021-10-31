@@ -2176,12 +2176,22 @@ Dim TimerFlags(30)      ' Flags for each timer's state
 Dim TimerTimestamp(30)  ' Each timer's end timestamp
 Dim TimerSubroutine     ' Names of subroutines to call when each timer's time expires
 Dim TimerReference(30)  ' Object references to above subroutines (built at table start)
-Const MaxTimers = 3     ' Total number of defined timers. There MUST be a corresponding subroutine for each
-TimerSubroutine = Array("","UpdateChooseBattle","LaunchBattleMode","BattleModeTimer")
+Const MaxTimers = 6     ' Total number of defined timers. There MUST be a corresponding subroutine for each
+TimerSubroutine = Array("","UpdateChooseBattle","LaunchBattleMode","BattleModeTimer1","BattleModeTimer1","MartellBattleTimer","HurryUpTimer")
 Const tmrUpdateChooseBattle = 1
 Const tmrChooseBattle = 2
-Const tmrBattleMode = 3
+Const tmrBattleMode1 = 3
+Const tmrBattleMode2 = 4
+Const tmrMartellBattle = 5
+Const tmrHurryUp = 6
 
+'HurryUp Support
+Dim HurryUpValue
+Dim bHurryUpActive
+Dim HurryUpCounter
+Dim HurryUpGrace
+Dim HurryUpScene
+Dim HurryUpChange
 
 ' Player state data
 Dim House(4)  ' Current state of each house - some house modes aren't saved, while others are. May need a Class to save detailed state
@@ -2216,7 +2226,7 @@ BattleObjectives = Array("", _
             "LORD LORAS JOUSTING THE MOUNTAIN"&vbLf&"TWO BANK WILL SCORE HITS"&vbLf&"SCORE 3 HITS TO WIN", _
             "VIPER VERSUS THE MOUNTAIN"&vbLf&"SHOOT 3 ORBITS IN A ROW"&vbLf&"LEFT RAMP COLLECTS",_
             "DEFEAT VISERION"&vbLf&"SHOOT 3 HURRY UPS"&vbLf&"TO DEFEAT VISERION", _
-            "DEFEAT DROGON"&vbLf&"SHOOT 3 HURRY UPS"&vbLf&"TO DEFEAT DROGON", _
+            "DEFEAT DROGON"&vbLf&"SHOOT 5 HURRY UPS"&vbLf&"TO DEFEAT DROGON", _
             "DEFEAT RHAEGAL"&vbLf&"SHOOT 3 HURRY UPS"&vbLf&"TO DEFEAT RHAEGAL")
 
 
@@ -2293,6 +2303,7 @@ Class cHouse
             bCompleted(i) = False
             bSaid(i) = False
             QualifyCount(i) = 0
+            BattleState(i) = New cBattleState
 		Next
         HouseSelected = 0
         QualifyValue = 100000
@@ -2437,9 +2448,10 @@ Class cHouse
         Dim i,j
         AddScore 30
         If PlayerMode > 0 Then
-            If HouseBattle1 = Lannister or HouseBattle2 = Lannister Then
-            'TODO special handling during a Mode
-            ' Light the lanes on either side of the gold target hit
+            If HouseBattle1 = Lannister Then
+                BattleState(HouseBattle1).RegisterGoldHit n
+            ElseIf HouseBattle2 = Lannister Then
+                BattleState(HouseBattle2).RegisterGoldHit n
             End If
         Else
             ' Regular mode
@@ -2464,31 +2476,49 @@ Class cHouse
         End If
     End Sub
 
+    Sub HouseCompleted(h)
+        bCompleted(h) = True
+        bQualified(h) = False
+        ' TODO Add support for Greyjoy gaining other houses' abilities
+    End Sub
+
 End Class
 
 Class cBattleState
-    Dim StarkRamps
-    Dim LannisterShots          ' Total shots accumulated in Lannister battle
-    Dim LannisterMask           ' bitmask of shots that have been lit up
+    Dim CompletedShots          ' Total shots accumulated for this battle
+    Dim ShotMask           ' bitmask of shots that have been lit up
     Dim LannisterGreyjoyMask    ' bitmask of shots completed
     Dim GreyjoyMask             ' Mask of shots completed
     Dim CompletedDragons
-    Dim TargaryenState
     Dim MyHouse                 ' The house associated with this BattleState instance
     Dim State                   ' Current state of this house's battle
     Dim ModeLightPattern
+    Dim AryaKills
+    Dim bComplete               ' Battle is complete
+    Dim TotalScore              ' Total score accumulated battling this house
+    Dim HouseValue              ' Most houses build value as the battle progresses. Stored here
+    Dim HouseValueIncrement     ' Amount house value builds by, per shot, if machine-generated
+    Dim MyHurryUps(3)           ' Holds the index values of any running HurryUps. Only Targaryen has more than one concurrently 
+
     'Each number is a bit mask of which shields light up for the given mode
     'TODO Initial mode light pattern could be affected by saved state
     'TODO Targaryen light pattern needs more investigation
-    ModeLightPattern = Array(0,10,16,0,218,138,80,218)
+    ModeLightPattern = Array(0,10,16,0,218,138,80,10)
+
+    AryaKills = Array("","","joffrey","cercai","walder frey","tywin","the red woman","beric dondarrion","Thoros of Myr", _
+                    "meryn trant","the hound", "the mountain","rorge","ilyn payne","polliver")
 
     Private Sub Class_Initialize(  )
-        StarkRamps = 0
-        LannisterShots = 0
+        CompletedShots = 0
         LannisterGreyjoyMask = 0
         GreyjoyMask = 0
         CompletedDragons = 0
-        TargaryenState = 0
+        ShotMask = 0
+        State = 0
+        bComplete = False
+        TotalScore = 0
+        BaseSpinnerValue = 25000    ' TODO: Find out what base Spinner Value should be for battle mode
+        HouseValueIncrement = 0
     End Sub
 
     Public Property Let House(h) 
@@ -2496,7 +2526,7 @@ Class cBattleState
     End Property
 	Public Property Get MyHouse : House = MyHouse : End Property
 
-    Public Sub SetModeLights
+    Public Sub SetBattleLights
         Dim mask
         ' Load the starting state mask
         mask = ModeLightPattern(MyHouse)
@@ -2505,13 +2535,29 @@ Class cBattleState
             Case Stark
                 If State = 2 Then mask = mask or 80     ' Light the orbits for State 2
             Case Baratheon
+                If SelectedHouse=GreyJoy And State = 2 Then mask = mask or 16
                 If State = 2 Then mask = mask or 128    ' Light dragon shot
                 If State = 3 Then mask = mask or 4      ' Light LoL target bank
             Case Lannister
-                mask = LannisterMask
+                mask = ShotMask
             Case Greyjoy
                 mask = mask xor GreyjoyMask             ' Turn off lights that have been completed
             Case Tyrell
+                Select Case State
+                    Case 2,4,6: mask = 32
+                    Case 3: mask = 10
+                    Case 5: mask = 2
+                End Select
+            Case Martell
+                If State = 2 Then mask = 10
+            Case Targaryen
+                Select Case State
+                    Case 2,5: mask = 80
+                    Case 3,6,8: mask = 128
+                    Case 4: mask = 10
+                    Case 7
+                        ' TODO: How are Drogon's shots chosen
+                End Select
         End Select
 
         For i = 1 to 7
@@ -2521,67 +2567,303 @@ Class cBattleState
             End If
         Next
     End Sub
-' BattleState
-' Initialize:
-    ' Set Stark ramp count to 3
-    ' Set Lannister CompletedShots count to 0
-    ' Set LannisterGreyjoy CompletedShots mask to 0
-    ' Set Greyjoy CompletedShots mask to 0
-    ' Set CompletedDragons to 0
-' Stark: 2 states
-    ' Start: Set X to 3, or to 1 if restarting
-    ' State 1: shoot ramps at least X times, then start counting assassinations, set State to 2
-    ' State 2: ramp shots continue to accumulate. Orbit shot scores accumulated value, complete’s House
-    ' Timer ends mode after 40 seconds
-' Baratheon: 3 states
-    ' Start: Set State to 1, set base spinner value, open top gates 
-    ' State 1: Spinner builds value, Set state to 2
-    ' State 2: Spinner builds value. If SelectedHouse=Greyjoy then Dragon Shot + Left Ramp shot sets State to 3, else Dragon shot sets state to 3. Light target bank for State 3
-    ' State 3: Any target on target bank awards value, completes mode. Close gates upon mode completion
-    ' Timer ends mode after 40 seconds
-' Lannister: 1 state
-    ' Start: Set lit shots to 0
-    ' State 1: 
-    ' Gold target hit lights shield shot on either side
-    ' Hitting lit shot advances CompletedShots and increases Shot Value. Also track which shots have been made
-    ' All houses except Greyjoy: Mode is complete when CompletedShots=5
-    ' Greyjoy: Mode is complete when all shots have been made at least once
-    ' Timer ends mode after 40 seconds
-' Greyjoy: 1 state
-    ' Start: Set lit shots according to bitmask. Open top gates
-    ' State 1:
-    ' Hitting lit shot sets bitmask for that shot, resets timer
-    ' Mode is complete when bitmask AND 0XDA = 0XDA
-    ' Timer ends mode after 15 seconds
-' Tyrell: 6 states
-    ' Start: Set lit shots according to last completed state
-    ' State 1:
-    ' Targaryen, Stark, Lannister shots lit. Make any shot to advance to State 2
-    ' State 2,4,6
-    ' Tyrell target bank lit. Complete bank to advance State
-    ' State 3:
-    ' Stark, Lannister shots lit. Make either shot to advance to State 4
-    ' State 5:
-    ' Stark shot lit. Make shot to advance to State 6
-    ' Timer ends mode after 40 seconds. Last completed state is saved
-' Martell: 2 states
-    ' Start: Open top gates
-    ' State 1: Hit either orbit 3 times within 10 seconds. After either shot, reset main mode timer if < 10 seconds left. After second shot, reset 10s timer. After 3 shots, advance to State 2 but also mark mode as completed
-    ' State 2: Hurry-Up on either ramp shot. Trigger timer to complete mode when timer runs out
-    ' Timer ends mode after 30 seconds.
-' Targaryen: 3 LEVELS, each with 3 waves, each with 2 states - 18 states total
-    ' Level 1 Start: light 5 main shots
-    ' State 1:Shoot at least one ramp and one loop to advance to State 2
-    ' State 2: Start hurry-up on Dragon. 
-    ' Repeat States 1 & 2  for 3 waves. After 3rd wave, mode ends until restarted for next level
-    ' Level 2: Repeat Level 1, but require all 4 shots in State 1
-    ' Level 3: Light 3 random shots as hurry-ups (mode ends if hurry-ups timeout?)
-    ' State 1: Shoot all 3 hurry-ups. Shooting Dragon spots a hurry-up
-    ' State 2: Shoot Dragon hurry-up
-    ' Repeat States 1 & 2 for 4 waves. After 4th wave, mode is complete!
-    ' Timer on Level 3: If you take too long, you are attacked with “DRAGON FIRE”, and wave restarts with new randomly chosen shots (State 1, but same Wave)
-    ' Greyjoy players have a Hurry-Up to hit any target to start State 1 on each Level
 
+    ' Called to initialize battle mode for this house. Only certain houses need setup done
+    Public Sub StartBattleMode
+        Dim tmr: tmr=400    ' 10ths of a second
+        Select Case MyHouse
+            Case Stark
+                State = 1
+                HouseValue = 500000
+                If HouseValueIncrement = 0 Then HouseValueIncrement = 3000000 + RndNbr(15) * 125000 
+                If CompletedShots > 0 Then CompletedShots = 2
+            Case Baratheon: State = 1 : OpenTopGates : HouseValue = 500000 : SpinnerValue = 25000 ' TODO Figure out right value
+            Case Lannister: State=1:ShotMask = 0
+            Case Greyjoy: OpenTopGates : tmr = 150
+            Case Martell: tmr = 300 : State = 1 : CompletedShots = 0 : OpenTopGates
+            Case Targaryen
+                tmr = 0
+                ' TODO in States 3,6,8 start a Hurry-Up
+        End Select
+        If tmr > 0 Then 
+            If MyHouse = HouseBattle2 Then SetGameTimer tmrBattleMode2,tmr Else SetGameTimer tmrBattleMode1,tmr
+        End If
+
+    ' TODO: Are there any other lights/sounds assocaited with starting battle for a specific house?
+    ' TODO: If not in multiball, create a scene for tracking progress. Scene is split with other battle if two battles
+    End Sub
+
+    ' Update the state machine based on the ball hitting a target
+    Public Sub RegisterHit(h)
+        Dim hit,done
+        Exit Sub if bComplete
+        Select Case MyHouse
+            Case Stark
+                If h = Lannister or h = Stark Then
+                    ' Process ramp shot
+                    HouseValue = HouseValue + HouseValueIncrement
+                    HouseValueIncrement = HouseValueIncrement + 750000
+                    CompletedShots = CompletedShots + 1
+                    If CompletedShots = 3 Then
+                        State = 2
+                        SetModeLights
+                    End If
+                    If CompletedShots >= 3 Then
+                        ' Show Arya's kill list scene. 
+                        ' Photos alternate between right and left side of scene so adjust text alignment
+                        Dim just1, just2
+                        just1 = FlexDMD_Align_TopRight:just2 = FlexDMD_Align_BottomLeft
+                        Select Case CompletedShots
+                            Case 5,6,8,10,12,13,14: just1=FlexDMD_Align_TopLeft:just2 = FlexDMD_Align_BottomRight
+                        End Select
+                        ' Render battle hit scene. 'House,Scene #, Score, Text1, Text2, Score+Text1 text justification, text2 justification,sound
+                        DMDBattleHitScene Stark,CompletedShots-2,HouseValue,"Stark Value Grows",AryaKills(CompletedShots),just1,just2,"say-aryakill"&CompletedShots-2
+                    End If
+                ElseIf State = 2 And (h = Greyjoy or h = Martell)
+                    DoCompleteMode h
+
+            Case Baratheon
+                If State = 2 Then
+                    If ShotMask And 2^h > 0 Then
+                        ShotMask = ShotMask And (2^h Xor 255)
+                        ' TODO: Play a scene when Shot needed for State 3 is made?
+                        ' TODO: how much does a lit shot score in Baratheon battle mode?
+                        If ShotMask = 0 Then
+                            State = 3
+                            ResetDropTargets
+                            SetModeLights
+                        End If
+                    End If
+                End If
+
+            Case Lannister
+                If ShotMask And 2^h > 0 Then
+                    ShotMask = ShotMask And (2^h Xor 255)
+                    LannisterGreyjoyMask = LannisterGreyjoyMask Or 2^h
+                    ' TODO: Does making a lit shot score value during Lannister, or just increase HouseValue? 
+                    ' TODO: Increase HouseValue by how much?
+                    CompletedShots = CompletedShots + 1
+                    If (SelectedHouse = GreyJoy And LannisterGreyjoyMask = 218) or (SelectedHouse <> Greyjoy And CompletedShots >= 5) Then
+                        DoCompleteMode 0
+                    End If
+                End If
+            
+            Case Greyjoy
+                If GreyjoyMask And 2^h = 0 Then
+                    ' Completed shot
+                    GreyjoyMask = GreyjoyMask Or 2^h
+                    If GreyjoyMask = 218 Then 'Completed req'd shots!
+                        DoCompleteMode h
+                    Else
+                        ' TODO: Play scene for this Grejoy shot?
+                        ' TODO: Add score - how much?
+                        ' Reset mode timer
+                        If MyHouse = HouseBattle2 Then SetGameTimer tmrBattleMode2,150 Else SetGameTimer tmrBattleMode1,150
+                    End If
+                End If
+
+            Case Tyrell
+                hit=False
+                Select Case State
+                    Case 1
+                        If h = Targaryen or h = Stark or h = Lannister Then hit = true
+                    Case 2,4,6
+                        If h = Tyrell Then hit = true
+                    Case 3
+                        If h = Stark or h = Lannister Then hit = true
+                    Case 5
+                        If h = Stark then hit = true
+                End Select
+                If hit Then
+                    State = State + 1
+                    If State = 7 Then
+                        DoCompleteMode 0
+                    Else
+                        ' TODO: Play an animation, add score
+                        SetModeLights
+                    End If
+                End If
+
+            Case Martell
+                Dim huvalue
+                If State = 1 And (h = Greyjoy or h = Martell) Then
+                    CompletedShots = CompletedShots + 1
+                    If CompletedShots = 3 Then 'State 1 complete
+                        TimerFlags(tmrMartellBattle) = 0
+                        State = 2
+                        'TODO: Start a Hurry-Up. Maybe stretch mode timeout timer
+                        SetModeLights
+                    Else
+                        ' Start or reset a 10 second timer
+                        SetGameTimer tmrMartellBattle,100
+                        ' Reset mode timer if less than 10 seconds left
+                        If (MyHouse = HouseBattle1 And TimerTimestamp(tmrBattleMode1)-GameTimeStamp < 100) Then 
+                            SetGameTimer tmrBattleMode1,300
+                        ElseIf (MyHouse = HouseBattle2 And TimerTimestamp(tmrBattleMode2)-GameTimeStamp < 100) Then
+                            SetGameTimer tmrBattleMode2,300
+                        End If
+                    End If
+                If State = 2 And (h = Stark or h = Lannister) Then
+                    huvalue = HurryUpValue(MyHurryUps(0))
+                    If huvalue > 0 Then
+                        'Hurry-up hit in time
+                        huvalue = huvalue * ComboMultiplier(ComboLaneMap(h)) * PlayfieldMultiplierVal
+                        HouseValue = HouseValue + huvalue
+                        DoCompleteMode 0
+                    End If
+                End If
+
+            Case Targaryen 'TODO
+                hit = False:done=False
+                Select Case State
+                    Case 1
+                        If h = Stark or h = Lannister Then hit=true:done=True
+                    Case 2
+                        If h = Greyjoy or h = Martell Then hit=true:done=True
+                    Case 3,6
+                        If h = Targaryen Then
+                            hit=true:done=true
+                            huvalue = HurryUpValue(MyHurryUps(0))
+                            ShotMask = 10
+                        End If
+                    Case 4
+                        If h = Stark or h = Lannister Then
+                            hit=true
+                            ShotMask = ShotMask And (2^h Xor 255)
+                            If ShotMask = 0 Then done=true:ShotMask=80
+                        End If
+                    Case 5
+                        If h = Greyjoy or h = Martell Then
+                            hit=true
+                            ShotMask = ShotMask And (2^h Xor 255)
+                            If ShotMask = 0 Then done=true:ShotMask=80
+                        End If
+                    Case 7  'TODO: Shoot all 3 hurry-ups. Shooting Dragon spots a hurry-up
+                    Case 8
+                        If h = Targaryen Then
+                            hit=true:done=true
+                            huvalue = HurryUpValue(MyHurryUps(0))
+                        End If
+                End Select
+                If hit Then
+                    ' Do some scoring, animation
+                End If
+                If done Then
+                    State = State + 1
+                    Select Case State
+                        Case 3,6
+                            ' Start Dragon HurryUp
+                        Case 7
+                            ' Start 3 random Hurry Ups from a choice of 6 shots (Dragon can't be one of them)
+                        Case 8
+                            ' Start Drogon HurryUp
+                        Case 9: DoCompleteMode 0
+                    End Select
+                    SetModeLights
+                End If  
+
+            ' Targaryen: 3 LEVELS, each with 3 states except last which has 2? - 8 states total
+                ' Level 1 Start: light 2 ramps
+                ' State 1: Shoot lit 1 lit ramp to advance to State 2
+                ' State 2: Light 2 loops. Shoot one to advance to dragon
+                ' State 3: Start hurry-up on Dragon. 
+                ' Level 2: Repeat Level 1, but require all 4 shots in State 1 & 2
+                ' Level 3: Light 3 random shots as hurry-ups (mode ends if hurry-ups timeout?)
+                ' State 1: Shoot all 3 hurry-ups. Shooting Dragon spots a hurry-up
+                ' State 2: Shoot Dragon hurry-up
+                ' Repeat States 1 & 2 for 4 waves. After 4th wave, mode is complete!
+                ' Timer on Level 3: If you take too long, you are attacked with “DRAGON FIRE”, and wave restarts with new randomly chosen shots (State 1, but same Wave)
+                ' Greyjoy players have a Hurry-Up to hit any target to start State 1 on each Level
+        End Select
+
+    End Sub
+
+    ' Finish the mode. 'Shot' is the shot # that completed the mode, in case a combo multiplier is involved
+    Public Sub DoCompleteMode(shot)
+        Dim comboval
+
+        bComplete = True
+        House(CurrentPlayer).HouseCompleted MyHouse
+
+        EndBattleMode
+
+        SetLightColor HouseSigil(MyHouse),HouseColor(SelectedHouse),1
+
+        If shot > 0 And MyHouse <> Baratheon Then
+            comboval = ComboMultiplier(ComboLaneMap(shot)) * PlayfieldMultiplierVal
+        Else
+            comboval = PlayfieldMultiplierVal
+        End If
+        TotalScore = TotalScore + HouseValue * comboval
+        
+        ' Award score
+        If shot > 0 Then
+            AddScore TotalScore
+        Else
+            AddScore HouseValue * comboval
+        End If
+        'TODO Add a sound here. Sound is same as qualifying hit
+        'TODO: Do any other battles only award points upon completion? Use comboval as indicator of whether all points were awarded at once or spread out
+        If MyHouse <> Stark And MyHouse <> Baratheon Then comboval = 0
+        DMDBattleEndScene MyHouse,TotalScore,comboval
+    End Sub
+
+    ' Return to normal play. TODO: Anything else to do?
+    Public Sub EndBattleMode
+        CloseTopGates
+        ' Disable mode timer and HouseBattle
+        If MyHouse = HouseBattle1 Then 
+            TimerFlags(tmrBattleMode1) = 0
+            HouseBattle1 = 0 
+        Else 
+            TimerFlags(tmrBattleMode2) = 0
+            HouseBattle2 = 0
+        End If
+
+        If HouseBattle1 = 0 And HouseBattle2 = 0 Then PlayerMode = 0
+        ' TODO: Maybe need to modify Scene to remove one or both battle scenes
+    End Sub
+
+    ' Called by the timer when the mode timer has expired
+    Public Sub BattleTimerExpired
+        If MyHouse = Martell And State = 2 Then DoCompleteMode Else EndBattleMode
+    End Sub
+
+    ' Some battles involve the spinner
+    Public Sub RegisterSpinnerHit
+        If MyHouse <> Baratheon Then Exit Sub
+        ShotMask = ShotMask And 239 ' turn off bit 4
+        HouseValue = HouseValue + SpinnerValue
+        If State = 1 And HouseValue > 1000000 Then   ' TODO Spinner value needs to build how high before advancing to State 2?
+            State = 2
+            If SelectedHouse = Greyjoy Then ShotMask = 144 Else ShotMask = 128
+            SetModeLights
+        End If
+    End Sub
+
+    ' Some battles need to know about individual target hits
+    ' Right now we don't care about individual targets, just which bank. 0 = Left, 1 = Right
+    Public Sub RegisterTargetHit(tgt)
+        If MyHouse = Baratheon And State = 3 And tgt = 0 Then
+            ' Mode completed!
+            DoCompleteMode Baratheon
+        End if
+    End Sub
+
+    ' Lannister battle mode needs to know about gold target hits
+    Public Sub RegisterGoldHit(tgt)
+        If MyHouse <> Lannister Then Exit Sub
+        Select Case tgt
+            Case 0: ShotMask = ShotMask Or 144
+            Case 1: ShotMask = ShotMask Or 136
+            Case 2,3: ShotMask = ShotMask Or 10
+            Case 4: ShotMask = ShotMask Or 66
+        End Select
+        SetModeLights
+    End Sub
+
+    ' Called when the 10 second timer runs down
+    Public Sub MartellTimer: CompletedShots = 0: End Sub
 
 End Class
 
@@ -3226,6 +3508,13 @@ Sub setEBLight
     End If
 End Sub
 
+Sub OpenTopGates: topgatel.open = True: topgater.open = True: Exit Sub
+Sub CloseTopGates
+    topgater.open = False
+    If bEBisLit or bMysteryLit Then Exit Sub
+    topgatel.open = False
+End Sub
+
 Sub ResetDropTargets
     ' PlaySoundAt "fx_resetdrop", Target010
     If Target7.IsDropped OR Target8.IsDropped OR Target9.IsDropped Then
@@ -3298,9 +3587,12 @@ Sub SetModeLights
         End If
     Next
 
+    If HouseBattle1 > 0 Then House(CurrentPlayer).BattleState(HouseBattle1).SetBattleLights
+    If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).SetBattleLights
+
     For i = 1 to 7
+        If ModeLightState(i,0) < 2 Then HouseShield(i).TimerEnabled = False Else HouseShield(i).TimerEnabled = True
         HouseShield(i).TimerInterval = 100
-        HouseShield(i).TimerEnabled = True
         HouseShield(i).UserValue = 1
     Next
 End Sub
@@ -3660,7 +3952,7 @@ End Sub
 Sub LOrbitSW30_Hit
     If Tilted then Exit Sub
     AddScore 1000
-    House(CurrentPlayer).RegisterHit(Greyjoy)
+    If LastSwitchHit <> "ROrbitsw31" Then House(CurrentPlayer).RegisterHit(Greyjoy)
     LastSwitchHit = "LOrbitSW30"
 End Sub
 
@@ -3686,7 +3978,7 @@ Sub ROrbitsw31_Hit
     If Tilted then Exit Sub
     If LastSwitchHit <> "swPlungerRest" Then 
         AddScore 1000
-        House(CurrentPlayer).RegisterHit(Martell)
+        If LastSwitchHit <> "LOrbitsw30" Then House(CurrentPlayer).RegisterHit(Martell)
     End If
     LastSwitchHit = "ROrbitsw31"
 End Sub
@@ -4061,6 +4353,71 @@ Sub SetGameTimer(tmr,val)
     bGameTimersEnabled = True
 End Sub
 
+Sub MartellBattleTimer
+    Dim h
+    If HouseBattle2 = Martell Then h = HouseBattle2 else h = HouseBattle1
+    House(CurrentPlayer).BattleState(h).MartellTimer
+End Sub
+
+'*********************
+' HurryUp Support
+'*********************
+
+' Called every 200ms by the GameTimer to update the HurryUp value
+Sub HurryUpTimer
+    Dim lbl
+    HurryUpCounter = HurryUpCounter + 1
+    If HurryUpCounter < HurryUpGrace Then Exit Sub
+    If IsEmpty(HurryUpScene) Or HurryUpScene is Nothing Then
+        'Update regular DMD somehow. Not yet supported
+    Else
+        lbl = HurryUpScene.GetLabel("HurryUp")
+        If Not lbl is Nothing Then lbl.Text = FormatScore(HurryUpValue)
+    End If
+    HurryUpValue = HurryUpValue - HurryUpChange
+    If HurryUpValue <= 0 Then
+        HurryUpValue = 0
+        EndHurryUp
+    Else
+        SetGameTimer tmrHurryUp,2
+    End If
+End Sub
+
+' Start a HurryUp
+'  value: Starting value of HurryUp
+'  scene: A FlexDMD scene containing a Label named "HurryUp". The text of the label will be
+'         updated every HurryUp period (200ms)
+'  grace: Grace period in 200ms ticks. Value will start declining after this many ticks have elapsed
+'
+' HurryUpChange value calculated by watching change value of numerous Hurry Ups on real GoT tables. Ratio of change to original value was always the same
+' The real GoT table sometimes introduces variability to the change value (e.g  alternating between +10K and -10K from base value) but we're not
+' going to bother
+Sub StartHurryUp(value,scene,grace)
+    if bHurryUpActive Then
+        debug.print "HurryUp already active! Can't have two!"
+        Exit Sub
+    End If
+    Set HurryUpScene = scene
+    HurryUpGrace = grace
+    HurryUpValue = value
+    HurryUpCounter = 0
+    HurryUpChange = Int(HurryUpValue / 1033.32) * 10
+    bHurryUpActive = True
+    SetGameTimer tmrHurryUp,2
+End Sub
+
+' Called when the HurryUp runs down, or by another subroutine if the HurryUp has been scored
+' HurryUps can be frozen, so preserve the "frozen" flags
+Sub EndHurryUp
+    bHurryUpActive = False
+    TimerFlags(tmrHurryUp) = TimerFlags(tmrHurryUp) And 254
+    If IsEmpty(HurryUpScene) Or HurryUpScene is Nothing Then
+        'Update regular DMD somehow. Not yet supported
+    Else
+        lbl = HurryUpScene.GetLabel("HurryUp")
+        If Not lbl is Nothing Then lbl.Visible = False
+    End If
+End Sub
 
 Sub IncreaseWinterIsComing
     'TODO Handle Winter Is Coming increase (likely move inside House Class)
@@ -4221,12 +4578,6 @@ Sub LaunchBattleMode
         vpmTimer.AddTimer 5000, "ReleaseLockedBall 0"
     End If
 End Sub
-
-'TODO: End battle mode
-' - if a second battle mode is not still active then
-'    - set PlayerMode to 0
-'    - change song
-' - Show summary screen with points earned for this battle
 
 '**************************
 ' Game-specific DMD support
@@ -4491,6 +4842,40 @@ Sub DMDPictoScene
     Else
         'TODO: Needs work, as default DMD display may have too big a font for 24 chars across
         DMD "",CL(0,PictoPops(BumperVals(0))(1) & " " &  PictoPops(BumperVals(1))(1) & " " & PictoPops(BumperVals(2))(1)),"",eNone,eNone,eNone,250,True,""
+    End If
+End Sub
+
+' Summarize Battle. 2 scenes - animation and then summary. Format:
+'
+'   Battle Objective
+'      SCORE             Combo X
+'    "COMPLETED"
+'
+' Scenes: Stark: Arya stabbing guy on floor
+
+' There's actually no standard for battle ending scenes. Needs further exploration
+Sub DMDBattleEndScene(house,score,combo,combotext)
+
+End Sub
+
+' Battle Mode Target Hit Scene. Layout Might be unique to Stark
+Sub DMDStarkBattleScene(house,num,score,line1,line2,just1,just2,sound)
+    Dim scene,j3,x1,x2
+    if bUseFlexDMD Then
+        j3 = just1 + 6  ' Put Score on the same side as Line1 text, but at the bottom
+        x1 = 2: x2 = 126
+        If just1 = FlexDMD_Align_TopRight Then x1=126:x2=2
+        scene = NewSceneWithVideo(HouseToString(house)&"hit","got-"&HouseToString(house)&"battlehit"&num)
+        scene.AddActor FlexDMD.NewLabel("score",FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbWhite, 0),score)
+        scene.AddActor FlexDMD.NewLabel("line1", FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0),line1)
+        scene.AddActor FlexDMD.NewLabel("line2", FlexDMD.NewFont("FlexDMD.Resources.udmd-f3by5.fnt", vbWhite, vbWhite, 0),line2)
+        scene.GetLabel("score").SetAlignedPosition x1,30,j3
+        scene.GetLabel("line1").SetAlignedPosition x1,5,j3
+        scene.GetLabel("line2").SetAlignedPosition x2,30,j3
+        DMDEnqueueScene scene,1,1000,2000,1000,sound
+    Else
+        DisplayDMDText line1,score,2000
+        PlaySoundVol sound,VolDef
     End If
 End Sub
 
