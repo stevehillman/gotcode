@@ -2178,7 +2178,7 @@ Dim TimerTimestamp(30)  ' Each timer's end timestamp
 Dim TimerSubroutine     ' Names of subroutines to call when each timer's time expires
 Dim TimerReference(30)  ' Object references to above subroutines (built at table start)
 Const MaxTimers = 7     ' Total number of defined timers. There MUST be a corresponding subroutine for each
-TimerSubroutine = Array("","UpdateChooseBattle","LaunchBattleMode","BattleModeTimer1","BattleModeTimer1","MartellBattleTimer","HurryUpTimer"."ResetComboMultipliers")
+TimerSubroutine = Array("","UpdateChooseBattle","LaunchBattleMode","BattleModeTimer1","BattleModeTimer2","MartellBattleTimer","HurryUpTimer","ResetComboMultipliers")
 Const tmrUpdateChooseBattle = 1
 Const tmrChooseBattle = 2
 Const tmrBattleMode1 = 3
@@ -2307,6 +2307,7 @@ Class cHouse
             bSaid(i) = False
             QualifyCount(i) = 0
             Set MyBattleState(i) = New cBattleState
+            MyBattleState(i).House = i
 		Next
         HouseSelected = 0
         QualifyValue = 100000
@@ -2329,7 +2330,7 @@ Class cHouse
 
     Public Property Get Qualified(h) : Qualified = bQualified(h) : End Property
     Public Property Get Completed(h) : Completed = bCompleted(h) : End Property
-    Public Property Get BattleState(h) : BattleState = MyBattleState(h) : End Property
+    Public Property Get BattleState(h) : Set BattleState = MyBattleState(h) : End Property
 
     ' Say the house name. Include "house " if not said before
     Public Sub Say(h)
@@ -2454,9 +2455,9 @@ Class cHouse
         AddScore 30
         If PlayerMode > 0 Then
             If HouseBattle1 = Lannister Then
-                BattleState(HouseBattle1).RegisterGoldHit n
+                MyBattleState(HouseBattle1).RegisterGoldHit n
             ElseIf HouseBattle2 = Lannister Then
-                BattleState(HouseBattle2).RegisterGoldHit n
+                MyBattleState(HouseBattle2).RegisterGoldHit n
             End If
         Else
             ' Regular mode
@@ -2532,7 +2533,7 @@ Class cBattleState
 	Public Property Get House : House = MyHouse : End Property
 
     Public Sub SetBattleLights
-        Dim mask
+        Dim mask,i
         ' Load the starting state mask
         mask = ModeLightPattern(MyHouse)
         ' Adjust based on house and state
@@ -2566,9 +2567,9 @@ Class cBattleState
         End Select
 
         For i = 1 to 7
-            If mask & (2^i) > 0 Then 
-                ModeLightState(i,(ModeLightState(i,0))) = HouseColor(HouseBattle1) 
+            If mask And (2^i) > 0 Then 
                 ModeLightState(i,0) = ModeLightState(i,0) + 1
+                ModeLightState(i,(ModeLightState(i,0))) = HouseColor(HouseBattle1) 
             End If
         Next
     End Sub
@@ -2827,8 +2828,7 @@ Class cBattleState
             HouseBattle2 = 0
         End If
 
-        If HouseBattle1 = 0 And HouseBattle2 = 0 Then 
-            PlayerMode = 0
+        If HouseBattle1 = 0 And HouseBattle2 = 0 Then  PlayerMode = 0 'TODO: Anything else needed to end battle mode?
         If bMultiBallMode = False Then PlaySong "got-track1"
         SetPlayfieldLights
         ' TODO: Maybe need to modify Scene to remove one or both battle scenes
@@ -3653,7 +3653,7 @@ Sub li141_Timer
     Me.TimerEnabled = False
     If ModeLightState(1,uv) > 0 Then SetLightColor Me,ModeLightState(1,uv),1 Else Me.state=0
     uv = uv + 1
-    If uv >= ModeLightState(1,0) Then uv = 1
+    If uv > ModeLightState(1,0) Then uv = 1
     Me.UserValue = uv
     Me.TimerEnabled = True
 End Sub
@@ -3664,7 +3664,7 @@ Sub li26_Timer
     Me.TimerEnabled = False
     If ModeLightState(2,uv) > 0 Then SetLightColor Me,ModeLightState(2,uv),1 Else Me.state=0
     uv = uv + 1
-    If uv >= ModeTotalLightStates Then uv = 1
+    If uv > ModeLightState(1,0) Then uv = 1
     Me.UserValue = uv
     Me.TimerEnabled = True
 End Sub
@@ -3675,7 +3675,7 @@ Sub li114_Timer
     Me.TimerEnabled = False
     If ModeLightState(3,uv) > 0 Then SetLightColor Me,ModeLightState(3,uv),1 Else Me.state=0
     uv = uv + 1
-    If uv >= ModeTotalLightStates Then uv = 0
+    If uv > ModeLightState(1,0) Then uv = 1
     Me.UserValue = uv
     Me.TimerEnabled = True
 End Sub
@@ -3686,7 +3686,7 @@ Sub li86_Timer
     Me.TimerEnabled = False
     If ModeLightState(4,uv) > 0 Then SetLightColor Me,ModeLightState(4,uv),1 Else Me.state=0
     uv = uv + 1
-    If uv >= ModeTotalLightStates Then uv = 0
+    If uv > ModeLightState(1,0) Then uv = 1
     Me.UserValue = uv
     Me.TimerEnabled = True
 End Sub
@@ -3697,7 +3697,7 @@ Sub li77_Timer
     Me.TimerEnabled = False
     If ModeLightState(5,uv) > 0 Then SetLightColor Me,ModeLightState(5,uv),1 Else Me.state=0
     uv = uv + 1
-    If uv >= ModeTotalLightStates Then uv = 0
+    If uv > ModeLightState(1,0) Then uv = 1
     Me.UserValue = uv
     Me.TimerEnabled = True
 End Sub
@@ -3708,7 +3708,7 @@ Sub li156_Timer
     Me.TimerEnabled = False
     If ModeLightState(6,uv) > 0 Then SetLightColor Me,ModeLightState(6,uv),1 Else Me.state=0
     uv = uv + 1
-    If uv >= ModeTotalLightStates Then uv = 0
+    If uv > ModeLightState(1,0) Then uv = 1
     Me.UserValue = uv
     Me.TimerEnabled = True
 End Sub
@@ -3719,7 +3719,7 @@ Sub li98_Timer
     Me.TimerEnabled = False
     If ModeLightState(7,uv) > 0 Then SetLightColor Me,ModeLightState(7,uv),1 Else Me.state=0
     uv = uv + 1
-    If uv >= ModeTotalLightStates Then uv = 0
+    If uv > ModeLightState(1,0) Then uv = 1
     Me.UserValue = uv
     Me.TimerEnabled = True
 End Sub
@@ -4440,6 +4440,15 @@ Sub MartellBattleTimer
     Dim h
     If HouseBattle2 = Martell Then h = HouseBattle2 else h = HouseBattle1
     House(CurrentPlayer).BattleState(h).MartellTimer
+End Sub
+
+Sub BattleModeTimer1
+    House(CurrentPlayer).BattleState(HouseBattle1).BattleTimerExpired
+End Sub
+
+Sub BattleModeTimer2
+    House(CurrentPlayer).BattleState(HouseBattle2).BattleTimerExpired
+
 End Sub
 
 '*********************
