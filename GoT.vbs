@@ -2349,10 +2349,13 @@ Class cHouse
     ' Set the shield/sigil lights to the houses' current state
     Public Sub ResetLights
         If HouseSelected = 0 Then Exit Sub       ' Do nothing if we're still in Choose House mode
-        If PlayerMode = 1 Then SetModeLights : Exit Sub
+        SetModeLights   ' If in regular mode, this disables the timers on the shield lights
+        If PlayerMode = 1 Then  Exit Sub
         Dim i
         Dim j
         j=0
+        'TODO: "iced-over" shields track WiC progress, not house-qualified progress. I.e. A shield is only
+        'TODO: iced over until the WiC has been completed on it
         For i = Stark to Targaryen
             If bCompleted(i) Then 
                 SetLightColor HouseSigil(i),HouseColor(HouseSelected),1
@@ -2448,18 +2451,20 @@ Class cHouse
             If HouseBattle2 > 0 Then MyBattleState(HouseBattle2).RegisterHit(h)
             ' TODO: Add support for other modes (HOTK, IT)
         End If
+        
+        IncreaseComboMultiplier(h)
     End Sub
 
     Public Sub GoldHit(n)
         Dim i,j
         AddScore 30
-        If PlayerMode > 0 Then
+        If PlayerMode = 1 Then
             If HouseBattle1 = Lannister Then
                 MyBattleState(HouseBattle1).RegisterGoldHit n
             ElseIf HouseBattle2 = Lannister Then
                 MyBattleState(HouseBattle2).RegisterGoldHit n
             End If
-        Else
+        ElseIf PlayerMode = 0
             ' Regular mode
             If HouseSelected = Lannister Then AddGold 22 Else AddGold 15
             If Not bGoldTargets(n) Then
@@ -2567,7 +2572,7 @@ Class cBattleState
         End Select
 
         For i = 1 to 7
-            If mask And (2^i) > 0 Then 
+            If (mask And 2^i) > 0 Then 
                 ModeLightState(i,0) = ModeLightState(i,0) + 1
                 ModeLightState(i,(ModeLightState(i,0))) = HouseColor(HouseBattle1) 
             End If
@@ -2631,7 +2636,7 @@ Class cBattleState
 
             Case Baratheon
                 If State = 2 Then
-                    If ShotMask And 2^h > 0 Then
+                    If (ShotMask And 2^h) > 0 Then
                         ShotMask = ShotMask And (2^h Xor 255)
                         ' TODO: Play a scene when Shot needed for State 3 is made?
                         ' TODO: how much does a lit shot score in Baratheon battle mode?
@@ -2644,7 +2649,7 @@ Class cBattleState
                 End If
 
             Case Lannister
-                If ShotMask And 2^h > 0 Then
+                If (ShotMask And 2^h) > 0 Then
                     ShotMask = ShotMask And (2^h Xor 255)
                     LannisterGreyjoyMask = LannisterGreyjoyMask Or 2^h
                     ' TODO: Does making a lit shot score value during Lannister, or just increase HouseValue? 
@@ -2779,7 +2784,6 @@ Class cBattleState
                 ' Level 3: Light 3 random shots as hurry-ups (mode ends if hurry-ups timeout?)
                 ' State 1: Shoot all 3 hurry-ups. Shooting Dragon spots a hurry-up
                 ' State 2: Shoot Dragon hurry-up
-                ' Repeat States 1 & 2 for 4 waves. After 4th wave, mode is complete!
                 ' Timer on Level 3: If you take too long, you are attacked with “DRAGON FIRE”, and wave restarts with new randomly chosen shots (State 1, but same Wave)
                 ' Greyjoy players have a Hurry-Up to hit any target to start State 1 on each Level
         End Select
@@ -2841,6 +2845,11 @@ Class cBattleState
         Else 
             EndBattleMode
         End if
+    End Sub
+
+    Public Sub EndHurryUp
+        EndBattleMode
+        ' TODO: Remove Battle-mode HurryUp Scene
     End Sub
 
     ' Some battles involve the spinner
@@ -3194,13 +3203,15 @@ Sub EndOfBall()
     ' the first ball has been lost. From this point on no new players can join in
     bOnTheFirstBall = False
 	
-    'TODO: Stop any playfield timers
-
+    StopGameTimers
+    EndHurryUp 
+    PlayerMode = 0
+    
     ' only process any of this if the table is not tilted.  (the tilt recovery
     ' mechanism will handle any extra balls or end of game)
 
     If(Tilted = False)Then
-
+        SetPlayfieldLights
         ' Count the bonus. This table uses several bonus
         DMDflush
 
@@ -3664,7 +3675,7 @@ Sub li26_Timer
     Me.TimerEnabled = False
     If ModeLightState(2,uv) > 0 Then SetLightColor Me,ModeLightState(2,uv),1 Else Me.state=0
     uv = uv + 1
-    If uv > ModeLightState(1,0) Then uv = 1
+    If uv > ModeLightState(2,0) Then uv = 1
     Me.UserValue = uv
     Me.TimerEnabled = True
 End Sub
@@ -3675,7 +3686,7 @@ Sub li114_Timer
     Me.TimerEnabled = False
     If ModeLightState(3,uv) > 0 Then SetLightColor Me,ModeLightState(3,uv),1 Else Me.state=0
     uv = uv + 1
-    If uv > ModeLightState(1,0) Then uv = 1
+    If uv > ModeLightState(3,0) Then uv = 1
     Me.UserValue = uv
     Me.TimerEnabled = True
 End Sub
@@ -3686,7 +3697,7 @@ Sub li86_Timer
     Me.TimerEnabled = False
     If ModeLightState(4,uv) > 0 Then SetLightColor Me,ModeLightState(4,uv),1 Else Me.state=0
     uv = uv + 1
-    If uv > ModeLightState(1,0) Then uv = 1
+    If uv > ModeLightState(4,0) Then uv = 1
     Me.UserValue = uv
     Me.TimerEnabled = True
 End Sub
@@ -3697,7 +3708,7 @@ Sub li77_Timer
     Me.TimerEnabled = False
     If ModeLightState(5,uv) > 0 Then SetLightColor Me,ModeLightState(5,uv),1 Else Me.state=0
     uv = uv + 1
-    If uv > ModeLightState(1,0) Then uv = 1
+    If uv > ModeLightState(5,0) Then uv = 1
     Me.UserValue = uv
     Me.TimerEnabled = True
 End Sub
@@ -3708,7 +3719,7 @@ Sub li156_Timer
     Me.TimerEnabled = False
     If ModeLightState(6,uv) > 0 Then SetLightColor Me,ModeLightState(6,uv),1 Else Me.state=0
     uv = uv + 1
-    If uv > ModeLightState(1,0) Then uv = 1
+    If uv > ModeLightState(6,0) Then uv = 1
     Me.UserValue = uv
     Me.TimerEnabled = True
 End Sub
@@ -3719,7 +3730,7 @@ Sub li98_Timer
     Me.TimerEnabled = False
     If ModeLightState(7,uv) > 0 Then SetLightColor Me,ModeLightState(7,uv),1 Else Me.state=0
     uv = uv + 1
-    If uv > ModeLightState(1,0) Then uv = 1
+    If uv > ModeLightState(7,0) Then uv = 1
     Me.UserValue = uv
     Me.TimerEnabled = True
 End Sub
@@ -3755,17 +3766,51 @@ Sub IncreaseBonusMultiplier(bx)
     'TODO: Play increase bonus animation (and sound?)
 End Sub
 
+' ComboMultiplier increaser
+' The logic is rather complicated. In general, a hit on one shot will increase the
+' multiplier on the other shots to this shot's multiplier + 1. Ramps affect all other
+' shots. L orbit affects only the next 2 adjacent shots. R orbit affects 3 middle shots.
+' Dragon affects ALL shots (including itself) but the timer is half the length.
+' In addition, it looks like a hit on a shot that's at 1x but is *different* from the
+' the last shot will increase the multipliers on the other shots rather than just giving you
+' one more than 2x
+Dim LastComboHit
 Sub IncreaseComboMultiplier(h)
-    Dim i,c,hit
-    hit = False
+    Dim i,c,x,tmr,mask,max
+    tmr = 150           ' Default combo rundown timer
     c = ComboLaneMap(h)
+    max = 5             ' TODO: When can the Combo multiplier go to 6?
+    If max > 3+SwordsCollected Then max = 3+SwordsCollected
+    If c = 0 Then x = ComboMultiplier(1) Else x = ComboMultiplier(c)
+    x = x + 1
+    if x > max Then x = max ' TODO: When can the Combo multiplier go to 6?
+    Select Case c
+        Case 0          ' Used for Inlane hit increases
+            mask = 62   ' Increase x of all shots (TODO: to highest or lowest of all?)
+        Case 1          ' Left orbit
+            mask = 12   ' Turn on shots 2 & 3
+        Case 2          ' Dragon shot
+            mask = 63
+            tmr = 80
+        Case 3          ' L ramp
+            mask = 54
+        Case 4          ' R ramp
+            mask = 46
+        Case 5          ' Right orbit
+            mask = 28
+    End Select
     For i = 1 to 5
-        If i <> c and ComboMultiplier(i) < 5 Then 
-            ComboMultiplier(i) = ComboMultiplier(i) + 1
-            hit = True
-        End if
+        If (mask And 2^i) > Then 
+            If c = LastComboHit or x > ComboMultiplier(i) Then
+                ComboMultiplier(i) = x
+            ElseIf ComboMultiplier(i) < max Then
+                ComboMultiplier(i) = ComboMultiplier(i) + 1
+            End If
+        Else
+            ComboMultiplier(i) = 1
     Next
-    If hit Then SetGameTimer tmrComboMultplier,150   ' 15 second combo rundown timer - is that right?
+    LastComboHit = c
+    SetGameTimer tmrComboMultplier,tmr
     SetComboLights
 End Sub
 
@@ -3907,10 +3952,10 @@ Sub DoTargetsDropped
     ' In case two targets were hit at once, stop the sound for the first target before playing the one for the second
     StopSound "gotfx-loltarget-hit" & DroppedTargets
     DroppedTargets = DroppedTargets + 1
-    If PlayerMode > 0 Then
+    If PlayerMode = 1 Then
         If HouseBattle1 > 0 Then House(CurrentPlayer).BattleState(HouseBattle1).RegisterTargetHit 0
         If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).RegisterTargetHit 0
-    Else ' Only increase Spinner Value and play target dropped sound in regular play mode
+    ElseIf PlayerMode = 0 ' Only increase Spinner Value and play target dropped sound in regular play mode
         PlaySoundVol "gotfx-loltarget-hit" & DroppedTargets, VolDef
         SpinnerValue = SpinnerValue + (SpinnerAddValue * RndNbr(10) * SpinnerLevel)
     End If
@@ -3951,7 +3996,7 @@ Sub doWFTargetHit(t)
     if bWildfireTargets(t) then Exit Sub
     bWildfireTargets(t) = True
 
-    If BWMultiballsCompleted = 0 or bWildfireTargets(t1) Then LightLock
+    If (BWMultiballsCompleted = 0 or bWildfireTargets(t1)) And Not bMultiBallMode Then LightLock 'TODO: Should we be able to light lock during a mode?
     if bWildfireTargets(t1) Then
         'Target bank completed
         'Light both lights for 1 second, then shut them off
@@ -4436,6 +4481,10 @@ Sub SetGameTimer(tmr,val)
     bGameTimersEnabled = True
 End Sub
 
+Sub StopGameTimers
+    For i = 1 to MaxTimers:TimerFlags(i) = TimerFlags(i) And 254: Next
+End Sub
+
 Sub MartellBattleTimer
     Dim h
     If HouseBattle2 = Martell Then h = HouseBattle2 else h = HouseBattle1
@@ -4509,6 +4558,9 @@ Sub EndHurryUp
         lbl = HurryUpScene.GetLabel("HurryUp")
         If Not lbl is Nothing Then lbl.Visible = False
     End If
+    If PlayerMode = 1 Then
+        If HouseBattle1 > 0 Then House(CurrentPlayer).BattleState(HouseBattle1).EndHurryUp
+        If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).EndHurryUp 
 End Sub
 
 Sub IncreaseWinterIsComing
@@ -5033,3 +5085,4 @@ Class PinupNULL	' Dummy Pinup class so I dont have to keep adding if cases when 
 	Public Sub playlistplayex(screen, dir, fname, volume, priority)
 	End Sub 
 End Class 
+
