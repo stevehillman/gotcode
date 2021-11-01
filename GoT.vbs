@@ -2168,6 +2168,7 @@ Dim CompletedHouses     ' Number of completed houses - determines max spinner le
 Dim TotalGold           ' Total gold collected in the game
 Dim CurrentGold         ' Current gold balance
 Dim TotalWildfire
+Dim SwordsCollected
 Dim bGoldTargets(5)
 
 ' Support for game timers
@@ -2257,6 +2258,7 @@ Class cPState
     Dim myTotalGold
     Dim myCurrentGold
     Dim myTotalWildfire
+    Dim mySwordsCollected
 
     Public Sub Save
         Dim i
@@ -2271,6 +2273,7 @@ Class cPState
         myTotalGold = TotalGold
         myCurrentGold = CurrentGold
         myTotalWildfire = TotalWildfire
+        mySwordsCollected = SwordsCollected
         For i = 0 to 5:myGoldTargets(i) = bGoldTargets(i):Next
     End Sub
 
@@ -2283,6 +2286,10 @@ Class cPState
         bLockIsLit = myLockIsLit
         BWMultiballsCompleted = myBWMultiballsCompleted
         BallsInLock = myBallsInLock
+        SwordsCollected = mySwordsCollected
+        TotalGold = myTotalGold
+        TotalWildfire = myTotalWildfire
+        CurrentGold = myCurrentGold
         For i = 0 to 5:bGoldTargets(i) = myGoldTargets(i):Next
 
     End Sub
@@ -2464,7 +2471,7 @@ Class cHouse
             ElseIf HouseBattle2 = Lannister Then
                 MyBattleState(HouseBattle2).RegisterGoldHit n
             End If
-        ElseIf PlayerMode = 0
+        ElseIf PlayerMode = 0 Then
             ' Regular mode
             If HouseSelected = Lannister Then AddGold 22 Else AddGold 15
             If Not bGoldTargets(n) Then
@@ -2657,6 +2664,8 @@ Class cBattleState
                     CompletedShots = CompletedShots + 1
                     If (SelectedHouse = GreyJoy And LannisterGreyjoyMask = 218) or (SelectedHouse <> Greyjoy And CompletedShots >= 5) Then
                         DoCompleteMode 0
+                    Else
+                        SetModeLights
                     End If
                 End If
             
@@ -2669,6 +2678,7 @@ Class cBattleState
                     Else
                         ' TODO: Play scene for this Grejoy shot?
                         ' TODO: Add score - how much?
+                        SetModeLights
                         ' Reset mode timer
                         If MyHouse = HouseBattle2 Then SetGameTimer tmrBattleMode2,150 Else SetGameTimer tmrBattleMode1,150
                     End If
@@ -2717,7 +2727,7 @@ Class cBattleState
                     End If
                 End if
                 If State = 2 And (h = Stark or h = Lannister) Then
-                    huvalue = HurryUpValue(MyHurryUps(0))
+                    huvalue = HurryUpValue
                     If huvalue > 0 Then
                         'Hurry-up hit in time
                         huvalue = huvalue * ComboMultiplier(ComboLaneMap(h)) * PlayfieldMultiplierVal
@@ -2736,7 +2746,7 @@ Class cBattleState
                     Case 3,6
                         If h = Targaryen Then
                             hit=true:done=true
-                            huvalue = HurryUpValue(MyHurryUps(0))
+                            huvalue = HurryUpValue
                             ShotMask = 10
                         End If
                     Case 4
@@ -2755,7 +2765,7 @@ Class cBattleState
                     Case 8
                         If h = Targaryen Then
                             hit=true:done=true
-                            huvalue = HurryUpValue(MyHurryUps(0))
+                            huvalue = HurryUpValue
                         End If
                 End Select
                 If hit Then
@@ -2948,6 +2958,7 @@ Sub ResetForNewGame()
     TotalGold = 0
     CurrentGold = 0
     TotalWildfire = 0
+    SwordsCollected = 0
     bLockIsLit = False
     BWMultiballsCompleted = 0
     bWildfireTargets(0) = False:bWildfireTargets(1) = False
@@ -3539,18 +3550,18 @@ End Sub
 
 ' We'll use the timer on each lit combo light to gradually speed up the flashing
 Sub SetComboLights
-    Dim i,stat
-    stat = 0
+    Dim i,stat,x
+    stat = 0:x=False
     For i = 1 to 5
-        If ComboMultiplier(i) > 1 Then 
-            stat=2
-            ComboLights(i).TimerEnabled = True
-            ComboLights(i).TimerInterval = 1000
-        Else
-            ComboLights(i).TimerEnabled = False
-        End If
+        If ComboMultiplier(i) > 1 Then stat=2:x=True Else stat=0
         SetLightColor ComboLights(i),red,stat
     Next
+    If x Then
+        ComboLights(1).TimerEnabled = True
+        ComboLights(1).TimerInterval = 1000
+    Else
+        ComboLights(1).TimerEnabled = False
+    End if
 End Sub
 
 Sub setEBLight
@@ -3800,7 +3811,7 @@ Sub IncreaseComboMultiplier(h)
             mask = 28
     End Select
     For i = 1 to 5
-        If (mask And 2^i) > Then 
+        If (mask And 2^i) > 0 Then 
             If c = LastComboHit or x > ComboMultiplier(i) Then
                 ComboMultiplier(i) = x
             ElseIf ComboMultiplier(i) < max Then
@@ -3808,6 +3819,7 @@ Sub IncreaseComboMultiplier(h)
             End If
         Else
             ComboMultiplier(i) = 1
+        End If
     Next
     LastComboHit = c
     SetGameTimer tmrComboMultplier,tmr
@@ -3955,7 +3967,7 @@ Sub DoTargetsDropped
     If PlayerMode = 1 Then
         If HouseBattle1 > 0 Then House(CurrentPlayer).BattleState(HouseBattle1).RegisterTargetHit 0
         If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).RegisterTargetHit 0
-    ElseIf PlayerMode = 0 ' Only increase Spinner Value and play target dropped sound in regular play mode
+    ElseIf PlayerMode = 0 Then ' Only increase Spinner Value and play target dropped sound in regular play mode
         PlaySoundVol "gotfx-loltarget-hit" & DroppedTargets, VolDef
         SpinnerValue = SpinnerValue + (SpinnerAddValue * RndNbr(10) * SpinnerLevel)
     End If
@@ -4079,8 +4091,9 @@ End Sub
 
 ' Left ramp switch
 Sub sw39_Hit
-    If Tilted then Exit Sub
+    If Tilted then Exit Sub 'TODO need to release locked ball if there is one
     AddScore 1000
+    debug.print "left ramp hit"
     House(CurrentPlayer).RegisterHit(Lannister)
     'TODO: This ramp shot kicks off lots of other actions too
     LastSwitchHit = "sw39"
@@ -4561,6 +4574,7 @@ Sub EndHurryUp
     If PlayerMode = 1 Then
         If HouseBattle1 > 0 Then House(CurrentPlayer).BattleState(HouseBattle1).EndHurryUp
         If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).EndHurryUp 
+    End if
 End Sub
 
 Sub IncreaseWinterIsComing
@@ -5086,3 +5100,6 @@ Class PinupNULL	' Dummy Pinup class so I dont have to keep adding if cases when 
 	End Sub 
 End Class 
 
+LockBall happens before ChooseBattle, and a new ball gets spit out
+Rename BattleClass's "House" method - clashes with House() array
+Comboflashes still arent' working right
