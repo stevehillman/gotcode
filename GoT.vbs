@@ -2203,10 +2203,12 @@ Dim PlayerState(4) ' Structure to save global player-specific variables across b
 ' Ball-specific variables (not saved across balls)
 Dim PlayfieldMultiplierVal
 Dim SpinnerValue
+Dim AccumulatedSpinnerValue ' Amount that has accumulated in the last 2 seconds
 Dim SpinnerLevel
 Dim DroppedTargets      ' Number of targets dropped
 Dim ComboMultiplier(5)
 Dim bWildfireLit
+Dim bPlayfieldValidated
 Dim bMysteryLit
 Dim bSwordLit           ' TODO: Saved across balls?
 Dim HouseBattle1        ' When in battle, the primary (top) House
@@ -2314,7 +2316,7 @@ Class cHouse
             bSaid(i) = False
             QualifyCount(i) = 0
             Set MyBattleState(i) = New cBattleState
-            MyBattleState(i).House = i
+            MyBattleState(i).SetHouse = i
 		Next
         HouseSelected = 0
         QualifyValue = 100000
@@ -2401,8 +2403,10 @@ Class cHouse
             Dim cbtimer: cbtimer=1000
             'TODO: Do Winter-Is-Coming check before ChooseBattle, so we can delay CB
             ' for WiC animation if needed
+
             if bBattleReady and h = Lannister Then    ' Kick off House Battle selection
                 PlayerMode = -2
+                FreezeAllGameTimers
                 If BallsInLock < 2 And bLockIsLit Then ' Multiball not about to start, lock the ball first
                     vpmtimer.addtimer 400, "LockBall '"     ' Slight delay to give ball time to settle
                     cbtimer = 1400
@@ -2539,10 +2543,10 @@ Class cBattleState
         HouseValueIncrement = 0
     End Sub
 
-    Public Property Let House(h) 
+    Public Property Let SetHouse(h) 
         MyHouse = h
     End Property
-	Public Property Get House : House = MyHouse : End Property
+	Public Property Get GetHouse : GetHouse = MyHouse : End Property
 
     Public Sub SetBattleLights
         Dim mask,i
@@ -2843,7 +2847,7 @@ Class cBattleState
         End If
 
         If HouseBattle1 = 0 And HouseBattle2 = 0 Then  PlayerMode = 0 'TODO: Anything else needed to end battle mode?
-        If bMultiBallMode = False Then PlaySong "got-track1"
+        PlayModeSong
         SetPlayfieldLights
         ' TODO: Maybe need to modify Scene to remove one or both battle scenes
     End Sub
@@ -3043,7 +3047,7 @@ Sub ResetForNewPlayerBall()
         SelectedHouse = House(CurrentPlayer).MyHouse
     End If
     SetPlayfieldLights
-    PlaySong("got-track1")
+    PlayModeSong
 End Sub
 
 Sub ResetNewBallVariables() 'reset variables for a new ball or player
@@ -3057,9 +3061,12 @@ Sub ResetNewBallVariables() 'reset variables for a new ball or player
     pfxtimer.Enabled = 0
     PlayfieldMultiplierVal = 1
     SpinnerLevel = 1
+    AccumulatedSpinnerValue = 0
     SpinnerValue = 500 + (BallsPerGame-BallsRemaining(CurrentPlayer))*2000 ' Appears to start at 2500 on ball 1 and 4500 on ball 2
     UpdatePFXLights(PlayfieldMultiplierVal)
     bWildfireLit = False
+    bPlayfieldValidated = False
+    bBattleCreateBall = False
 End Sub
 
 Sub SetPlayfieldLights
@@ -3111,6 +3118,10 @@ Sub AddScore(points)
     ' if there is a need for a ball saver, then start off a timer
     ' only start if it is ready, and it is currently not running, else it will reset the time period
     ResetBallSearch
+    'TODO: GoT allows you to hit certain targets without validating the playfield and starting timers
+    ThawAllGameTimers
+    bPlayfieldValidated = True
+    PlayModeSong
     If (Tilted = False) Then
         If(bBallSaverReady = True)AND(BallSaverTime <> 0)And(bBallSaverActive = False)Then
             EnableBallSaver BallSaverTime
@@ -3453,6 +3464,26 @@ Sub LockWallReset
     LockWall.collidable = True
 End Sub
 
+' Plays the right song for the current situation
+Sub PlayModeSong
+    Dim mysong,i
+    mysong = ""
+    If bPlayfieldValidated = False Then
+        mysong = "got-track-playfieldunvalidated"
+    ElseIf PlayerMode = -2 Then
+        mysong = "got-track-choosebattle"
+    ElseIf Playermode = 1 Then
+        mysong = "got-track5"
+    ElseIf bMultiBallMode Then
+        mysong = "got-track4"
+    EndIf
+
+    If mysong = "" Then
+        i = RndNbr(3)
+        mysong = "got-track"&i
+    EndIf
+    PlaySong mysong
+End Sub
 
 
 ' Add extra balls to the table with autoplunger
@@ -3497,9 +3528,7 @@ End Sub
 Sub StopMBmodes
 ' TODO: Need to do anything here? E.g. reset lighting, restore pre-mb state?
     bBWMultiballActive = False
-    If PlayerMode = 0 Then
-        PlaySong "got-track1"
-    End If
+    PlayModeSong
 End Sub
 
 Sub RotateLaneLights(dir)
@@ -4085,7 +4114,8 @@ End Sub
 Sub LOrbitSW30_Hit
     If Tilted then Exit Sub
     AddScore 1000
-    If LastSwitchHit <> "ROrbitsw31" Then House(CurrentPlayer).RegisterHit(Greyjoy)
+    'If LastSwitchHit <> "ROrbitsw31" Then House(CurrentPlayer).RegisterHit(Greyjoy)
+    House(CurrentPlayer).RegisterHit(Greyjoy)
     LastSwitchHit = "LOrbitSW30"
 End Sub
 
@@ -4112,7 +4142,8 @@ Sub ROrbitsw31_Hit
     If Tilted then Exit Sub
     If LastSwitchHit <> "swPlungerRest" Then 
         AddScore 1000
-        If LastSwitchHit <> "LOrbitsw30" Then House(CurrentPlayer).RegisterHit(Martell)
+        'If LastSwitchHit <> "LOrbitsw30" Then House(CurrentPlayer).RegisterHit(Martell)
+        House(CurrentPlayer).RegisterHit(Martell)
     End If
     LastSwitchHit = "ROrbitsw31"
 End Sub
@@ -4175,10 +4206,23 @@ End Sub
 
 Sub GoldHit(n)
     If Tilted then Exit Sub
-    PlaySoundVol "gotfx-coins" & n+1,VolDef
+    PlaySoundVol "gotfx-goldcoin" & n+1,VolDef
     House(CurrentPlayer).GoldHit(n)
 End Sub
 
+Sub Spinner001_Spin
+    Dim spinval
+    spinval = SpinnerValue * (2^(SpinnerLevel-1))
+    AccumulatedSpinnerValue = AccumulatedSpinnerValue + spinval
+    Me.TimerEnabled = False
+    Me.TimerInterval = 1000
+    Me.TimerEnabled  = True
+    AddScore spinval
+    DMDSpinnerScene spinval
+    PlaySoundVol "gotfx-drum"&SpinnerLevel,VolDef
+End Sub
+
+Sub Spinner_Timer: AccumulatedSpinnerValue = 0: End Sub
 
 '**************
 'Bumper Hits
@@ -4387,6 +4431,7 @@ Sub ResetPictoPops
     Loop While BumperVals(0) = BumperVals(1) And BumperVals(0) = BumperVals(2)
 End Sub
 
+Dim bBattleCreateBall
 Sub LockBall
     Dim i
     BallsInLock = BallsInLock + 1
@@ -4399,14 +4444,17 @@ Sub LockBall
     If BallsInLock = 3 Then
         'Start BW multiball in 1 second - gives a chance to say 'ball locked'
         vpmtimer.addtimer 1000, "StartBWMultiball '"
-    Else
+    ElseIf PlayerMode = 0
         If RealBallsInLock > BallsInLock Then
             RealBallsInLock = RealBallsInLock - 1
             ReleaseLockedBall 0
         Else
             bAutoPlunger = True
+            bPlayfieldValidated = False
             CreateNewBall
         End If
+    Else
+        bBattleCreateBall = True
     End If
 
 End Sub
@@ -4420,7 +4468,7 @@ Sub StartBWMultiball
     BlinkActor scene.GetLabel("balllock"),0.1,12
     DMDEnqueueScene scene,0,2000,4000,500,"gotfx-blackwater-multiball-start"
     'PlaySoundVol "gotfx-blackwater-multiball-start",VolDef
-    PlaySong "got-track4"
+    PlayModeSong
     'TODO Trigger a light sequence
   	tmrBWmultiballRelease.Interval = 5000	' Long initial delay to give sequence time to complete
     tmrBWmultiballRelease.Enabled = True
@@ -4476,7 +4524,9 @@ Sub tmrGame_Timer
     if bGameTimersEnabled = False Then Exit Sub
     bGameTimersEnabled = False
     For i = 1 to MaxTimers
-        If (TimerFlags(i) AND 1) = 1 Then 
+        If (TimerFlags(i) AND 2) = 2 Then 
+            TimerTimestamp(i) = TimerTimestamp(i) + 1 ' "Frozen" timer - increase its expiry by 1 step
+        ElseIf (TimerFlags(i) AND 1) = 1 Then 
             bGameTimersEnabled = True
             If TimerTimestamp(i) <= GameTimeStamp Then
                 TimerFlags(i) = TimerFlags(i) AND 254   ' Set bit0 to 0: Disable timer
@@ -4484,7 +4534,6 @@ Sub tmrGame_Timer
                 Execute(TimerSubroutine(i))
             End If
         End if
-        If (TimerFlags(i) AND 2) = 2 Then TimerTimestamp(i) = TimerTimestamp(i) + 1 ' "Frozen" timer - increase its expiry by 1 step
     Next
 End Sub
 
@@ -4496,6 +4545,25 @@ End Sub
 
 Sub StopGameTimers
     For i = 1 to MaxTimers:TimerFlags(i) = TimerFlags(i) And 254: Next
+End Sub
+
+' Freeze all timers, including ball saver timers
+' This should only be called when no balls are in play - i.e. the only "live" ball is held somewhere
+Dim bAllGameTimersFrozen
+Sub FreezeAllGameTimers
+    Dim i
+    For i = 1 to MaxTimers
+        TimerFlags(i) = TimerFlags(i) Or 2
+    Next
+    bAllGameTimersFrozen = True
+End Sub
+
+Sub ThawAllGameTimers
+    Dim i
+    If bAllGameTimersFrozen = False Then Exit Sub
+    For i = 1 to MaxTimers
+        TimerFlags(i) = TimerFlags(i) And 253
+    Next
 End Sub
 
 Sub MartellBattleTimer
@@ -4652,7 +4720,7 @@ Sub StartChooseBattle
         
     ' Set up the update timer to update after instructions have been displayed for 1.5 seconds
     vpmTimer.AddTimer 1500, "UpdateChooseBattle() '"
-    PlaySong "got-track-choosebattle"
+    PlayModeSong
 End Sub
 
 ' UpdateChooseBattle
@@ -4707,7 +4775,7 @@ Sub LaunchBattleMode
         PlayerMode = 0 
         AddScore 0
         PlaySoundVol "gotfx-passfornow",VolDef
-        PlaySong "got-track1"
+        PlayModeSong
         If bLockIsLit Then 
             LockBall
         Else                        ' Lock isn't lit but we have a ball locked
@@ -4732,9 +4800,19 @@ Sub LaunchBattleMode
     ' TODO: Set up the rest of the Playfield lights - ChooseBattle cleared them all
     ' TODO: ScoreScene changes during a mode
 
-    PlaySong "got-track5"   ' guessing at the right song here
+    PlayModeSong
 
-    If bLockIsLit Then
+    If bBattleCreateBall Then   'LockBall has already run. Create the new ball now
+        bBattleCreateBall = False
+        If RealBallsInLock > BallsInLock Then
+            RealBallsInLock = RealBallsInLock - 1
+            ReleaseLockedBall 0
+        Else
+            bAutoPlunger = True
+            bPlayfieldValidated = False
+            CreateNewBall
+        End If
+    ElseIf bLockIsLit Then      ' Should be 3rd ball locked
         vpmTimer.AddTimer tmr, "LockBall '"
     Else                            ' Lock isn't lit but we have a ball locked
         vpmTimer.AddTimer tmr, "ReleaseLockedBall 0'"
@@ -5042,6 +5120,50 @@ Sub DMDStarkBattleScene(house,num,score,line1,line2,just1,just2,sound)
     End If
 End Sub
 
+Dim SpinScene
+Dim SpinNum
+Sub DMDSpinnerScene(spinval)
+    Dim suffix,x,y,locked
+    locked=False
+    If bUseFlexDMD Then
+        If IsEmpty(SpinScene) Then
+            SpinNum = 0
+            Set SpinScene = FlexDMD.NewGroup("spinner")
+        End If
+        If Not IsEmpty(DisplayingScene) Is SpinScene Then FlexDMD.LockRenderThread:locked=true
+        If spinval=AccumulatedSpinnerValue Then ' First spin this scene: clear the scene
+            SpinScene.RemoveAll
+            SpinScene.AddActor FlexDMD.NewLabel("level",FlexDMD.NewFont("FlexDMD.Resources.udmd-f3by5.fnt", vbWhite, vbWhite, 0),"")
+            SpinScene.AddActor FlexDMD.NewLabel("spin",FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", RGB(167, 165, 165), vbWhite, 0),"spinner")
+            SpinScene.AddActor FlexDMD.NewLabel("level",FlexDMD.NewFont("FlexDMD.Resources.udmd-f3by5.fnt", vbWhite, vbWhite, 0),"")
+            SpinScene.GetLabel("spin").SetAlignedPosition 64,16, FlexDMD_Align_Center
+        End If
+        
+        With SpinScene.GetLabel("level")
+            .Text = "level "&SpinnerLevel
+            .SetAlignedPosition 64,4, FlexDMD_Align_Center
+        End With
+        With SpinScene.GetLabel("value")
+            .Text = FormatScore(AccumulatedSpinnerValue)
+            .SetAlignedPosition 64,28, FlexDMD_Align_Center
+        End With
+        suffix="K":spinval = int(spinval/1000)
+        If spinval >= 1000000 Then suffix="M":spinval = int(spinval/1000)
+        SpinScene.AddActor FlexDMD.NewLabel("s"&SpinNum,FlexDMD.NewFont("FlexDMD.Resources.udmd-f3by5.fnt", vbWhite, vbWhite, 0),spinval&suffix)
+        x = RndNbr(100)+13
+        y = RndNbr(20) + 8
+        With SpinScene.GetLabel("s"&SpinNum)
+            .SetAlignedPosition x,y, FlexDMD_Align_BottomLeft
+            .AddAction SpinScene.GetLabel("s"&SpinNum).ActionFactory.MoveTo(x,0,0.4)
+        End With
+        SpinNum = SpinNum + 1
+        If locked Then FlexDMD.UnlockRenderThread:locked=False
+        DMDEnqueueScene SpinScene,2,500,2000,500,""
+    Else
+        DisplayDMDText FormatScore(AccumulatedSpinnerValue),spinval,100
+    End if
+End Sub
+
 Dim ScoreScene
 Sub DMDLocalScore
     Dim ComboFont,ScoreFont,i
@@ -5100,6 +5222,4 @@ Class PinupNULL	' Dummy Pinup class so I dont have to keep adding if cases when 
 	End Sub 
 End Class 
 
-LockBall happens before ChooseBattle, and a new ball gets spit out
-Rename BattleClass's "House" method - clashes with House() array
-Comboflashes still arent' working right
+'Comboflashes still arent' working right
