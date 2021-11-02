@@ -2855,7 +2855,7 @@ Class cBattleState
     ' Called by the timer when the mode timer has expired
     Public Sub BattleTimerExpired
         If MyHouse = Martell And State = 2 Then 
-            DoCompleteMode 
+            DoCompleteMode 0
         Else 
             EndBattleMode
         End if
@@ -3076,6 +3076,8 @@ Sub SetPlayfieldLights
     ElseIf PlayerMode = 0 Then
         If House(CurrentPlayer).MyHouse > 0 Then House(CurrentPlayer).ResetLights    ' Set Sigils and Shields for normal play
         SetGoldTargetLights
+    ElseIf PlayerMode = -1 Then 'ChooseHouse
+        FlashShields SelectedHouse,True
     End If
     SetLockLight
     SetOutlaneLights
@@ -3476,13 +3478,14 @@ Sub PlayModeSong
         mysong = "got-track5"
     ElseIf bMultiBallMode Then
         mysong = "got-track4"
-    EndIf
-
+    End If
+    debug.print "mysong: "&mysong
     If mysong = "" Then
+        If Song = "got-track1" Or Song = "got-track2" Or Song = "got-track3" Then Exit Sub
         i = RndNbr(3)
         mysong = "got-track"&i
-    EndIf
-    PlaySong mysong
+    End If
+    If Song <> mysong Then PlaySong mysong
 End Sub
 
 
@@ -3921,8 +3924,9 @@ Sub GameDoBallLaunched
         House(CurrentPlayer).MyHouse = SelectedHouse
         House(CurrentPlayer).ResetLights
         PlayerMode = 0
+        DMDFlush
         ' TODO: Display additional text about house chosen on ball launch
-        DMDScoreNow
+        DMDLocalScore
     End If
     If bBallSaved = False Then  PlaySoundVol "gotfx-balllaunch",VolDef
 End Sub
@@ -4444,7 +4448,7 @@ Sub LockBall
     If BallsInLock = 3 Then
         'Start BW multiball in 1 second - gives a chance to say 'ball locked'
         vpmtimer.addtimer 1000, "StartBWMultiball '"
-    ElseIf PlayerMode = 0
+    ElseIf PlayerMode = 0 Then
         If RealBallsInLock > BallsInLock Then
             RealBallsInLock = RealBallsInLock - 1
             ReleaseLockedBall 0
@@ -5123,19 +5127,22 @@ End Sub
 Dim SpinScene
 Dim SpinNum
 Sub DMDSpinnerScene(spinval)
-    Dim suffix,x,y,locked
+    Dim suffix,x,y,locked,tinyfont
     locked=False
     If bUseFlexDMD Then
+        Set tinyfont = FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0)
         If IsEmpty(SpinScene) Then
             SpinNum = 0
             Set SpinScene = FlexDMD.NewGroup("spinner")
         End If
-        If Not IsEmpty(DisplayingScene) Is SpinScene Then FlexDMD.LockRenderThread:locked=true
+        If Not IsEmpty(DisplayingScene) Then
+            If DisplayingScene Is SpinScene Then FlexDMD.LockRenderThread:locked=true
+        End If
         If spinval=AccumulatedSpinnerValue Then ' First spin this scene: clear the scene
             SpinScene.RemoveAll
-            SpinScene.AddActor FlexDMD.NewLabel("level",FlexDMD.NewFont("FlexDMD.Resources.udmd-f3by5.fnt", vbWhite, vbWhite, 0),"")
-            SpinScene.AddActor FlexDMD.NewLabel("spin",FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", RGB(167, 165, 165), vbWhite, 0),"spinner")
-            SpinScene.AddActor FlexDMD.NewLabel("level",FlexDMD.NewFont("FlexDMD.Resources.udmd-f3by5.fnt", vbWhite, vbWhite, 0),"")
+            SpinScene.AddActor FlexDMD.NewLabel("level",tinyfont,"0")
+            SpinScene.AddActor FlexDMD.NewLabel("spin", FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", RGB(167, 165, 165), vbWhite, 0),"spinner")
+            SpinScene.AddActor FlexDMD.NewLabel("value",tinyfont,"0")
             SpinScene.GetLabel("spin").SetAlignedPosition 64,16, FlexDMD_Align_Center
         End If
         
@@ -5149,7 +5156,7 @@ Sub DMDSpinnerScene(spinval)
         End With
         suffix="K":spinval = int(spinval/1000)
         If spinval >= 1000000 Then suffix="M":spinval = int(spinval/1000)
-        SpinScene.AddActor FlexDMD.NewLabel("s"&SpinNum,FlexDMD.NewFont("FlexDMD.Resources.udmd-f3by5.fnt", vbWhite, vbWhite, 0),spinval&suffix)
+        SpinScene.AddActor FlexDMD.NewLabel("s"&SpinNum,tinyfont,spinval&suffix)
         x = RndNbr(100)+13
         y = RndNbr(20) + 8
         With SpinScene.GetLabel("s"&SpinNum)
@@ -5223,3 +5230,14 @@ Class PinupNULL	' Dummy Pinup class so I dont have to keep adding if cases when 
 End Class 
 
 'Comboflashes still arent' working right
+'timers for battle started too soon
+'freeze timers didn't work
+' freeze timers shouldn't freeze ChooseBattle countdown timer 
+' gold coins don't play sound
+' multiball start didn't play sound or gif
+'when lockIsLit was on, ball was released too soon or too late at start of battle mode 
+' during lannister battle, a hit shield may stay lit (but not flashing). Need to ensure last state is "off"
+'wrong targets flash for martell
+' spinner leaves garbage at top of scene
+'3rd ball locked ejected a 4th ball
+'battlready never turns off, lets another battle start during mutliball
