@@ -2179,6 +2179,7 @@ Dim TimerTimestamp(30)  ' Each timer's end timestamp
 Dim TimerSubroutine     ' Names of subroutines to call when each timer's time expires
 Dim TimerReference(30)  ' Object references to above subroutines (built at table start)
 Const MaxTimers = 7     ' Total number of defined timers. There MUST be a corresponding subroutine for each
+' Timers 1 & 2 can't be frozen. if adding more unfreezable timers, put them next and adjust the number in tmrGame_Timer sub
 TimerSubroutine = Array("","UpdateChooseBattle","LaunchBattleMode","BattleModeTimer1","BattleModeTimer2","MartellBattleTimer","HurryUpTimer","ResetComboMultipliers")
 Const tmrUpdateChooseBattle = 1
 Const tmrChooseBattle = 2
@@ -2586,7 +2587,7 @@ Class cBattleState
         For i = 1 to 7
             If (mask And 2^i) > 0 Then 
                 ModeLightState(i,0) = ModeLightState(i,0) + 1
-                ModeLightState(i,(ModeLightState(i,0))) = HouseColor(HouseBattle1) 
+                ModeLightState(i,(ModeLightState(i,0))) = HouseColor(MyHouse) 
             End If
         Next
     End Sub
@@ -3800,7 +3801,8 @@ Sub li89_Timer
         If ComboMultiplier(i) > 1 Then 
             bi = TimerTimestamp(tmrComboMultplier) - GameTimeStamp
             if bi > 50 then bi = 150 else bi = bi*2 + 50 
-        ComboLights(i).BlinkInterval = TimerTimestamp(tmrComboMultplier) - GameTimeStamp
+            ComboLights(i).BlinkInterval = bi
+        End if
     Next
 End Sub
 
@@ -4469,6 +4471,7 @@ Sub LockBall
     Dim i
     BallsInLock = BallsInLock + 1
     RealBallsInLock = RealBallsInLock + 1
+    debug.print "Locked ball " & BallsInLock
     bLockIsLit = False
     SetLightColor li111,darkgreen,0     ' Turn off Lock light
     i = RndNbr(3)
@@ -4557,7 +4560,7 @@ Sub tmrGame_Timer
     if bGameTimersEnabled = False Then Exit Sub
     bGameTimersEnabled = False
     For i = 1 to MaxTimers
-        If (TimerFlags(i) AND 2) = 2 And i <> tmrChooseBattle Then 
+        If (TimerFlags(i) AND 2) = 2 And i > 2 Then ' Timers 1 & 2 can't be frozen. 
             TimerTimestamp(i) = TimerTimestamp(i) + 1 ' "Frozen" timer - increase its expiry by 1 step
         ElseIf (TimerFlags(i) AND 1) = 1 Then 
             bGameTimersEnabled = True
@@ -5169,7 +5172,7 @@ Sub DMDSpinnerScene(spinval)
         If IsEmpty(SpinScene) Then
             SpinNum = 0
             Set SpinScene = FlexDMD.NewGroup("spinner")
-            SpinScene.SetBounds(0,-8,128,40)
+            SpinScene.SetBounds 0,-8,128,40
         End If
         If Not IsEmpty(DisplayingScene) Then
             If DisplayingScene Is SpinScene Then FlexDMD.LockRenderThread:locked=true
@@ -5179,22 +5182,22 @@ Sub DMDSpinnerScene(spinval)
             SpinScene.AddActor FlexDMD.NewLabel("level",tinyfont,"0")
             SpinScene.AddActor FlexDMD.NewLabel("spin", FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", RGB(167, 165, 165), vbWhite, 0),"spinner")
             SpinScene.AddActor FlexDMD.NewLabel("value",tinyfont,"0")
-            SpinScene.GetLabel("spin").SetAlignedPosition 64,16, FlexDMD_Align_Center
+            SpinScene.GetLabel("spin").SetAlignedPosition 64,24, FlexDMD_Align_Center
         End If
         
         With SpinScene.GetLabel("level")
             .Text = "level "&SpinnerLevel
-            .SetAlignedPosition 64,4, FlexDMD_Align_Center
+            .SetAlignedPosition 64,12, FlexDMD_Align_Center
         End With
         With SpinScene.GetLabel("value")
             .Text = FormatScore(AccumulatedSpinnerValue)
-            .SetAlignedPosition 64,28, FlexDMD_Align_Center
+            .SetAlignedPosition 64,36, FlexDMD_Align_Center
         End With
         suffix="K":spinval = int(spinval/1000)
         If spinval >= 1000000 Then suffix="M":spinval = int(spinval/1000)
         SpinScene.AddActor FlexDMD.NewLabel("s"&SpinNum,FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 0),spinval&suffix)
         x = RndNbr(100)+13
-        y = RndNbr(20) + 8
+        y = RndNbr(20) + 16
         With SpinScene.GetLabel("s"&SpinNum)
             .SetAlignedPosition x,y, FlexDMD_Align_BottomLeft
             .AddAction SpinScene.GetLabel("s"&SpinNum).ActionFactory.MoveTo(x,0,0.4)
