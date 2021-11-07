@@ -2236,7 +2236,7 @@ BattleObjectives = Array("", _
             "DEFEAT DROGON"&vbLf&"SHOOT 5 HURRY UPS"&vbLf&"TO DEFEAT DROGON", _
             "DEFEAT RHAEGAL"&vbLf&"SHOOT 3 HURRY UPS"&vbLf&"TO DEFEAT RHAEGAL")
 
-BattleObjectivesShort = Array("ARYA'S TRAINING","AID FOR THE WALL","SAVE MYRCELLA","WINTERFELL BURNS",_
+BattleObjectivesShort = Array("","ARYA'S TRAINING","AID FOR THE WALL","SAVE MYRCELLA","WINTERFELL BURNS",_
             "JOUSTING","TRIAL BY COMBAT","DEFEAT VISERION","DEFEAT DROGON","DEFEAT RHAEGAL")
 
 ' Assignment of Lol Target lights
@@ -2678,6 +2678,7 @@ Class cBattleState
                         State = 2
                         SetModeLights
                     End If
+                    debug.print "Stark hits: "&CompletedShots
                     If CompletedShots >= 3 Then
                         'TODO: On the real table, if you restart the mode, it doesn't reuse the same victims. It also randomizes the order
                         ' Show Arya's kill list scene. 
@@ -2739,6 +2740,7 @@ Class cBattleState
                             Case 1,3: HouseValue = HouseValue + 2250000 + RndNbr(8)*25000
                             Case 2: HouseValue = HouseValue + 1500000 + RndNbr(12)*15000
                             Case 4: HouseValue = HouseValue + 5000000 + RndNbr(12)*250000
+                        End Select
                         SetModeLights
                         ' Reset mode timer
                         If MyHouse = HouseBattle2 Then SetGameTimer tmrBattleMode2,150 Else SetGameTimer tmrBattleMode1,150
@@ -2929,7 +2931,7 @@ Class cBattleState
         line2 = FormatScore(HouseValue * comboval)
         If comboval = 1 Then comboval = 0  ' Don't bother printing Combo value for final shot if it's just 1x
         name = "got-"&HouseToString(MyHouse)&"complete"
-        DMDPlayHitScene name,name,1.5,BattleObjectivesShort(MyHouse),line2,"COMPLETE",combo
+        DMDPlayHitScene name,name,1.5,BattleObjectivesShort(MyHouse),line2,"COMPLETE",comboval
         
     End Sub
 
@@ -3044,7 +3046,7 @@ Class cBattleState
     Dim BattleScene
     Dim bSmallBattleScene
     Public Function CreateBattleProgressScene
-        Dim tinyfont,ScoreFont,line3,x3,x4,y4
+        Dim tinyfont,ScoreFont,line3,x3,x4,y4,i
         Set BattleScene = FlexDMD.NewGroup(HouseToString(MyHouse))
         Set tinyfont = FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0)
         BattleScene.AddActor FlexDMD.NewLabel("obj",tinyfont,BattleObjectivesShort(MyHouse))
@@ -3052,7 +3054,7 @@ Class cBattleState
         y4 = 16
         Select Case MyHouse
             Case Stark,Baratheon: line3 = "VALUE = "&FormatScore(HouseValue) : x3 = 40: x4 = 40: y4 = 22
-            Case Lannister,Greyjoy: line3 = "SHOTS = " & 5-CompletedShots : x3 = 2: x4 = 56
+            Case Lannister,Greyjoy: line3 = "SHOTS = " & 5-CompletedShots : x3 = 20: x4 = 56
             Case Tyrell: x4 = 40
             Case Martell: line3 = "SHOOT ORBITS":x4 = 56
         End Select
@@ -3069,13 +3071,20 @@ Class cBattleState
             If CompletedShots = 0 Or State > 1 Then BattleScene.GetLabel("tmr3").Visible = 0
             BattleScene.AddActor FlexDMD.NewLabel("HurryUp",tinyfont,HurryUpValue)
             If State < 2 Then BattleScene.GetLabel("HurryUp").Visible = 0
+        Else
+            ' Every other house has the score showing
+            BattleScene.AddActor FlexDMD.NewLabel("Score",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0),FormatScore(Score(CurrentPlayer)))
+            BattleScene.GetLabel("Score").SetAlignedPosition 40,10,FlexDMD_Align_Center
         End if
+        For i = 0 to 4
+            BattleScene.AddActor FlexDMD.NewLabel("combo"&i, FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 1), "0")
+        Next
         Set CreateBattleProgressScene = BattleScene
         bSmallBattleScene = False 
     End Function
 
     Public Function CreateSmallBattleProgressScene
-        Dim tinyfont,ScoreFont,line3,x3,x4,y4
+        Dim tinyfont,ScoreFont,line3,x3,x4,y4,i
         Set BattleScene = FlexDMD.NewGroup(HouseToString(MyHouse))
         'Set ScoreFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0)
         Set tinyfont = FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbBlack, 1)
@@ -3094,6 +3103,9 @@ Class cBattleState
         BattleScene.GetLabel("line3").SetAlignedPosition 32,16,FlexDMD_Align_Center
         BattleScene.GetLabel("tmr1").SetAlignedPosition 62,1,FlexDMD_Align_TopRight
         BattleScene.GetLabel("obj").SetAlignedPosition 1,1,FlexDMD_Align_TopLeft
+        For i = 0 to 4
+            BattleScene.AddActor FlexDMD.NewLabel("combo"&i, FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 1), "0")
+        Next
         Set CreateSmallBattleProgressScene = BattleScene
         bSmallBattleScene = True
     End Function
@@ -3128,6 +3140,7 @@ Class cBattleState
             FlexDMD.LockRenderThread
             BattleScene.GetLabel("line3").Text = line3
             FlexDMD.UnlockRenderThread
+        End If
     End Sub
 
 End Class
@@ -3312,7 +3325,7 @@ Sub ResetNewBallVariables() 'reset variables for a new ball or player
     PlayfieldMultiplierVal = 1
     SpinnerLevel = 1
     AccumulatedSpinnerValue = 0
-    SpinnerValue = 500 + (BallsPerGame-BallsRemaining(CurrentPlayer))*2000 ' Appears to start at 2500 on ball 1 and 4500 on ball 2
+    SpinnerValue = 500 + (1+BallsPerGame-BallsRemaining(CurrentPlayer))*2000 ' Appears to start at 2500 on ball 1 and 4500 on ball 2
     UpdatePFXLights(PlayfieldMultiplierVal)
     bWildfireLit = False
     bPlayfieldValidated = False
@@ -5107,6 +5120,8 @@ Sub LaunchBattleMode
 
     PlayModeSong
 
+    DMDCreateAlternateScoreScene HouseBattle1,HouseBattle2
+
     LaunchBattleReleaseBall tmr
 End Sub
 
@@ -5163,7 +5178,7 @@ End Sub
 '  line1-3 - Up to 3 lines of text
 '  combo - If 0, text is full width. Otherwise, Combo multiplier is on the right side
 Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo)
-    Dim scene,scenevid,font7x3,x,combotxt
+    Dim scene,scenevid,font7x3,x,combotxt,blink,af
     If bUseFlexDMD Then
         Set scene = NewSceneWithVideo("hitscene",vid)
         Set scenevid = scene.GetVideo("hitscenevid")
@@ -5200,13 +5215,13 @@ Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo)
         End With
         ' After delay, disable video/image and enable text
         ' TODO: Make the transition from video to text cool.
-        If Not (vid Is Nothing) Then
+        If Not (scenevid Is Nothing) Then
             Set af = scenevid.ActionFactory
             Set blink = af.Sequence()
             blink.Add af.Wait(delay)
             blink.Add af.Show(False)
-            vid.AddAction blink
-            Set af = scene.GetLabel("objective").ActionFactory
+            scenevid.AddAction blink
+            Set af = scene.GetGroup("hitscenetext").ActionFactory
             Set blink = af.Sequence()
             blink.Add af.Wait(delay)
             blink.Add af.Show(True)
@@ -5503,7 +5518,7 @@ Sub DMDStarkBattleScene(house,num,score,line1,line2,just1,just2,sound)
         Set scene = NewSceneWithVideo(HouseToString(house)&"hit","got-"&HouseToString(house)&"battlehit"&num)
         scene.AddActor FlexDMD.NewLabel("score",FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbWhite, 0),score)
         scene.AddActor FlexDMD.NewLabel("line1", FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0),line1)
-        scene.AddActor FlexDMD.NewLabel("line2", FlexDMD.NewFont("FlexDMD.Resources.udmd-f3by5.fnt", vbWhite, vbWhite, 0),line2)
+        scene.AddActor FlexDMD.NewLabel("line2", FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0),line2)
         scene.GetLabel("score").SetAlignedPosition x1,30,j3
         scene.GetLabel("line1").SetAlignedPosition x1,5,j3
         scene.GetLabel("line2").SetAlignedPosition x2,30,j3
@@ -5547,7 +5562,7 @@ Sub DMDSpinnerScene(spinval)
         End With
         suffix="K":spinval = int(spinval/1000)
         If spinval >= 1000000 Then suffix="M":spinval = int(spinval/1000)
-        SpinScene.AddActor FlexDMD.NewLabel("s"&SpinNum,FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 0),spinval&suffix)
+        SpinScene.AddActor FlexDMD.NewLabel("s"&SpinNum,FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 1),spinval&suffix)
         x = RndNbr(100)+13
         y = RndNbr(20) + 16
         With SpinScene.GetLabel("s"&SpinNum)
@@ -5577,11 +5592,14 @@ Sub DMDCreateAlternateScoreScene(h1,h2)
     End If
     Set scene = NewSceneWithVideo("battle",name)
     Set vid = scene.GetVideo("battlevid")
-    If Not (vid Is Nothing) Then vid.SetAlginedPosition 127,0,FlexDMD_Align_TopRight
+    If Not (vid Is Nothing) Then vid.SetAlignedPosition 127,0,FlexDMD_Align_TopRight
     If h2 <> 0 Then
-        scene.AddActor FlexDMD.NewVideo("battlevid2",FlexPath & "got-" & HouseToString(h1) & "battlesigil.gif")
-        Set vid = scene.GetVideo("battlevid2")
-        If Not (vid Is Nothing) Then vid.SetAlginedPosition 63,0,FlexDMD_Align_TopRight
+        Set vid = FlexDMD.NewVideo("battlevid2",FlexPath & "got-" & HouseToString(h1) & "battlesigil.gif")
+        If Not (vid is Nothing) Then
+            scene.AddActor vid
+            Set vid = scene.GetVideo("battlevid2")
+            vid.SetAlignedPosition 63,0,FlexDMD_Align_TopRight
+        End If
         Set scene1 = House(CurrentPlayer).BattleState(h1).CreateSmallBattleProgressScene(1)
         Set scene2 = House(CurrentPlayer).BattleState(h2).CreateSmallBattleProgressScene(2)
         scene1.SetAlignedPosition 0,0,FlexDMD_Align_TopLeft
@@ -5743,9 +5761,12 @@ End Class
 '    First two shots say "Jackpot builds". First value is ~12-13M, second is 13-14M, final value was ~17M.
 '
 ' Mode things to fix
-' Greyjoy needs to reset timers after each shot
 ' need a ModePauseTimer that pauses the timers if no score for 2 seconds
 ' need a mode timer for Tyrell. 30 seconds. targets add 5 seconds
-' tyrell only needs one target hit to score a 'hit'
 
-'TODO: Shots that don't score should still reset or thaw game timers
+' in Lannister battle:
+'  - combo multipliers were wrong
+'  - score was too big
+'  - lockball didn't release another ball
+' - missing all battlesigil gifs
+' - stark battle hits did nothing
