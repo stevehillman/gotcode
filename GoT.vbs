@@ -1434,7 +1434,10 @@ Function NewSceneWithVideo(name,videofile)
     If actor is Nothing Then
         debug.print "Warning: "&videofile&".gif not found in "&FlexPath
         Set actor = FlexDMD.NewImage(name&"img","VPX."&videofile)
-        if actor is Nothing Then Exit Function
+        if actor is Nothing Then 
+            debug.print "Warning: "&videofile&" image not found in VPX"
+            Exit Function
+        End if
     End If
     NewSceneWithVideo.AddActor actor
 End Function
@@ -2943,6 +2946,10 @@ Class cBattleState
         If MyHouse = HouseBattle1 Then 
             TimerFlags(tmrBattleMode1) = 0
             HouseBattle1 = 0 
+            'TODO: Need to move HouseBattle2 over to 1 so that altscene works properly
+            ' if housebattle2 <> 0 then housebattle1=housebattle2, housebattle2=0, 
+            '     timertimestamp(tmrbattlemode1) = timertimestamp(tmrbattlemode2)
+            '     timerflags(tmrbattlemode2) = timerflags(tmrbattlemode2) and 254
         Else 
             TimerFlags(tmrBattleMode2) = 0
             HouseBattle2 = 0
@@ -2957,6 +2964,7 @@ Class cBattleState
             Next
             If br Then House(CurrentPlayer).BattleReady = True
             'TODO: Anything else needed to end battle mode?
+            DMDResetScoreScene
         End If
         PlayModeSong
         SetPlayfieldLights
@@ -3083,13 +3091,13 @@ Class cBattleState
         bSmallBattleScene = False 
     End Function
 
-    Public Function CreateSmallBattleProgressScene
+    Public Function CreateSmallBattleProgressScene(n)
         Dim tinyfont,ScoreFont,line3,x3,x4,y4,i
         Set BattleScene = FlexDMD.NewGroup(HouseToString(MyHouse))
         'Set ScoreFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0)
         Set tinyfont = FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbBlack, 1)
         BattleScene.AddActor FlexDMD.NewLabel("obj",tinyfont,HouseToUCString(MyHouse))
-        BattleScene.AddActor FlexDMD.NewLabel("tmr1",tinyfont,Int((TimerTimestamp(tmrBattleMode1)-GameTimeStamp)/10))
+        BattleScene.AddActor FlexDMD.NewLabel("tmr"&n,tinyfont,Int((TimerTimestamp(tmrBattleMode1)-GameTimeStamp)/10))
         
         y4 = 16
         Select Case MyHouse
@@ -3101,7 +3109,7 @@ Class cBattleState
         
         BattleScene.AddActor FlexDMD.NewLabel("line3",tinyfont,line2) 
         BattleScene.GetLabel("line3").SetAlignedPosition 32,16,FlexDMD_Align_Center
-        BattleScene.GetLabel("tmr1").SetAlignedPosition 62,1,FlexDMD_Align_TopRight
+        BattleScene.GetLabel("tmr"&n).SetAlignedPosition 62,1,FlexDMD_Align_TopRight
         BattleScene.GetLabel("obj").SetAlignedPosition 1,1,FlexDMD_Align_TopLeft
         For i = 0 to 4
             BattleScene.AddActor FlexDMD.NewLabel("combo"&i, FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 1), "0")
@@ -3745,7 +3753,6 @@ Sub PlayModeSong
     ElseIf bMultiBallMode Then
         mysong = "got-track4"
     End If
-    debug.print "mysong: "&mysong
     If mysong = "" Then
         If Song = "got-track1" Or Song = "got-track2" Or Song = "got-track3" Then Exit Sub
         i = RndNbr(3)
@@ -4700,7 +4707,6 @@ Sub GeneratePictoAward(b)
             tmp = tmp - PictoPops(i)(2)
         Next
         ' Check to see if the new award is valid right now
-debug.print "pictopops: b=" & b & "; i="&i
         foundval = CheckPictoAward(i)
     Loop 
     BumperVals(b) = i
@@ -5488,7 +5494,6 @@ Sub DMDPictoScene
                 End With
                 ' If the bumpers all match, flash the text and keep scene on screen for a second
                 If matched Then BlinkActor poplabel,0.1,5:mintime=1000:pri=1
-                debug.print "pop"&i&": X:" & poplabel.X & " Y:" & poplabel.Y
             Next
             FlexDMD.UnlockRenderThread
         End If
@@ -5515,7 +5520,9 @@ Sub DMDStarkBattleScene(house,num,score,line1,line2,just1,just2,sound)
         j3 = just1 + 6  ' Put Score on the same side as Line1 text, but at the bottom
         x1 = 2: x2 = 126
         If just1 = FlexDMD_Align_TopRight Then x1=126:x2=2
-        Set scene = NewSceneWithVideo(HouseToString(house)&"hit","got-"&HouseToString(house)&"battlehit"&num)
+'        Set scene = NewSceneWithVideo(HouseToString(house)&"hit","got-"&HouseToString(house)&"battlehit"&num)
+        Set scene = NewSceneWithVideo(HouseToString(house)&"hit","goldstack")
+
         scene.AddActor FlexDMD.NewLabel("score",FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbWhite, 0),score)
         scene.AddActor FlexDMD.NewLabel("line1", FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0),line1)
         scene.AddActor FlexDMD.NewLabel("line2", FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0),line2)
@@ -5642,7 +5649,7 @@ End Sub
 ' Set Score scene back to default for regular play
 Sub DMDResetScoreScene
     bAlternateScoreScene = False
-    Set ScoreScene = Empty
+    ScoreScene = Empty
     AlternateScoreSceneMask = 0
     DMDLocalScore
 End Sub
@@ -5770,3 +5777,5 @@ End Class
 '  - lockball didn't release another ball
 ' - missing all battlesigil gifs
 ' - stark battle hits did nothing
+' - stark battleintro scene loops but shouldn't. It's also too short.
+' - starkbattlehit scene is drawing the text too large
