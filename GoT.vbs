@@ -3084,7 +3084,7 @@ Class cBattleState
             BattleScene.AddActor FlexDMD.NewLabel("Score",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0),FormatScore(Score(CurrentPlayer)))
             BattleScene.GetLabel("Score").SetAlignedPosition 40,10,FlexDMD_Align_Center
         End if
-        For i = 0 to 4
+        For i = 1 to 5
             BattleScene.AddActor FlexDMD.NewLabel("combo"&i, FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 1), "0")
         Next
         Set CreateBattleProgressScene = BattleScene
@@ -3111,7 +3111,7 @@ Class cBattleState
         BattleScene.GetLabel("line3").SetAlignedPosition 32,16,FlexDMD_Align_Center
         BattleScene.GetLabel("tmr"&n).SetAlignedPosition 62,1,FlexDMD_Align_TopRight
         BattleScene.GetLabel("obj").SetAlignedPosition 1,1,FlexDMD_Align_TopLeft
-        For i = 0 to 4
+        For i = 1 to 5
             BattleScene.AddActor FlexDMD.NewLabel("combo"&i, FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 1), "0")
         Next
         Set CreateSmallBattleProgressScene = BattleScene
@@ -5693,7 +5693,7 @@ Sub DMDLocalScore
             ScoreScene.GetFrame("HSeparator").Thickness = 1
             ScoreScene.GetFrame("HSeparator").SetBounds 0, 24, 128,1
             ' Combo Multipliers
-            For i = 0 to 4
+            For i = 1 to 5
                 ScoreScene.AddActor FlexDMD.NewLabel("combo"&i, ComboFont, "0")
             Next
         End If
@@ -5706,7 +5706,7 @@ Sub DMDLocalScore
         If bAlternateScoreScene = False Then ScoreScene.GetLabel("Score").SetAlignedPosition 80,0, FlexDMD_Align_TopRight
         If bAlternateScoreScene = False or (AlternateScoreSceneMask And 8) = 8 Then
             ' Update combo x
-            For i = 0 to 4
+            For i = 1 to 5
                 With ScoreScene.GetLabel("combo"&i)
                     .Text = ComboMultiplier(i)&"X"
                     .SetAlignedPosition i*25,31,FlexDMD_Align_BottomLeft
@@ -5772,10 +5772,14 @@ End Class
 ' need a mode timer for Tyrell. 30 seconds. targets add 5 seconds
 
 ' in Lannister battle:
-'  - combo multipliers were wrong
+'  √? combo multipliers were wrong
 '  - score was too big
 '  - lockball didn't release another ball
 ' - missing all battlesigil gifs
-' - stark battle hits did nothing
+' - stark battle hits work but need more sound effects
 ' - stark battleintro scene loops but shouldn't. It's also too short.
 ' - starkbattlehit scene is drawing the text too large
+' - HouseToUCString is broken
+' - dragon combo multipliers doesn;t seem to work - lights flash but combos stay at 1x
+' - "Pass For now" doesn't restore playfield lights
+' - CreateSmallBattleScene got called when "Pass For now" was selected
