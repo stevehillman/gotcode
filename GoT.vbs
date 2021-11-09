@@ -1475,7 +1475,7 @@ End Sub
 ' Unfortunately FlexDMD hardcodes the FPS at 25 and Stern uses 20. 
 Function NewSceneWithImageSequence(name,imgname,num)
     Dim actor,i,imgseq
-    Set NewSceneFromImageSequence = FlexDMD.NewGroup(name)
+    Set NewSceneWithImageSequence = FlexDMD.NewGroup(name)
     imgseq = imgname & "\image1.png"
     For i = 2 to num
         imgseq = imgseq & FDsep & imgname & "\image"&i&".png"
@@ -2700,7 +2700,7 @@ Class cBattleState
                         State = 2
                         SetModeLights
                     End If
-                    PlaySoundVol "gotfx-ramphit",VolDef 'TODO: Is this sound effect specific to Stark battle ramp hits?
+                    PlaySoundVol "gotfx-ramphit",VolDef/4 'TODO: Is this sound effect specific to Stark battle ramp hits?
                     debug.print "Stark hits: "&CompletedShots
                     If CompletedShots >= 3 Then
                         'TODO: On the real table, if you restart the mode, it doesn't reuse the same victims. It also randomizes the order
@@ -4184,7 +4184,7 @@ Sub AddGold(g)
     CurrentGold = CurrentGold + g
     If bUseFlexDMD Then
         Set scene = NewSceneWithImage("goldstack","goldstack")
-        scene.AddActor FlexDMD.NewLabel("addgold",FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by12.fnt", vbWhite, vbBlack, 0),"+"&g&" GOLD")
+        scene.AddActor FlexDMD.NewLabel("addgold",FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbBlack, 0),"+"&g&" GOLD")
         scene.GetLabel("addgold").SetAlignedPosition 2,0,FlexDMD_Align_TopLeft
         BlinkActor scene.GetLabel("addgold"),150,4
         scene.AddActor FlexDMD.NewLabel("gold",FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 1),"TOTAL GOLD: "&CurrentGold)
@@ -4452,13 +4452,13 @@ End Sub
 ' Left ramp
 Sub sw38_Hit
     If Tilted then Exit Sub
-    PlaySoundVol "gotfx-swordswoop",VolDef
+    PlaySoundVol "gotfx-swordswoosh",VolDef
 End Sub
 
 ' Right Ramp
 Sub sw41_Hit
     If Tilted then Exit Sub
-    PlaySoundVol "gotfx-swordswoop",VolDef
+    PlaySoundVol "gotfx-swordswoosh",VolDef
 End Sub
 
 '******************
@@ -5673,7 +5673,7 @@ Sub DMDCreateAlternateScoreScene(h1,h2)
         Set scene = NewSceneWithVideo("battle","got-"&HouseToString(h1)&"battlesigil")
     ElseIf h1 = Stark Then
         Set scene = FlexDMD.NewGroup("battle")
-        Set scene NewSceneWithImageSequence("battle","got-starkbattleprogress",41)
+        Set scene = NewSceneWithImageSequence("battle","got-starkbattleprogress",41)
     Else
         Set scene = NewSceneWithVideo("battle","got-"&HouseToString(h1)&"battleprogress")
     End If
@@ -5859,7 +5859,45 @@ End Class
 ' - dragon combo multipliers doesn;t seem to work - lights flash but combos stay at 1x
 ' - CreateSmallBattleScene got called when "Pass For now" was selected
 ' - Add sw38 (l ramp entrance) and sw41 (r ramp entrance) to table
+' - lannister battle scene got stuck on scene. Also says "2 shots lit" instead of +2
+' - check to make sure we're not advancing qualifying hits during battle - lannister was able to start when
+' - 3 balls were locked, yet stark had just finished
+' - takes too long to start battle music now.
+' - font in battle "choose your battle" is too close together
+' - no lannister hit sounds
 
 ' Nice-To-Haves
 ' - Change the timer for selecting which house mode to play. It will start at three seconds. Each button press will add eight seconds. The timer will max out at 20 seconds.
 '    - Also, only display the instructions once per player.
+[1] 2021/11/08 22:43:57.566 ERROR | Exception while resolving image: 'got-starkbattleprogress\image1.png,got-starkbattleprogress\image2.png,got-starkbattleprogress\image3.png,got-starkbattleprogress\image4.png,got-starkbattleprogress\image5.png,got-starkbattleprogress\image6.png,got-starkbattleprogress\image7.png,got-starkbattleprogress\image8.png,got-starkbattleprogress\image9.png,got-starkbattleprogress\image10.png,got-starkbattleprogress\image11.png,got-starkbattleprogress\image12.png,got-starkbattleprogress\image13.png,got-starkbattleprogress\image14.png,got-starkbattleprogress\image15.png,got-starkbattleprogress\image16.png,got-starkbattleprogress\image17.png,got-starkbattleprogress\image18.png,got-starkbattleprogress\image19.png,got-starkbattleprogress\image20.png,got-starkbattleprogress\image21.png,got-starkbattleprogress\image22.png,got-starkbattleprogress\image23.png,got-starkbattleprogress\image24.png,got-starkbattleprogress\image25.png,got-starkbattleprogress\image26.png,got-starkbattleprogress\image27.png,got-starkbattleprogress\image28.png,got-starkbattleprogress\image29.png,got-starkbattleprogress\image30.png,got-starkbattleprogress\image31.png,got-starkbattleprogress\image32.png,got-starkbattleprogress\image33.png,got-starkbattleprogress\image34.png,got-starkbattleprogress\image35.png,got-starkbattleprogress\image36.png,got-starkbattleprogress\image37.png,got-starkbattleprogress\image38.png,got-starkbattleprogress\image39.png,got-starkbattleprogress\image40.png,got-starkbattleprogress\image41.png' System.InvalidOperationException: Unsupported asset type FlexDMD.ImageSequence
+   at FlexDMD.Asset`1.Load()
+   at FlexDMD.FlexDMD.ResolveImage(String filename)
+ [1] 2021/11/08 22:43:57.566 ERROR | Missing resource 'got-starkbattleprogress\image1.png,got-starkbattleprogress\image2.png,got-starkbattleprogress\image3.png,got-starkbattleprogress\image4.png,got-starkbattleprogress\image5.png,got-starkbattleprogress\image6.png,got-starkbattleprogress\image7.png,got-starkbattleprogress\image8.png,got-starkbattleprogress\image9.png,got-starkbattleprogress\image10.png,got-starkbattleprogress\image11.png,got-starkbattleprogress\image12.png,got-starkbattleprogress\image13.png,got-starkbattleprogress\image14.png,got-starkbattleprogress\image15.png,got-starkbattleprogress\image16.png,got-starkbattleprogress\image17.png,got-starkbattleprogress\image18.png,got-starkbattleprogress\image19.png,got-starkbattleprogress\image20.png,got-starkbattleprogress\image21.png,got-starkbattleprogress\image22.png,got-starkbattleprogress\image23.png,got-starkbattleprogress\image24.png,got-starkbattleprogress\image25.png,got-starkbattleprogress\image26.png,got-starkbattleprogress\image27.png,got-starkbattleprogress\image28.png,got-starkbattleprogress\image29.png,got-starkbattleprogress\image30.png,got-starkbattleprogress\image31.png,got-starkbattleprogress\image32.png,got-starkbattleprogress\image33.png,got-starkbattleprogress\image34.png,got-starkbattleprogress\image35.png,got-starkbattleprogress\image36.png,got-starkbattleprogress\image37.png,got-starkbattleprogress\image38.png,got-starkbattleprogress\image39.png,got-starkbattleprogress\image40.png,got-starkbattleprogress\image41.png' 
+ [1] 2021/11/08 22:43:57.566  INFO | Warning actor not found 'battlevid' 
+ [1] 2021/11/08 22:43:57.566  INFO | New font added to asset manager: FontDef [path=FlexDMD.Resources.udmd-f4by5.fnt, tint=Color [White], border tint=Color [Black], border size=1] 
+ [1] 2021/11/08 22:44:12.803  INFO | New font added to asset manager: FontDef [path=FlexDMD.Resources.udmd-f7by13.fnt, tint=Color [A=255, R=167, G=165, B=165], border tint=Color [White], border size=0] 
+ [1] 2021/11/08 22:44:22.605 ERROR | Missing resource 'goldstack.png' 
+ [1] 2021/11/08 22:44:22.605  INFO | New font added to asset manager: FontDef [path=FlexDMD.Resources.udmd-f7by13.fnt, tint=Color [White], border tint=Color [Black], border size=0] 
+ [1] 2021/11/08 22:44:35.788 ERROR | Missing resource 'goldstack.png' 
+ [1] 2021/11/08 22:44:45.973 ERROR | Missing resource 'goldstack.png' 
+ [1] 2021/11/08 22:44:57.965 ERROR | Missing resource 'goldstack.png' 
+ [1] 2021/11/08 22:44:57.988 ERROR | Missing resource 'goldstack.png' 
+ [1] 2021/11/08 22:45:03.667 ERROR | Missing resource 'got-starkbattlehit1.gif' 
+ [1] 2021/11/08 22:45:03.667  INFO | New bitmap added to asset manager: got-starkbattlehit1.png 
+ [1] 2021/11/08 22:45:06.146 ERROR | Missing resource 'got-starkbattlehit2.gif' 
+ [1] 2021/11/08 22:45:06.146  INFO | New bitmap added to asset manager: got-starkbattlehit2.png 
+ [1] 2021/11/08 22:45:07.307 ERROR | Missing resource 'goldstack.png' 
+ [1] 2021/11/08 22:45:10.345 ERROR | Missing resource 'got-starkbattlehit3.gif' 
+ [1] 2021/11/08 22:45:10.345  INFO | New bitmap added to asset manager: got-starkbattlehit3.png 
+ [1] 2021/11/08 22:45:11.665 ERROR | Missing resource 'goldstack.png' 
+ [1] 2021/11/08 22:45:14.534 ERROR | Missing resource 'goldstack.png' 
+ [1] 2021/11/08 22:45:14.656 ERROR | Missing resource 'goldstack.png' 
+ [1] 2021/11/08 22:45:26.306 ERROR | Missing resource 'got-starkbattlehit4.gif' 
+ [1] 2021/11/08 22:45:26.306  INFO | New bitmap added to asset manager: got-starkbattlehit4.png 
+ [1] 2021/11/08 22:45:27.686 ERROR | Missing resource 'goldstack.png' 
+ [1] 2021/11/08 22:45:30.375 ERROR | Missing resource 'got-starkbattlehit5.gif' 
+ [1] 2021/11/08 22:45:30.375  INFO | New bitmap added to asset manager: got-starkbattlehit5.png 
+ [1] 2021/11/08 22:45:31.449 ERROR | Missing resource 'got-starkcomplete.gif' 
+ [1] 2021/11/08 22:45:31.449 ERROR | Missing resource 'got-starkcomplete.png' 
+ [1] 2021/11/08 22:45:31.449  INFO | Warning actor not found 'hitscenevid' 
+ [1] 2021/11/08 22:45:31.449  INFO | Warning actor not found 'hitsceneimg' 
