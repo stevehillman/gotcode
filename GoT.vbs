@@ -94,6 +94,7 @@ Const 	FlexDMD_Align_TopLeft = 0, _
 		FlexDMD_Align_BottomRight = 8
 
 Const   UltraDMD_Animation_None = 14
+Const   FDsep = ","     ' The latest, not yet published, version has switched to "|"
 Dim FlexDMD
 '********* End FlexDMD **************
 
@@ -1433,7 +1434,6 @@ Function NewSceneWithVideo(name,videofile)
     Set NewSceneWithVideo = FlexDMD.NewGroup(name)
     Set actor = FlexDMD.NewVideo(name&"vid",videofile & ".gif")
     If actor is Nothing Then
-        debug.print "Warning: "&videofile&".gif not found"
         Set actor = FlexDMD.NewImage(name&"img",videofile&".png")
         if actor is Nothing Then 
             debug.print "Warning: "&videofile&" image not found"
@@ -1468,23 +1468,21 @@ Sub BlinkActor(actor,interval,times)
     actor.AddAction af.Repeat(blink,times)
 End Sub
 
-' Create a video actor from an image sequence, all derived from the same image file.
-' Images are expected to be arranged vertically, top to bottom. You can use ImageMagick to
-' do this. E.g. "convert -append *.png out.png"
+' Create a scene with a video actor from an image sequence. "imgname" is the name of a directory
+' containing 'num' images, numbered from image1.png..image<num>.png
 ' FlexDMD supports still images with transparant backgrounds, but not GIFs or videos. This
 ' gets around that.
-' Unfortunately FlexDMD hardcodes the FPS at 30 and Stern uses 20. To get around that, we'll
-' duplicate every image, giving us an effective FPS of 15
-Function NewActorFromImageSequence(actorname,imgname,num,x,y)
-    Dim scene,i,my_y,imgseq
-    my_y = 0
-    imgseq = imgname & "&region=0,"&my_y&","&x&","&y
-    For i = 1 to num-1
-        my_y = my_y+y
-        imgseq = imgseq & "|" & imgname & "&region=0,"&my_y&","&x&","&y
-        imgseq = imgseq & "|" & imgname & "&region=0,"&my_y&","&x&","&y
+' Unfortunately FlexDMD hardcodes the FPS at 25 and Stern uses 20. 
+Function NewSceneWithImageSequence(name,imgname,num)
+    Dim actor,i,imgseq
+    Set NewSceneFromImageSequence = FlexDMD.NewGroup(name)
+    imgseq = imgname & "\image1.png"
+    For i = 2 to num
+        imgseq = imgseq & FDsep & imgname & "\image"&i&".png"
     Next
-    Set NewActorFromImageSequence = FlexDMD.NewVideo(actorname,imgseq)
+    Set actor = FlexDMD.NewVideo(name&"vid",imgseq)
+    if actor is Nothing Then Exit Function
+    NewSceneWithImageSequence.AddActor actor
 End Function
 
 
@@ -5675,7 +5673,7 @@ Sub DMDCreateAlternateScoreScene(h1,h2)
         Set scene = NewSceneWithVideo("battle","got-"&HouseToString(h1)&"battlesigil")
     ElseIf h1 = Stark Then
         Set scene = FlexDMD.NewGroup("battle")
-        scene.AddActor NewActorFromImageSequence("battlevid","got-starkbattleprogress.png",41,128,32)
+        Set scene NewSceneWithImageSequence("battle","got-starkbattleprogress",41)
     Else
         Set scene = NewSceneWithVideo("battle","got-"&HouseToString(h1)&"battleprogress")
     End If
