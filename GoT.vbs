@@ -3112,7 +3112,7 @@ Class cBattleState
         Next
         Set MyBattleScene = BattleScene
         bSmallBattleScene = False 
-    End Function
+    End Sub
 
     Public Function CreateSmallBattleProgressScene(ByRef BattleScene, n)
         Dim tinyfont,ScoreFont,line3,x3,x4,y4,i
@@ -4185,7 +4185,7 @@ Sub AddGold(g)
     TotalGold = TotalGold + g
     CurrentGold = CurrentGold + g
     If bUseFlexDMD Then
-        Set scene = NewSceneWithImage "goldstack","goldstack"
+        Set scene = NewSceneWithImage("goldstack","goldstack")
         scene.AddActor FlexDMD.NewLabel("addgold",FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by12.fnt", vbWhite, vbBlack, 0),"+"&g&" GOLD")
         scene.GetLabel("addgold").SetAlignedPosition 2,0,FlexDMD_Align_TopLeft
         BlinkActor scene.GetLabel("addgold"),150,4
@@ -5261,7 +5261,7 @@ Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo)
         Set scene = NewSceneWithVideo("hitscene",vid)
         Set scenevid = scene.GetVideo("hitscenevid")
         If scenevid is Nothing Then Set scenevid = scene.getImage("hitsceneimg")
-        Set font7x3 = FlexDMD.NewFont("FlexDMD.Resources.udmd-f3by7.fnt", vbWhite, vbWhite, 0)
+        Set font7x3 = FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbWhite, 0)
         scene.AddActor FlexDMD.NewGroup("hitscenetext")
         With scene.GetGroup("hitscenetext")
             .AddActor FlexDMD.NewLabel("line1",font7x3,line1)
@@ -5326,7 +5326,7 @@ Sub DMDComboScene(line0,line1,line2,combox,combotext,duration,sound)
     Dim ComboScene,HouseFont,ScoreFont,ActionFont,ComboFont,CombotextFont
     if bUseFlexDMD Then
         Set ComboScene = FlexDMD.NewGroup("ComboScene")
-        Set HouseFont  = FlexDMD.NewFont("FlexDMD.Resources.udmd-f3by7.fnt", vbWhite, vbWhite, 0)
+        Set HouseFont  = FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbWhite, 0)
         Set ActionFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0)
         Set ScoreFont  = FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbWhite, 0) 
         Set ComboFont  = FlexDMD.NewFont("FlexDMD.Resources.udmd-f12by24.fnt", vbWhite, vbWhite, 0) 
@@ -5418,7 +5418,7 @@ Sub DMDChooseBattleScene(line0,line1,line2,tmr)
         If bUseFlexDMD Then
             ' Create the instructions scene first
             Set instscene = FlexDMD.NewGroup("choosebattleinstr")
-            instscene.AddActor FlexDMD.NewLabel("instructions",FlexDMD.NewFont("FlexDMD.Resources.udmd-f3by7.fnt", vbWhite, vbWhite, 0), _ 
+            instscene.AddActor FlexDMD.NewLabel("instructions",FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbWhite, 0), _ 
                     "CHOOSE YOUR BATTLE" & vbLf & "USE FLIPPERS TO" & vbLf & "CHANGE YOUR CHOICE" )
             instscene.GetLabel("instructions").SetAlignedPosition 64,16,FlexDMD_Align_Center
             DMDFlush
@@ -5675,7 +5675,7 @@ Sub DMDCreateAlternateScoreScene(h1,h2)
         Set scene = NewSceneWithVideo("battle","got-"&HouseToString(h1)&"battlesigil")
     ElseIf h1 = Stark Then
         Set scene = FlexDMD.NewGroup("battle")
-        scene.AddActor NewActorFromImageSequence("battlevid","got-starkbattleprogress",41,128,32)
+        scene.AddActor NewActorFromImageSequence("battlevid","got-starkbattleprogress.png",41,128,32)
     Else
         Set scene = NewSceneWithVideo("battle","got-"&HouseToString(h1)&"battleprogress")
     End If
