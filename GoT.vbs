@@ -1025,7 +1025,7 @@ End Sub
 
 Const eNone = 0        ' Instantly displayed
 
-Dim FlexPath
+'Dim FlexPath
 Dim UltraDMD
 Sub LoadFlexDMD
     Dim curDir
@@ -1039,6 +1039,7 @@ Sub LoadFlexDMD
 	With FlexDMD
 		.GameName = cGameName
 		.TableFile = Table1.Filename & ".vpx"
+        .ProjectFolder = ".\"&cGameName&".FlexDMD\"
 		.Color = RGB(255, 88, 32)
 		.RenderMode = FlexDMD_RenderMode_DMD_GRAY_4
 		.Width = 128
@@ -1047,10 +1048,10 @@ Sub LoadFlexDMD
 		.Run = True
 	End With	
 
-    Dim fso
-    Set fso = CreateObject("Scripting.FileSystemObject")
-    curDir = fso.GetAbsolutePathName(".")
-    FlexPath = curDir & "\"&cGameName &".FlexDMD\"
+    'Dim fso
+    'Set fso = CreateObject("Scripting.FileSystemObject")
+    'curDir = fso.GetAbsolutePathName(".")
+    'FlexPath = curDir & "\"&cGameName &".FlexDMD\"
 
     ' Let's try this while we transition to FlexDMD
     Set UltraDMD = FlexDMD.NewUltraDMD()
@@ -1430,12 +1431,12 @@ End Sub
 Function NewSceneWithVideo(name,videofile)
     Dim actor
     Set NewSceneWithVideo = FlexDMD.NewGroup(name)
-    Set actor = FlexDMD.NewVideo(name&"vid",FlexPath & videofile & ".gif")
+    Set actor = FlexDMD.NewVideo(name&"vid",videofile & ".gif")
     If actor is Nothing Then
-        debug.print "Warning: "&videofile&".gif not found in "&FlexPath
-        Set actor = FlexDMD.NewImage(name&"img","VPX."&videofile)
+        debug.print "Warning: "&videofile&".gif not found"
+        Set actor = FlexDMD.NewImage(name&"img",videofile&".png")
         if actor is Nothing Then 
-            debug.print "Warning: "&videofile&" image not found in VPX"
+            debug.print "Warning: "&videofile&" image not found"
             Exit Function
         End if
     End If
@@ -1447,7 +1448,7 @@ End Function
 Function NewSceneWithImage(name,imagefile)
     Dim actor
     Set NewSceneWithImage = FlexDMD.NewGroup(name)
-    Set actor = FlexDMD.NewImage(name&"img","VPX."&imagefile)
+    Set actor = FlexDMD.NewImage(name&"img",imagefile&".png")
     if actor is Nothing Then Exit Function
     NewSceneWithImage.AddActor actor
 End Function
@@ -1466,6 +1467,25 @@ Sub BlinkActor(actor,interval,times)
     blink.Add af.Wait(interval)
     actor.AddAction af.Repeat(blink,times)
 End Sub
+
+' Create a video actor from an image sequence, all derived from the same image file.
+' Images are expected to be arranged vertically, top to bottom. You can use ImageMagick to
+' do this. E.g. "convert -append *.png out.png"
+' FlexDMD supports still images with transparant backgrounds, but not GIFs or videos. This
+' gets around that.
+' Unfortunately FlexDMD hardcodes the FPS at 30 and Stern uses 20. To get around that, we'll
+' duplicate every image, giving us an effective FPS of 15
+Function NewActorFromImageSequence(actorname,imgname,num,x,y)
+    Dim scene,i,my_y,imgseq
+    my_y = 0
+    imgseq = imgname & "&region=0,"&my_y&","&x&","&y
+    For i = 1 to num-1
+        my_y = my_y+y
+        imgseq = imgseq & "|" & imgname & "&region=0,"&my_y&","&x&","&y
+        imgseq = imgseq & "|" & imgname & "&region=0,"&my_y&","&x&","&y
+    Next
+    Set NewActorFromImageSequence = FlexDMD.NewVideo(actorname,imgseq)
+End Function
 
 
 '*********
@@ -2181,18 +2201,19 @@ Dim bGameTimersEnabled  ' Flag for whether any timers are enabled
 Dim TimerFlags(30)      ' Flags for each timer's state
 Dim TimerTimestamp(30)  ' Each timer's end timestamp
 Dim TimerSubroutine     ' Names of subroutines to call when each timer's time expires
-Dim TimerReference(30)  ' Object references to above subroutines (built at table start)
-Const MaxTimers = 8     ' Total number of defined timers. There MUST be a corresponding subroutine for each
-' Timers 1 & 2 can't be frozen. if adding more unfreezable timers, put them next and adjust the number in tmrGame_Timer sub
-TimerSubroutine = Array("","UpdateChooseBattle","LaunchBattleMode","BattleModeTimer1","BattleModeTimer2","MartellBattleTimer","HurryUpTimer","ResetComboMultipliers","ModePauseTimer")
+Const MaxTimers = 10     ' Total number of defined timers. There MUST be a corresponding subroutine for each
+' Timers 1 - 4 can't be frozen. if adding more unfreezable timers, put them next and adjust the number in tmrGame_Timer sub
+TimerSubroutine = Array("","UpdateChooseBattle","PreLaunchBattleMode","LaunchBattleMode","UpdateBattleMode","BattleModeTimer1","BattleModeTimer2","MartellBattleTimer","HurryUpTimer","ResetComboMultipliers","ModePauseTimer")
 Const tmrUpdateChooseBattle = 1
 Const tmrChooseBattle = 2
-Const tmrBattleMode1 = 3
-Const tmrBattleMode2 = 4
-Const tmrMartellBattle = 5
-Const tmrHurryUp = 6
-Const tmrComboMultplier = 7
-Const tmrModePause = 8
+Const tmrLaunchBattle = 3
+Const tmrUpdateBattleMode = 4
+Const tmrBattleMode1 = 5
+Const tmrBattleMode2 = 6
+Const tmrMartellBattle = 7
+Const tmrHurryUp = 8
+Const tmrComboMultplier = 9
+Const tmrModePause = 10
 
 'HurryUp Support
 Dim HurryUpValue
@@ -2681,6 +2702,7 @@ Class cBattleState
                         State = 2
                         SetModeLights
                     End If
+                    PlaySoundVol "gotfx-ramphit",VolDef 'TODO: Is this sound effect specific to Stark battle ramp hits?
                     debug.print "Stark hits: "&CompletedShots
                     If CompletedShots >= 3 Then
                         'TODO: On the real table, if you restart the mode, it doesn't reuse the same victims. It also randomizes the order
@@ -2964,6 +2986,7 @@ Class cBattleState
             Next
             If br Then House(CurrentPlayer).BattleReady = True
             'TODO: Anything else needed to end battle mode?
+            TimerFlags(tmrUpdateBattleMode) = 0     ' Disable the timer that updates the Battle Alternate Scene
             DMDResetScoreScene
         End If
         PlayModeSong
@@ -3051,11 +3074,11 @@ Class cBattleState
 '   6    BattleTimer2 (tmr2)
 '   7    MartellBattleTimer (tmr3)
 '  Create a Battle Score scene specific to this House Battle
-    Dim BattleScene
+    Dim MyBattleScene
     Dim bSmallBattleScene
-    Public Function CreateBattleProgressScene
+    Public Sub CreateBattleProgressScene(ByRef BattleScene)
         Dim tinyfont,ScoreFont,line3,x3,x4,y4,i
-        Set BattleScene = FlexDMD.NewGroup(HouseToString(MyHouse))
+    
         Set tinyfont = FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0)
         BattleScene.AddActor FlexDMD.NewLabel("obj",tinyfont,BattleObjectivesShort(MyHouse))
         BattleScene.AddActor FlexDMD.NewLabel("tmr1",tinyfont,Int((TimerTimestamp(tmrBattleMode1)-GameTimeStamp)/10))
@@ -3081,19 +3104,18 @@ Class cBattleState
             If State < 2 Then BattleScene.GetLabel("HurryUp").Visible = 0
         Else
             ' Every other house has the score showing
-            BattleScene.AddActor FlexDMD.NewLabel("Score",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0),FormatScore(Score(CurrentPlayer)))
+            BattleScene.AddActor FlexDMD.NewLabel("Score",FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0),FormatScore(Score(CurrentPlayer)))
             BattleScene.GetLabel("Score").SetAlignedPosition 40,10,FlexDMD_Align_Center
         End if
         For i = 1 to 5
             BattleScene.AddActor FlexDMD.NewLabel("combo"&i, FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 1), "0")
         Next
-        Set CreateBattleProgressScene = BattleScene
+        Set MyBattleScene = BattleScene
         bSmallBattleScene = False 
     End Function
 
-    Public Function CreateSmallBattleProgressScene(n)
+    Public Function CreateSmallBattleProgressScene(ByRef BattleScene, n)
         Dim tinyfont,ScoreFont,line3,x3,x4,y4,i
-        Set BattleScene = FlexDMD.NewGroup(HouseToString(MyHouse))
         'Set ScoreFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0)
         Set tinyfont = FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbBlack, 1)
         BattleScene.AddActor FlexDMD.NewLabel("obj",tinyfont,HouseToUCString(MyHouse))
@@ -3114,7 +3136,7 @@ Class cBattleState
         For i = 1 to 5
             BattleScene.AddActor FlexDMD.NewLabel("combo"&i, FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 1), "0")
         Next
-        Set CreateSmallBattleProgressScene = BattleScene
+        Set MyBattleScene = BattleScene
         bSmallBattleScene = True
     End Function
 
@@ -3125,13 +3147,13 @@ Class cBattleState
         If MyHouse = Martell Then
             FlexDMD.LockRenderThread
             If CompletedShots = 0 Or State > 1 Then 
-                BattleScene.GetLabel("tmr3").Visible = 0 
-                BattleScene.GetLabel("line3").SetAlignedPosition 32,16,FlexDMD_Align_Center
+                MyBattleScene.GetLabel("tmr3").Visible = 0 
+                MyBattleScene.GetLabel("line3").SetAlignedPosition 32,16,FlexDMD_Align_Center
             Else 
-                BattleScene.GetLabel("tmr3").Visible = 1
-                BattleScene.GetLabel("line3").SetAlignedPosition 32,21,FlexDMD_Align_Center
+                MyBattleScene.GetLabel("tmr3").Visible = 1
+                MyBattleScene.GetLabel("line3").SetAlignedPosition 32,21,FlexDMD_Align_Center
             End if
-            If State > 1 Then BattleScene.GetLabel("HurryUp").Visible = 1
+            If State > 1 Then MyBattleScene.GetLabel("HurryUp").Visible = 1
             FlexDMD.UnlockRenderThread
             Exit Sub
         Else
@@ -3146,7 +3168,7 @@ Class cBattleState
                 Case Else: Exit Sub
             End Select
             FlexDMD.LockRenderThread
-            BattleScene.GetLabel("line3").Text = line3
+            MyBattleScene.GetLabel("line3").Text = line3
             FlexDMD.UnlockRenderThread
         End If
     End Sub
@@ -3177,21 +3199,21 @@ End Function
 Function HouseToUCString(h)
     Select Case h
         Case 0
-            HouseToString = ""
+            HouseToUCString = ""
         Case Stark
-            HouseToString = "STARK"
+            HouseToUCString = "STARK"
         Case Baratheon
-            HouseToString = "BARATHEON"
+            HouseToUCString = "BARATHEON"
         Case Lannister
-            HouseToString = "LANNISTER"
+            HouseToUCString = "LANNISTER"
         Case Greyjoy
-            HouseToString = "GREYJOY"
+            HouseToUCString = "GREYJOY"
         Case Tyrell
-            HouseToString = "TYRELL"
+            HouseToUCString = "TYRELL"
         Case Martell
-            HouseToString = "MARTELL"
+            HouseToUCString = "MARTELL"
         Case Targaryen
-            HouseToString = "TARGARYEN"
+            HouseToUCString = "TARGARYEN"
     End Select
 End Function
 
@@ -3203,7 +3225,6 @@ Sub VPObjects_Init
     Dim i
     BumperWeightTotal = 0
     For i = 1 To BumperAwards:BumperWeightTotal = BumperWeightTotal + PictoPops(i)(2): Next
-    'For i = 0 to MaxTimers: Set TimerReference(i) = GetRef(TimerSubroutine(i)) : Next
 End Sub
 
 Sub Game_Init()     'called at the start of a new game
@@ -3805,6 +3826,7 @@ Sub StopMBmodes
 ' TODO: Need to do anything here? E.g. reset lighting, restore pre-mb state?
     bBWMultiballActive = False
     PlayModeSong
+    If PlayerMode = 1 Then DMDCreateAlternateScoreScene HouseBattle1,HouseBattle2
 End Sub
 
 Sub RotateLaneLights(dir)
@@ -4069,14 +4091,22 @@ Sub li89_Timer
     For i = 1 to 5
         If ComboMultiplier(i) > 1 Then 
             bi = TimerTimestamp(tmrComboMultplier) - GameTimeStamp
-            if bi > 50 then bi = 150 else bi = bi*2 + 50 
+            if bi > 50 then bi = 150 else bi = bi*2 + 50
+            ComboLights(i).State = 0
             ComboLights(i).BlinkInterval = bi
+            ComboLights(i).State = 2 ' Hopefully this ensure they all blink in unison.
         End if
     Next
 End Sub
 
 Sub CheckActionButton
-    If PlayerMode = -2 Then LaunchBattleMode
+    If PlayerMode = -2 Then 
+        PreLaunchBattleMode
+    ElseIf PlayerMode = -2.1 Then
+        ' Skip battle intro animation and get to it
+        DMDClearQueue
+        LaunchBattleMode
+    End If
 'TODO: Check Actions
 End Sub
 
@@ -4109,16 +4139,22 @@ Sub IncreaseComboMultiplier(h)
     If c = 0 And h <> 0 Then Exit Sub  ' Target bank was hit - they don't increase multipliers
     max = 5             ' TODO: When can the Combo multiplier go to 6?
     If max > 3+SwordsCollected Then max = 3+SwordsCollected
-    If c = 0 Then x = ComboMultiplier(1) Else x = ComboMultiplier(c)
+    If c = 0 Then 
+        For i = 1 to 5
+            If ComboMultiplier(i) > x Then x = ComboMultiplier(i)
+        Next
+    Else 
+        x = ComboMultiplier(c)
+    End If
     x = x + 1
     if x > max Then x = max ' TODO: When can the Combo multiplier go to 6?
     Select Case c
         Case 0          ' Used for Inlane hit increases
-            mask = 62   ' Increase x of all shots (TODO: to highest or lowest of all?)
+            mask = 62   ' Increase x of all shots
         Case 1          ' Left orbit
             mask = 12   ' Turn on shots 2 & 3
         Case 2          ' Dragon shot
-            mask = 63
+            mask = 62
             tmr = 80
         Case 3          ' L ramp
             mask = 54
@@ -4141,12 +4177,26 @@ Sub IncreaseComboMultiplier(h)
     LastComboHit = c
     SetGameTimer tmrComboMultplier,tmr
     SetComboLights
+    DMDLocalScore 'Update the DMD. TODO: On the real game, the DMD flashes the multipliers when they first change
 End Sub
 
 Sub AddGold(g)
+    Dim scene
     TotalGold = TotalGold + g
     CurrentGold = CurrentGold + g
-    'TODO: Play IncreasedGold image w/ gold score
+    If bUseFlexDMD Then
+        Set scene = NewSceneWithImage "goldstack","goldstack"
+        scene.AddActor FlexDMD.NewLabel("addgold",FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by12.fnt", vbWhite, vbBlack, 0),"+"&g&" GOLD")
+        scene.GetLabel("addgold").SetAlignedPosition 2,0,FlexDMD_Align_TopLeft
+        BlinkActor scene.GetLabel("addgold"),150,4
+        scene.AddActor FlexDMD.NewLabel("gold",FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 1),"TOTAL GOLD: "&CurrentGold)
+        scene.GetLabel("gold").SetAlignedPosition 2,27,FlexDMD_Align_BottomLeft
+        DMDEnqueueScene scene,2,1200,2000,2000,""
+    End If
+End Sub
+
+Sub AddBonus(b)
+    BonusPoints(CurrentPlayer) = BonusPoints(CurrentPlayer) + b
 End Sub
 
 ' Check for key presses specific to this game.
@@ -4397,6 +4447,21 @@ Sub LightLock
     End If 
 End Sub
 
+'*****************
+' Ramp entrance switches
+'*****************
+
+' Left ramp
+Sub sw38_Hit
+    If Tilted then Exit Sub
+    PlaySoundVol "gotfx-swordswoop",VolDef
+End Sub
+
+' Right Ramp
+Sub sw41_Hit
+    If Tilted then Exit Sub
+    PlaySoundVol "gotfx-swordswoop",VolDef
+End Sub
 
 '******************
 ' 5 main shot hits
@@ -4754,7 +4819,7 @@ Sub LockBall
     If BallsInLock = 3 Then
         'Start BW multiball in 1 second - gives a chance to say 'ball locked'
         vpmtimer.addtimer 1600, "StartBWMultiball '"
-    ElseIf PlayerMode = 0 Then  ' Regular mode - release new ball
+    ElseIf PlayerMode >= 0 Then  ' Regular mode - release new ball
         If RealBallsInLock > BallsInLock Then
             RealBallsInLock = RealBallsInLock - 1
             ReleaseLockedBall 0
@@ -4763,7 +4828,7 @@ Sub LockBall
             bPlayfieldValidated = False
             CreateNewBall
         End If
-    Else ' battle mode and not all balls locked - let LaunchBattleMode take care of releasing a ball
+    Else ' battle mode selection and not all balls locked - let PreLaunchBattleMode take care of releasing a ball
         bBattleCreateBall = True
     End If
 
@@ -4834,13 +4899,12 @@ Sub tmrGame_Timer
     if bGameTimersEnabled = False Then Exit Sub
     bGameTimersEnabled = False
     For i = 1 to MaxTimers
-        If (TimerFlags(i) AND 2) = 2 And i > 2 Then ' Timers 1 & 2 can't be frozen. 
+        If (TimerFlags(i) AND 2) = 2 And i > 3 Then ' Timers 1 - 3 can't be frozen. 
             TimerTimestamp(i) = TimerTimestamp(i) + 1 ' "Frozen" timer - increase its expiry by 1 step
         ElseIf (TimerFlags(i) AND 1) = 1 Then 
             bGameTimersEnabled = True
             If TimerTimestamp(i) <= GameTimeStamp Then
                 TimerFlags(i) = TimerFlags(i) AND 254   ' Set bit0 to 0: Disable timer
-                'Call TimerReference(i)
                 Execute(TimerSubroutine(i))
             End If
         End if
@@ -5089,14 +5153,14 @@ Sub UpdateChooseBattle
     DMDChooseBattleScene "CHOOSE YOUR BATTLE", house1, house2, tmr
 End Sub
 
-' LaunchBattleMode
+' PreLaunchBattleMode
 ' Shut off ChooseBattle timers
 ' Play animation with sound for housebattle1 & 2. Show objective for housebattle1 for length of sound 
 ' Start battle:
 '   Set mode timer(s) 
 ' Check if we locked a ball and if so, do lock ball processing
 
-Sub LaunchBattleMode
+Sub PreLaunchBattleMode
     Dim scene,tmr
     TimerFlags(tmrUpdateChooseBattle) = 0
     TimerFlags(tmrChooseBattle) = 0
@@ -5105,7 +5169,8 @@ Sub LaunchBattleMode
         AddScore 0
         PlaySoundVol "gotfx-passfornow",VolDef
         PlayModeSong
-        LaunchBattleReleaseBall 0
+        SetPlayfieldLights
+        LaunchBattleMode
         Exit Sub
     End If
 
@@ -5113,44 +5178,51 @@ Sub LaunchBattleMode
     DMDHouseBattleScene HouseBattle1
     DMDHouseBattleScene HouseBattle2
 
-    tmr = 6000
-    If HouseBattle2 > 0 Then tmr=11000
+    tmr = Int(SceneSoundLengths(HouseBattle1)/100)
+    If HouseBattle2 > 0 Then tmr=tmr + Int(SceneSoundLengths(HouseBattle2)/100)
     
-    PlayerMode = 1
+    PlayerMode = -2.1
     Set DefaultScene = ScoreScene
 
     House(CurrentPlayer).BattleState(HouseBattle1).StartBattleMode
     If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).StartBattleMode
     SetPlayfieldLights
-    ' TODO: ScoreScene changes during a mode
 
     PlayModeSong
 
     DMDCreateAlternateScoreScene HouseBattle1,HouseBattle2
 
-    LaunchBattleReleaseBall tmr
+    SetGameTimer tmrLaunchBattle,tmr
 End Sub
 
 ' Handle releasing or locking the ball after choosing battle
-Sub LaunchBattleReleaseBall(tmr)
+Sub LaunchBattleMode
+    TimerFlags(tmrLaunchBattle) = 0
+    If PlayerMode = -2.1 Then PlayerMode = 1
     If bBattleCreateBall Then   'LockBall has already run. Create the new ball now
         bBattleCreateBall = False
         If RealBallsInLock > BallsInLock Then
             RealBallsInLock = RealBallsInLock - 1
-            vpmTimer.AddTimer tmr, "ReleaseLockedBall 0'"
+            ReleaseLockedBall 0
         Else
             bAutoPlunger = True
             bPlayfieldValidated = False
             debug.print "calling CreateNewBall from LaunchBattleScene"
-            vpmTimer.AddTimer tmr, "CreateNewBall '"
+            CreateNewBall
         End If
     ElseIf bLockIsLit Then      ' Should be 3rd ball locked. Tweaked timing to ensure he doesn't speak over top of song intro
         debug.print "calling LockBall from LaunchBattleScene"
-        vpmTimer.AddTimer tmr+1000, "LockBall '"
+        LockBall
     Else                            ' Lock isn't lit but we have a ball locked
         debug.print "calling ReleaseLockedBall from LaunchBattleScene"
-        vpmTimer.AddTimer tmr, "ReleaseLockedBall 0'"
+        ReleaseLockedBall
     End If
+End Sub
+
+' Called twice per second during battle mode
+Sub UpdateBattleMode
+    SetGameTimer tmrUpdateBattleMode,5
+    DMDLocalScore
 End Sub
 
 '**************************
@@ -5189,7 +5261,7 @@ Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo)
         Set scene = NewSceneWithVideo("hitscene",vid)
         Set scenevid = scene.GetVideo("hitscenevid")
         If scenevid is Nothing Then Set scenevid = scene.getImage("hitsceneimg")
-        Set font7x3 = FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0)
+        Set font7x3 = FlexDMD.NewFont("FlexDMD.Resources.udmd-f3by7.fnt", vbWhite, vbWhite, 0)
         scene.AddActor FlexDMD.NewGroup("hitscenetext")
         With scene.GetGroup("hitscenetext")
             .AddActor FlexDMD.NewLabel("line1",font7x3,line1)
@@ -5254,7 +5326,7 @@ Sub DMDComboScene(line0,line1,line2,combox,combotext,duration,sound)
     Dim ComboScene,HouseFont,ScoreFont,ActionFont,ComboFont,CombotextFont
     if bUseFlexDMD Then
         Set ComboScene = FlexDMD.NewGroup("ComboScene")
-        Set HouseFont  = FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0)
+        Set HouseFont  = FlexDMD.NewFont("FlexDMD.Resources.udmd-f3by7.fnt", vbWhite, vbWhite, 0)
         Set ActionFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0)
         Set ScoreFont  = FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbWhite, 0) 
         Set ComboFont  = FlexDMD.NewFont("FlexDMD.Resources.udmd-f12by24.fnt", vbWhite, vbWhite, 0) 
@@ -5311,9 +5383,9 @@ Sub DMDChooseScene1(line0,line1,line2,sigil)    ' sigil is an image name
             ChooseHouseScene.AddActor FlexDMD.NewLabel("choosetxt", FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0) ,"CHOOSE YOUR HOUSE")
             ChooseHouseScene.AddActor FlexDMD.NewLabel("house", FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0) ,line1)
             ChooseHouseScene.AddActor FlexDMD.NewLabel("action", FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0) ,line2)
-            ChooseHouseScene.GetLabel("choosetxt").SetAlignedPosition 78,5,FlexDMD_Align_Center
-            ChooseHouseScene.GetLabel("house").SetAlignedPosition 78,16,FlexDMD_Align_Center
-            ChooseHouseScene.GetLabel("action").SetAlignedPosition 78,27,FlexDMD_Align_Center
+            ChooseHouseScene.GetLabel("choosetxt").SetAlignedPosition 72,5,FlexDMD_Align_Center
+            ChooseHouseScene.GetLabel("house").SetAlignedPosition 72,16,FlexDMD_Align_Center
+            ChooseHouseScene.GetLabel("action").SetAlignedPosition 72,27,FlexDMD_Align_Center
             Set DefaultScene = ChooseHouseScene
             DMDFlush
         Else
@@ -5323,6 +5395,8 @@ Sub DMDChooseScene1(line0,line1,line2,sigil)    ' sigil is an image name
             If Not (sigilimage Is Nothing) Then ChooseHouseScene.AddActor sigilimage
             ChooseHouseScene.GetLabel("house").Text = line1
             ChooseHouseScene.GetLabel("action").Text = line2
+            ChooseHouseScene.GetLabel("house").SetAlignedPosition 72,16,FlexDMD_Align_Center
+            ChooseHouseScene.GetLabel("action").SetAlignedPosition 72,27,FlexDMD_Align_Center
             Set DefaultScene = ChooseHouseScene
         End If
     Else
@@ -5344,7 +5418,7 @@ Sub DMDChooseBattleScene(line0,line1,line2,tmr)
         If bUseFlexDMD Then
             ' Create the instructions scene first
             Set instscene = FlexDMD.NewGroup("choosebattleinstr")
-            instscene.AddActor FlexDMD.NewLabel("instructions",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0), _ 
+            instscene.AddActor FlexDMD.NewLabel("instructions",FlexDMD.NewFont("FlexDMD.Resources.udmd-f3by7.fnt", vbWhite, vbWhite, 0), _ 
                     "CHOOSE YOUR BATTLE" & vbLf & "USE FLIPPERS TO" & vbLf & "CHANGE YOUR CHOICE" )
             instscene.GetLabel("instructions").SetAlignedPosition 64,16,FlexDMD_Align_Center
             DMDFlush
@@ -5412,9 +5486,9 @@ End Sub
 ' Play the intro video, music, and goals for a House Battle Mode
 ' We create a single scene consisting of the animation followed by the objective.
 ' The total scene play length is the same as the music
-Dim SceneSoundLengths: SceneSoundLengths = Array(0,5654,5355,7805,4868,5165,5202,6000)  ' Battle sound lengths in 1/1000th's of a second
+Dim SceneSoundLengths: SceneSoundLengths = Array(0,4654,4855,7305,4368,4665,4702,5500)  ' Battle sound lengths in 1/1000th's of a second, minus half a second
 Sub DMDHouseBattleScene(h)
-    Dim scene,vid,af,blink,hname
+    Dim scene,vid,af,blink,hname,delay
 
     If h = 0 Then Exit Sub    
     If bUseFlexDMD Then
@@ -5427,16 +5501,22 @@ Sub DMDHouseBattleScene(h)
             .SetAlignedPosition 64,16, FlexDMD_Align_Center
             .Visible = False
         End With
-        ' After 3 seconds, disable video/image and enable text objective
+        ' After x seconds, disable video/image and enable text objective
+        Select Case h
+            Case Stark: delay=1
+            Case Martell: delay=1.9
+            Case Lannister,Baratheon: delay=2.5
+            Case Else: delay=3
+        End Select
         If Not (vid Is Nothing) Then
             Set af = vid.ActionFactory
             Set blink = af.Sequence()
-            blink.Add af.Wait(3)
+            blink.Add af.Wait(delay)
             blink.Add af.Show(False)
             vid.AddAction blink
             Set af = scene.GetLabel("objective").ActionFactory
             Set blink = af.Sequence()
-            blink.Add af.Wait(3)
+            blink.Add af.Wait(delay)
             blink.Add af.Show(True)
             scene.GetLabel("objective").AddAction blink
         Else
@@ -5520,15 +5600,14 @@ Sub DMDStarkBattleScene(house,num,score,line1,line2,just1,just2,sound)
         j3 = just1 + 6  ' Put Score on the same side as Line1 text, but at the bottom
         x1 = 2: x2 = 126
         If just1 = FlexDMD_Align_TopRight Then x1=126:x2=2
-'        Set scene = NewSceneWithVideo(HouseToString(house)&"hit","got-"&HouseToString(house)&"battlehit"&num)
-        Set scene = NewSceneWithVideo(HouseToString(house)&"hit","goldstack")
+        Set scene = NewSceneWithVideo(HouseToString(house)&"hit","got-"&HouseToString(house)&"battlehit"&num)
 
         scene.AddActor FlexDMD.NewLabel("score",FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbWhite, 0),score)
         scene.AddActor FlexDMD.NewLabel("line1", FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0),line1)
         scene.AddActor FlexDMD.NewLabel("line2", FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0),line2)
         scene.GetLabel("score").SetAlignedPosition x1,30,j3
-        scene.GetLabel("line1").SetAlignedPosition x1,5,j3
-        scene.GetLabel("line2").SetAlignedPosition x2,30,j3
+        scene.GetLabel("line1").SetAlignedPosition x1,5,just1
+        scene.GetLabel("line2").SetAlignedPosition x2,30,just2
         DMDEnqueueScene scene,1,1000,2000,1000,sound
     Else
         DisplayDMDText line1,score,2000
@@ -5588,27 +5667,31 @@ End Sub
 ' Set up an alternate score scene for battle mode. If two houses are stacked
 ' for battle, create a split screen scene
 Sub DMDCreateAlternateScoreScene(h1,h2)
-    Dim name,scene,scene1,scene2,vid,mask
+    Dim scene,scene1,scene2,vid,mask
     if Not bUseFlexDMD Then Exit Sub 
     If h2 <> 0 Then 
-        name = "got-"&HouseToString(h2)&"battlesigil"
+        Set scene = NewSceneWithVideo("battle","got-"&HouseToString(h2)&"battlesigil")
     ElseIf h1 = Baratheon or h1 = Greyjoy Then
-        name = "got-"&HouseToString(h1)&"battlesigil"
+        Set scene = NewSceneWithVideo("battle","got-"&HouseToString(h1)&"battlesigil")
+    ElseIf h1 = Stark Then
+        Set scene = FlexDMD.NewGroup("battle")
+        scene.AddActor NewActorFromImageSequence("battlevid","got-starkbattleprogress",41,128,32)
     Else
-        name = "got-"&HouseToString(h1)&"battleprogress"
+        Set scene = NewSceneWithVideo("battle","got-"&HouseToString(h1)&"battleprogress")
     End If
-    Set scene = NewSceneWithVideo("battle",name)
     Set vid = scene.GetVideo("battlevid")
     If Not (vid Is Nothing) Then vid.SetAlignedPosition 127,0,FlexDMD_Align_TopRight
     If h2 <> 0 Then
-        Set vid = FlexDMD.NewVideo("battlevid2",FlexPath & "got-" & HouseToString(h1) & "battlesigil.gif")
+        Set vid = FlexDMD.NewVideo("battlevid2","got-" & HouseToString(h1) & "battlesigil.gif")
         If Not (vid is Nothing) Then
             scene.AddActor vid
             Set vid = scene.GetVideo("battlevid2")
             vid.SetAlignedPosition 63,0,FlexDMD_Align_TopRight
         End If
-        Set scene1 = House(CurrentPlayer).BattleState(h1).CreateSmallBattleProgressScene(1)
-        Set scene2 = House(CurrentPlayer).BattleState(h2).CreateSmallBattleProgressScene(2)
+        Set scene1 = FlexDMD.NewGroup(HouseToString(h1))
+        Set scene2 = FlexDMD.NewGroup(HouseToString(h2))
+        House(CurrentPlayer).BattleState(h1).CreateSmallBattleProgressScene scene1,1
+        House(CurrentPlayer).BattleState(h2).CreateSmallBattleProgressScene scene2,2
         scene1.SetAlignedPosition 0,0,FlexDMD_Align_TopLeft
         scene2.SetAlignedPosition 64,0,FlexDMD_Align_TopLeft
         scene.AddActor scene1
@@ -5616,12 +5699,14 @@ Sub DMDCreateAlternateScoreScene(h1,h2)
         mask = 104  ' combos, tmr1, tmr2
         If h1 = Targaryen or h2 = Targaryen or h1 = Martell or h2 = Martell Then mask = mask Or 16 ' HurryUp
     Else
-        Set scene1 = House(CurrentPlayer).BattleState(h1).CreateBattleProgressScene
+        Set scene1 = FlexDMD.NewGroup(HouseToString(h1))
+        House(CurrentPlayer).BattleState(h1).CreateBattleProgressScene scene1
         scene1.SetAlignedPosition 0,0,FlexDMD_Align_TopLeft
         scene.AddActor scene1
         mask = 41   ' score, combos, tmr1
         If h1 = Martell and (TimerFlags(tmrMartellBattle) And 1) = 1 Then mask = 168
     End If
+    SetGameTimer tmrUpdateBattleMode,5
     DMDSetAlternateScoreScene scene,mask
 End Sub
 
@@ -5743,15 +5828,10 @@ End Class
 
 ' timers for battle started too soon
 ' gold coins play sound even when already lit. Should they?
-' √ multiball start didn't play sound or gif
 ' *3rd ball locked ejected a 4th ball - needs more debugging
 
 ' - release of 4th ball: check Ball Search
-' - create scene for Modes. At very least, summary screen with score, accumulated value, and countdown timer
-'   - Implement as alternate score scene with bit mask for which values to update
-'   - 1 second game timer to update countdown timer
-'   - AddScore updates score
-'   - Whatever updates accumulated value updates that value in alternate score
+' √ create scene for Modes. At very least, summary screen with score, accumulated value, and countdown timer
 ' - Implement LoL outlanes - they should release new ball as soon as existing ball rolls over outlane, if ball saver not lit
 '   - need to modify Drain and CreateNewBall code to not think we’re in multiball mode
 ' - Implement toplane rollovers to increase bonus multiplier
@@ -5768,18 +5848,20 @@ End Class
 '    First two shots say "Jackpot builds". First value is ~12-13M, second is 13-14M, final value was ~17M.
 '
 ' Mode things to fix
-' need a ModePauseTimer that pauses the timers if no score for 2 seconds
-' need a mode timer for Tyrell. 30 seconds. targets add 5 seconds
-
-' in Lannister battle:
-'  √? combo multipliers were wrong
-'  - score was too big
-'  - lockball didn't release another ball
-' - missing all battlesigil gifs
-' - stark battle hits work but need more sound effects
-' - stark battleintro scene loops but shouldn't. It's also too short.
-' - starkbattlehit scene is drawing the text too large
-' - HouseToUCString is broken
+' √ need a ModePauseTimer that pauses the timers if no score for 2 seconds
+' √ need a mode timer for Tyrell. 30 seconds. targets add 5 seconds
+' √? combo multipliers were wrong
+' √ score was too big
+' √? lockball didn't release another ball
+' √ missing all battlesigil gifs
+' √ starkbattlehit scene is drawing the text too large
+' √ "Pass For now" doesn't restore playfield lights
+' √ countdown timer in mode scene needs to be updated by a game timer once per second. Should be enough to call DMDLocalScore
+' √ stark battle hits work but need more sound effects
 ' - dragon combo multipliers doesn;t seem to work - lights flash but combos stay at 1x
-' - "Pass For now" doesn't restore playfield lights
 ' - CreateSmallBattleScene got called when "Pass For now" was selected
+' - Add sw38 (l ramp entrance) and sw41 (r ramp entrance) to table
+
+' Nice-To-Haves
+' - Change the timer for selecting which house mode to play. It will start at three seconds. Each button press will add eight seconds. The timer will max out at 20 seconds.
+'    - Also, only display the instructions once per player.
