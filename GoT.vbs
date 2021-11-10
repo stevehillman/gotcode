@@ -1453,6 +1453,41 @@ Function NewSceneWithImage(name,imagefile)
     NewSceneWithImage.AddActor actor
 End Function
 
+' Create a scene from a series of images. The only reason to use this
+' function is if you need to use transparent images. If you don't, use
+' an animated GIF - much easier. However, this does have one other advantage over
+' an animated GIF: FlexDMD will loop animated GIFs, regardless of what the loop attribute is set to in the GIF
+'  name   - name of the scene object returned
+'  imgdir - directory inside the FlexDMD project folder where the images are stored
+'  num    - number of images, numbered from image1..image<num>
+'  fps    - frames per second - a delay of 1/fps is used between frames
+'  hold   - if non-zero, how long to hold the last frame visible. If 0, the last scene will end with the last frame visible
+'  repeat - boolean: whether to loop the entire sequence
+'  count  - How many times to repeat. Ignored if repeat is false
+Function NewSceneFromImageSequence(name,imgdir,num,fps,hold,repeat,count)
+    Dim scene,i,actor,af,blink,total,delay
+    total = num/fps + hold
+    delay = 1/fps
+    Set scene = FlexDMD.NewGroup(name)
+    For i = 1 to num
+        Set actor = FlexDMD.NewImage(name&i,imgdir&"\image"&i&".png")
+        actor.Visible = 0
+        Set af = actor.ActionFactory
+        Set blink = af.Sequence()
+        blink.Add af.Wait((i-1)*delay)
+        blink.Add af.Show(True)
+        blink.Add af.Wait(delay*1.2)    ' Slightly longer than one frame length to ensure no flicker
+        if i=num And hold > 0 Then blink.Add af.Wait(hold)
+        if repeat or i<num Then 
+            blink.Add af.Show(False)
+            blink.Add af.Wait((num-i)*delay)
+        End If
+        If repeat Then actor.AddAction af.Repeat(blink,count) Else actor.AddAction blink
+    Next
+    Set NewSceneFromImageSequence = scene
+End Function
+
+
 ' Add a blink action to an Actor in a FlexDMD scene. 
 ' Usage: BlinkActor scene.GetActor("name"),blink-interval-in-seconds,repetitions 
 ' Blink action is only natively supported in FlexDMD 1.9+
@@ -1467,24 +1502,6 @@ Sub BlinkActor(actor,interval,times)
     blink.Add af.Wait(interval)
     actor.AddAction af.Repeat(blink,times)
 End Sub
-
-' Create a scene with a video actor from an image sequence. "imgname" is the name of a directory
-' containing 'num' images, numbered from image1.png..image<num>.png
-' FlexDMD supports still images with transparant backgrounds, but not GIFs or videos. This
-' gets around that.
-' Unfortunately FlexDMD hardcodes the FPS at 25 and Stern uses 20. 
-Function NewSceneWithImageSequence(name,imgname,num)
-    Dim actor,i,imgseq
-    Set NewSceneWithImageSequence = FlexDMD.NewGroup(name)
-    imgseq = imgname & "\image1.png"
-    For i = 2 to num
-        imgseq = imgseq & FDsep & imgname & "\image"&i&".png"
-    Next
-    Set actor = FlexDMD.NewVideo(name&"vid",imgseq)
-    if actor is Nothing Then Exit Function
-    NewSceneWithImageSequence.AddActor actor
-End Function
-
 
 '*********
 '   LUT
@@ -2683,11 +2700,11 @@ Class cBattleState
 
     ' Update the state machine based on the ball hitting a target
     Public Sub RegisterHit(h)
-        Dim hit,done,hitscene,ScoredValue,i
+        Dim hit,done,hitscene,hitsound,ScoredValue,i
         ScoredValue = 0
         ThawAllGameTimers
         if bComplete Then Exit Sub
-        hitscene=""
+        hitscene="":hitsound=""
         Select Case MyHouse
             Case Stark
                 If h = Lannister or h = Stark Then
@@ -2714,6 +2731,7 @@ Class cBattleState
                         ' Render battle hit scene. 'House,Scene #, Score, Text1, Text2, Score+Text1 text justification, text2 justification,sound
                         DMDStarkBattleScene Stark,CompletedShots-2,HouseValue,"STARK VALUE GROWS",AryaKills(CompletedShots),just1,just2,"say-aryakill"&CompletedShots-2
                     End If
+                    UpdateBattleScene
                 ElseIf State = 2 And (h = Greyjoy or h = Martell) Then
                     DoCompleteMode h
                 End if
@@ -2758,6 +2776,7 @@ Class cBattleState
                         DoCompleteMode h
                     Else
                         hitscene = "hit"&CompletedShots
+                        hitsound = "hit1"
                         ScoredValue = HouseValue
                         Select Case CompletedShots
                             Case 1,3: HouseValue = HouseValue + 2250000 + RndNbr(8)*25000
@@ -2911,7 +2930,7 @@ Class cBattleState
         End Select
 
         If hitscene <> "" Then
-            Dim line2,line3,name,combo
+            Dim line2,line3,name,sound,combo
             AddBonus 100000
             line3 = "JACKPOT BUILDS"
             combo = 0
@@ -2926,7 +2945,8 @@ Class cBattleState
                 line2 = FormatScore(HouseValue)
             End If
             name = "got-"&HouseToString(MyHouse)&"battle"&hitscene
-            DMDPlayHitScene name,name,1.5,BattleObjectivesShort(MyHouse),line2,line3,combo
+            if hitsound <> "" Then sound = "got-"&HouseToString(MyHouse)&"battle"&hitsound Else sound = name
+            DMDPlayHitScene name,sound,1.5,BattleObjectivesShort(MyHouse),line2,line3,combo
             UpdateBattleScene
         End If
 
@@ -2953,7 +2973,7 @@ Class cBattleState
         AddScore HouseValue * comboval
         line2 = FormatScore(HouseValue * comboval)
         If comboval = 1 Then comboval = 0  ' Don't bother printing Combo value for final shot if it's just 1x
-        name = "got-"&HouseToString(MyHouse)&"complete"
+        name = "got-"&HouseToString(MyHouse)&"battlecomplete"
         DMDPlayHitScene name,name,1.5,BattleObjectivesShort(MyHouse),line2,"COMPLETE",comboval
         
     End Sub
@@ -2978,11 +2998,14 @@ Class cBattleState
         If HouseBattle1 = 0 And HouseBattle2 = 0 Then  
             PlayerMode = 0
             ' Check to see whether there are any non-lit houses. If not, always light BattleReady at the end of a battle
+            ' Also light BattleReady if two balls are locked and at least one house is qualified
+            Dim br1:br1=False
             br = True
             For i = 1 to 7
                 If House(CurrentPlayer).Qualified(i) = False And House(CurrentPlayer).Completed(i) = False  Then br = False
+                If BallsInLock = 2 and House(CurrentPlayer).Qualified(i) = True And House(CurrentPlayer).Completed(i) = False Then br1=True
             Next
-            If br Then House(CurrentPlayer).BattleReady = True
+            If br or br1 Then House(CurrentPlayer).BattleReady = True
             'TODO: Anything else needed to end battle mode?
             TimerFlags(tmrUpdateBattleMode) = 0     ' Disable the timer that updates the Battle Alternate Scene
             DMDResetScoreScene
@@ -3092,7 +3115,7 @@ Class cBattleState
             BattleScene.GetLabel("line3").SetAlignedPosition x3,16,FlexDMD_Align_Center
         End If
         BattleScene.GetLabel("tmr1").SetAlignedPosition x4,y4,FlexDMD_Align_Center
-        BattleScene.GetLabel("obj").SetAlignedPosition 40,4,FlexDMD_Align_Center
+        BattleScene.GetLabel("obj").SetAlignedPosition 40,3,FlexDMD_Align_Center
 
         If MyHouse = Martell Then
             BattleScene.AddActor FlexDMD.NewLabel("tmr3",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0),Int((TimerTimestamp(tmrMartellBattle)-GameTimeStamp)/10))
@@ -3103,7 +3126,7 @@ Class cBattleState
         Else
             ' Every other house has the score showing
             BattleScene.AddActor FlexDMD.NewLabel("Score",FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0),FormatScore(Score(CurrentPlayer)))
-            BattleScene.GetLabel("Score").SetAlignedPosition 40,10,FlexDMD_Align_Center
+            BattleScene.GetLabel("Score").SetAlignedPosition 40,9,FlexDMD_Align_Center
         End if
         For i = 1 to 5
             BattleScene.AddActor FlexDMD.NewLabel("combo"&i, FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 1), "0")
@@ -3141,7 +3164,6 @@ Class cBattleState
     ' Timers and score are updated by main score subroutine. We just take care of battle-specific values
     Public Sub UpdateBattleScene
         Dim line3
-        FlexDMD.LockRenderThread
         If MyHouse = Martell Then
             FlexDMD.LockRenderThread
             If CompletedShots = 0 Or State > 1 Then 
@@ -3767,7 +3789,7 @@ Sub PlayModeSong
         mysong = "got-track-playfieldunvalidated"
     ElseIf PlayerMode = -2 Then
         mysong = "got-track-choosebattle"
-    ElseIf Playermode = 1 Then
+    ElseIf Playermode = 1 or PlayerMode = -2.1 Then
         mysong = "got-track5"
     ElseIf bMultiBallMode Then
         mysong = "got-track4"
@@ -4118,7 +4140,16 @@ End Sub
 
 Sub IncreaseBonusMultiplier(bx)
     BonusMultiplier(CurrentPlayer) = BonusMultiplier(CurrentPlayer) + bx
-    'TODO: Play increase bonus animation (and sound?)
+    Dim scene
+    If bUseFlexDMD Then
+        Set scene = FlexDMD.NewGroup("testscene")
+        scene.AddActor FlexDMD.NewLabel("lbl1",FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbBlack, 1),BonusMultiplier(CurrentPlayer))
+        scene.GetLabel("lbl1").SetAlignedPosition 64,16,FlexDMD_Align_CENTER
+        scene.AddActor NewSceneFromImageSequence "img1","bonusx",50,20,2,false,0
+        DMDEnqueueScene scene,1,3000,4500,4000,""
+    Else
+        DisplayDMDText "",BonusMultiplier(CurrentPlayer)&"X BONUS",2000
+    End If
 End Sub
 
 ' ComboMultiplier increaser
@@ -4434,7 +4465,7 @@ Sub LightLock
     PlaySoundVol "say-lock-is-lit"&i, VolDef
 
     ' Ensure Battle is enabled for the start of multiball, as long as at least one house is qualified
-    If BallsInLock = 2 Then
+    If BallsInLock = 2 And PlayerMode <> 1 Then
         For i = Stark to Targaryen
             If House(CurrentPlayer).Qualified(i) and House(CurrentPlayer).Completed(i) = False Then
                 House(CurrentPlayer).BattleReady = True
@@ -4452,13 +4483,13 @@ End Sub
 ' Left ramp
 Sub sw38_Hit
     If Tilted then Exit Sub
-    PlaySoundVol "gotfx-swordswoosh",VolDef
+    If PlayerMode = 1 Then PlaySoundVol "gotfx-ramphit1",VolDef Else PlaySoundVol "gotfx-swordswoosh",VolDef
 End Sub
 
 ' Right Ramp
 Sub sw41_Hit
     If Tilted then Exit Sub
-    PlaySoundVol "gotfx-swordswoosh",VolDef
+    If PlayerMode = 1 Then PlaySoundVol "gotfx-ramphit2",VolDef Else PlaySoundVol "gotfx-swordswoosh",VolDef
 End Sub
 
 '******************
@@ -5122,6 +5153,12 @@ End Sub
 Sub UpdateChooseBattle
     Dim house1, house2, tmr, i
 
+    ' Just in case we got called by accident
+    If PlayerMode <> -2 Then
+        TimerFlags(tmrUpdateChooseBattle) = 0
+        Exit Sub
+    End if
+
     ' Enable the game timer to call this sub again in 1 second
     SetGameTimer tmrUpdateChooseBattle,10
 
@@ -5213,7 +5250,7 @@ Sub LaunchBattleMode
         LockBall
     Else                            ' Lock isn't lit but we have a ball locked
         debug.print "calling ReleaseLockedBall from LaunchBattleScene"
-        ReleaseLockedBall
+        ReleaseLockedBall 0
     End If
 End Sub
 
@@ -5606,7 +5643,7 @@ Sub DMDStarkBattleScene(house,num,score,line1,line2,just1,just2,sound)
         scene.GetLabel("score").SetAlignedPosition x1,30,j3
         scene.GetLabel("line1").SetAlignedPosition x1,5,just1
         scene.GetLabel("line2").SetAlignedPosition x2,30,just2
-        DMDEnqueueScene scene,1,1000,2000,1000,sound
+        DMDEnqueueScene scene,1,2000,2000,1000,sound
     Else
         DisplayDMDText line1,score,2000
         PlaySoundVol sound,VolDef
@@ -5631,13 +5668,13 @@ Sub DMDSpinnerScene(spinval)
         If spinval=AccumulatedSpinnerValue Then ' First spin this scene: clear the scene
             SpinScene.RemoveAll
             SpinScene.AddActor FlexDMD.NewLabel("level",tinyfont,"0")
-            SpinScene.AddActor FlexDMD.NewLabel("spin", FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", RGB(167, 165, 165), vbWhite, 0),"spinner")
+            SpinScene.AddActor FlexDMD.NewLabel("spin", FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", RGB(167, 165, 165), vbWhite, 0),"SPINNER")
             SpinScene.AddActor FlexDMD.NewLabel("value",tinyfont,"0")
             SpinScene.GetLabel("spin").SetAlignedPosition 64,24, FlexDMD_Align_Center
         End If
         
         With SpinScene.GetLabel("level")
-            .Text = "level "&SpinnerLevel
+            .Text = "LEVEL "&SpinnerLevel
             .SetAlignedPosition 64,12, FlexDMD_Align_Center
         End With
         With SpinScene.GetLabel("value")
@@ -5671,9 +5708,6 @@ Sub DMDCreateAlternateScoreScene(h1,h2)
         Set scene = NewSceneWithVideo("battle","got-"&HouseToString(h2)&"battlesigil")
     ElseIf h1 = Baratheon or h1 = Greyjoy Then
         Set scene = NewSceneWithVideo("battle","got-"&HouseToString(h1)&"battlesigil")
-    ElseIf h1 = Stark Then
-        Set scene = FlexDMD.NewGroup("battle")
-        Set scene = NewSceneWithImageSequence("battle","got-starkbattleprogress",41)
     Else
         Set scene = NewSceneWithVideo("battle","got-"&HouseToString(h1)&"battleprogress")
     End If
@@ -5791,8 +5825,8 @@ Sub DMDLocalScore
             ' Update combo x
             For i = 1 to 5
                 With ScoreScene.GetLabel("combo"&i)
-                    .Text = ComboMultiplier(i)&"X"
-                    .SetAlignedPosition i*25,31,FlexDMD_Align_BottomLeft
+                    .Text = (ComboMultiplier(i)*PlayfieldMultiplierVal)&"X"
+                    .SetAlignedPosition (i-1)*25,31,FlexDMD_Align_BottomLeft
                 End With
             Next
         End If
@@ -5824,7 +5858,6 @@ Class PinupNULL	' Dummy Pinup class so I dont have to keep adding if cases when 
 	End Sub 
 End Class 
 
-' timers for battle started too soon
 ' gold coins play sound even when already lit. Should they?
 ' *3rd ball locked ejected a 4th ball - needs more debugging
 
@@ -5840,6 +5873,9 @@ End Class
 ' - Implement playfield lighting effects
 ' - Implement Wall MB countdown. Wall MB comes later
 
+' - gold targets need to be bouncier. 
+' - battering ram needs to be less bouncy and more scattery
+
 ' Mode alternate scene notes
 '  - during Martell, when one shot has been made, alternate scene switches to just Martell with a large 10 second countdown
 '  - In Martell, value is awarded when 3rd orbit shot is made. That value then becomes the HurryUp value for shooting a ramp. 
@@ -5848,56 +5884,12 @@ End Class
 ' Mode things to fix
 ' √ need a ModePauseTimer that pauses the timers if no score for 2 seconds
 ' √ need a mode timer for Tyrell. 30 seconds. targets add 5 seconds
-' √? combo multipliers were wrong
 ' √ score was too big
-' √? lockball didn't release another ball
 ' √ missing all battlesigil gifs
-' √ starkbattlehit scene is drawing the text too large
-' √ "Pass For now" doesn't restore playfield lights
-' √ countdown timer in mode scene needs to be updated by a game timer once per second. Should be enough to call DMDLocalScore
-' √ stark battle hits work but need more sound effects
-' - dragon combo multipliers doesn;t seem to work - lights flash but combos stay at 1x
-' - CreateSmallBattleScene got called when "Pass For now" was selected
-' - Add sw38 (l ramp entrance) and sw41 (r ramp entrance) to table
-' - lannister battle scene got stuck on scene. Also says "2 shots lit" instead of +2
-' - check to make sure we're not advancing qualifying hits during battle - lannister was able to start when
-' - 3 balls were locked, yet stark had just finished
-' - takes too long to start battle music now.
-' - font in battle "choose your battle" is too close together
-' - no lannister hit sounds
+' - no lannister hit sounds - they're there now, just need importing into VPX table
+' √ During Stark, "value=" doesn't update.
 
 ' Nice-To-Haves
 ' - Change the timer for selecting which house mode to play. It will start at three seconds. Each button press will add eight seconds. The timer will max out at 20 seconds.
 '    - Also, only display the instructions once per player.
-[1] 2021/11/08 22:43:57.566 ERROR | Exception while resolving image: 'got-starkbattleprogress\image1.png,got-starkbattleprogress\image2.png,got-starkbattleprogress\image3.png,got-starkbattleprogress\image4.png,got-starkbattleprogress\image5.png,got-starkbattleprogress\image6.png,got-starkbattleprogress\image7.png,got-starkbattleprogress\image8.png,got-starkbattleprogress\image9.png,got-starkbattleprogress\image10.png,got-starkbattleprogress\image11.png,got-starkbattleprogress\image12.png,got-starkbattleprogress\image13.png,got-starkbattleprogress\image14.png,got-starkbattleprogress\image15.png,got-starkbattleprogress\image16.png,got-starkbattleprogress\image17.png,got-starkbattleprogress\image18.png,got-starkbattleprogress\image19.png,got-starkbattleprogress\image20.png,got-starkbattleprogress\image21.png,got-starkbattleprogress\image22.png,got-starkbattleprogress\image23.png,got-starkbattleprogress\image24.png,got-starkbattleprogress\image25.png,got-starkbattleprogress\image26.png,got-starkbattleprogress\image27.png,got-starkbattleprogress\image28.png,got-starkbattleprogress\image29.png,got-starkbattleprogress\image30.png,got-starkbattleprogress\image31.png,got-starkbattleprogress\image32.png,got-starkbattleprogress\image33.png,got-starkbattleprogress\image34.png,got-starkbattleprogress\image35.png,got-starkbattleprogress\image36.png,got-starkbattleprogress\image37.png,got-starkbattleprogress\image38.png,got-starkbattleprogress\image39.png,got-starkbattleprogress\image40.png,got-starkbattleprogress\image41.png' System.InvalidOperationException: Unsupported asset type FlexDMD.ImageSequence
-   at FlexDMD.Asset`1.Load()
-   at FlexDMD.FlexDMD.ResolveImage(String filename)
- [1] 2021/11/08 22:43:57.566 ERROR | Missing resource 'got-starkbattleprogress\image1.png,got-starkbattleprogress\image2.png,got-starkbattleprogress\image3.png,got-starkbattleprogress\image4.png,got-starkbattleprogress\image5.png,got-starkbattleprogress\image6.png,got-starkbattleprogress\image7.png,got-starkbattleprogress\image8.png,got-starkbattleprogress\image9.png,got-starkbattleprogress\image10.png,got-starkbattleprogress\image11.png,got-starkbattleprogress\image12.png,got-starkbattleprogress\image13.png,got-starkbattleprogress\image14.png,got-starkbattleprogress\image15.png,got-starkbattleprogress\image16.png,got-starkbattleprogress\image17.png,got-starkbattleprogress\image18.png,got-starkbattleprogress\image19.png,got-starkbattleprogress\image20.png,got-starkbattleprogress\image21.png,got-starkbattleprogress\image22.png,got-starkbattleprogress\image23.png,got-starkbattleprogress\image24.png,got-starkbattleprogress\image25.png,got-starkbattleprogress\image26.png,got-starkbattleprogress\image27.png,got-starkbattleprogress\image28.png,got-starkbattleprogress\image29.png,got-starkbattleprogress\image30.png,got-starkbattleprogress\image31.png,got-starkbattleprogress\image32.png,got-starkbattleprogress\image33.png,got-starkbattleprogress\image34.png,got-starkbattleprogress\image35.png,got-starkbattleprogress\image36.png,got-starkbattleprogress\image37.png,got-starkbattleprogress\image38.png,got-starkbattleprogress\image39.png,got-starkbattleprogress\image40.png,got-starkbattleprogress\image41.png' 
- [1] 2021/11/08 22:43:57.566  INFO | Warning actor not found 'battlevid' 
- [1] 2021/11/08 22:43:57.566  INFO | New font added to asset manager: FontDef [path=FlexDMD.Resources.udmd-f4by5.fnt, tint=Color [White], border tint=Color [Black], border size=1] 
- [1] 2021/11/08 22:44:12.803  INFO | New font added to asset manager: FontDef [path=FlexDMD.Resources.udmd-f7by13.fnt, tint=Color [A=255, R=167, G=165, B=165], border tint=Color [White], border size=0] 
- [1] 2021/11/08 22:44:22.605 ERROR | Missing resource 'goldstack.png' 
- [1] 2021/11/08 22:44:22.605  INFO | New font added to asset manager: FontDef [path=FlexDMD.Resources.udmd-f7by13.fnt, tint=Color [White], border tint=Color [Black], border size=0] 
- [1] 2021/11/08 22:44:35.788 ERROR | Missing resource 'goldstack.png' 
- [1] 2021/11/08 22:44:45.973 ERROR | Missing resource 'goldstack.png' 
- [1] 2021/11/08 22:44:57.965 ERROR | Missing resource 'goldstack.png' 
- [1] 2021/11/08 22:44:57.988 ERROR | Missing resource 'goldstack.png' 
- [1] 2021/11/08 22:45:03.667 ERROR | Missing resource 'got-starkbattlehit1.gif' 
- [1] 2021/11/08 22:45:03.667  INFO | New bitmap added to asset manager: got-starkbattlehit1.png 
- [1] 2021/11/08 22:45:06.146 ERROR | Missing resource 'got-starkbattlehit2.gif' 
- [1] 2021/11/08 22:45:06.146  INFO | New bitmap added to asset manager: got-starkbattlehit2.png 
- [1] 2021/11/08 22:45:07.307 ERROR | Missing resource 'goldstack.png' 
- [1] 2021/11/08 22:45:10.345 ERROR | Missing resource 'got-starkbattlehit3.gif' 
- [1] 2021/11/08 22:45:10.345  INFO | New bitmap added to asset manager: got-starkbattlehit3.png 
- [1] 2021/11/08 22:45:11.665 ERROR | Missing resource 'goldstack.png' 
- [1] 2021/11/08 22:45:14.534 ERROR | Missing resource 'goldstack.png' 
- [1] 2021/11/08 22:45:14.656 ERROR | Missing resource 'goldstack.png' 
- [1] 2021/11/08 22:45:26.306 ERROR | Missing resource 'got-starkbattlehit4.gif' 
- [1] 2021/11/08 22:45:26.306  INFO | New bitmap added to asset manager: got-starkbattlehit4.png 
- [1] 2021/11/08 22:45:27.686 ERROR | Missing resource 'goldstack.png' 
- [1] 2021/11/08 22:45:30.375 ERROR | Missing resource 'got-starkbattlehit5.gif' 
- [1] 2021/11/08 22:45:30.375  INFO | New bitmap added to asset manager: got-starkbattlehit5.png 
- [1] 2021/11/08 22:45:31.449 ERROR | Missing resource 'got-starkcomplete.gif' 
- [1] 2021/11/08 22:45:31.449 ERROR | Missing resource 'got-starkcomplete.png' 
- [1] 2021/11/08 22:45:31.449  INFO | Warning actor not found 'hitscenevid' 
- [1] 2021/11/08 22:45:31.449  INFO | Warning actor not found 'hitsceneimg' 
+
