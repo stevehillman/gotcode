@@ -57,7 +57,7 @@ End Sub
 Const cGameName = "gameofthrones"
 Const myVersion = "0.9"
 Const MaxPlayers = 4          ' from 1 to 4
-Const BallSaverTime = 2000      ' in seconds of the first ball
+Const BallSaverTime = 20      ' in seconds of the first ball
 Const MaxMultiplier = 5       ' limit playfield multiplier
 Const MaxBonusMultiplier = 50 'limit Bonus multiplier
 Const BallsPerGame = 3        ' usually 3 or 5
@@ -2007,6 +2007,7 @@ Sub Drain_Hit()
         If(bBallSaverActive = True and bEarlyEject = False)Then
             DoBallSaved 0
         Else
+        	bEarlyEject = False
             ' cancel any multiball if on last ball (ie. lost all other balls)
             If(BallsOnPlayfield-RealBallsInLock = 1)Then
                 ' AND in a multi-ball??
@@ -2181,6 +2182,7 @@ Dim ComboLights
 Dim GoldTargetLights
 Dim BattleObjectives
 Dim BattleObjectivesShort
+Dim QAnimateTimes       ' Length of each qualifying shot's animation time
 
 ' Global variables with player data - saved across balls and between players
 Dim PlayerMode          ' Current player's mode. 0=normal, -1 = select house, -2 = select battle, -3 = select mystery, 1 = in battle
@@ -2195,6 +2197,7 @@ Dim bEBisLit            ' TODO: Find out whether this carries over
 Dim bWildfireTargets(2) ' State of Wildfire targets
 Dim bLoLLit             ' Whether Lord of Light Outlanes are lit
 Dim bLoLUsed            ' Whether Lord of Light has been used this game
+Dim bEarlyEject         ' Indicates whether outlanes caused an early eject of a new ball
 Dim CompletedHouses     ' Number of completed houses - determines max spinner level and triggers HOTK and Iron Throne modes
 Dim TotalGold           ' Total gold collected in the game
 Dim CurrentGold         ' Current gold balance
@@ -2269,6 +2272,8 @@ BattleObjectives = Array("", _
 
 BattleObjectivesShort = Array("","ARYA'S TRAINING","AID FOR THE WALL","SAVE MYRCELLA","WINTERFELL BURNS",_
             "JOUSTING","TRIAL BY COMBAT","DEFEAT VISERION","DEFEAT DROGON","DEFEAT RHAEGAL")
+
+QAnimateTimes = Array(0,0,0,0,1,1,1.8,3,1,1,2,1.5,2,2.5,2.5,2.5,1.3,2.6,0,4.8,1.3,2.2,1.6,3.9,3.1)
 
 ' Assignment of Lol Target lights
 LoLLights = Array(li17,li20,li23)
@@ -2444,6 +2449,7 @@ Class cHouse
     Public Sub RegisterHit(h)
         Dim line0,line1,line2
         Dim i
+        Dim delay
         Dim combo:combo=1
         Dim combotext: combotext=""
         Dim qsound:qsound = "gotfx-qualify-sword-hit1"
@@ -2477,11 +2483,15 @@ Class cHouse
                 Elseif PlayfieldMultiplierVal > 1 Then
                     combotext = "playfield"
                 End If
-                If h = Martell or (h = Stark and QualifyCount < 3) Then
-                    vpmtimer.addtimer 2000, "PlaySoundVol "&qsound&","&VolDef&" '"
-                    qsound = "gotfx-"&HouseToString(h)&"qualify"&QualifyCount
+
+                ' Play the animation and sound(s)
+                delay = QAnimateTimes(h*3+QualifyCount(h))
+                If h = Martell or (h = Stark and QualifyCount(h) < 3) Then
+                    vpmtimer.addtimer delay*1000, "PlaySoundVol """&qsound&""","&VolDef&" '"
+                    qsound = "gotfx-"&HouseToString(h)&"qualify"&QualifyCount(h)
                 End If
-                DMDComboScene line0,line1,line2,combo*PlayfieldMultiplierVal,combotext,3000,qsound
+                'DMDComboScene line0,line1,line2,combo*PlayfieldMultiplierVal,combotext,3000,qsound
+                DMDPlayHitScene "got-"&HouseToString(h)&"qualify"&QualifyCount(h),qsound,delay,line0,line1,line2,combo
 
                  ' Increase Qualify value for next shot. Lots of randomness seems to factor in here
                 if QualifyValue = 100000 Then
@@ -2574,7 +2584,6 @@ End Class
 Dim ModeLightPattern
 Dim AryaKills
 'Each number is a bit mask of which shields light up for the given mode
-'TODO Initial mode light pattern could be affected by saved state
 'TODO Targaryen light pattern needs more investigation
 ModeLightPattern = Array(0,10,16,0,218,138,80,10)
 
@@ -2655,6 +2664,7 @@ Class cBattleState
                 End Select
         End Select
 
+        debug.print "House:"&MyHouse&" State:"&State&" Mask:"&mask
         For i = 1 to 7
             If (mask And 2^i) > 0 Then 
                 ModeLightState(i,0) = ModeLightState(i,0) + 1
@@ -2697,7 +2707,6 @@ Class cBattleState
         End If
 
     ' TODO: Are there any other lights/sounds assocaited with starting battle for a specific house?
-    ' TODO: If not in multiball, create a scene for tracking progress. Scene is split with other battle if two battles
     End Sub
 
     ' Update the state machine based on the ball hitting a target
@@ -2761,7 +2770,7 @@ Class cBattleState
                     If (SelectedHouse = GreyJoy And LannisterGreyjoyMask = 218) or (SelectedHouse <> Greyjoy And CompletedShots >= 5) Then
                         DoCompleteMode h
                     Else
-                        hitscene = "hit"&(CompletedShots + 1)
+                        hitscene = "hit"&(CompletedShots+1) 'hit1 is for gold target hit
                         SetModeLights
                         ScoredValue = HouseValue
                         ' TODO: Figure out if there's a better pattern to capture Lannister mode value increases
@@ -2947,7 +2956,11 @@ Class cBattleState
                 line2 = FormatScore(HouseValue)
             End If
             name = "got-"&HouseToString(MyHouse)&"battle"&hitscene
-            if hitsound <> "" Then sound = "got-"&HouseToString(MyHouse)&"battle"&hitsound Else sound = name
+            if hitsound <> "" Then 
+                sound = "gotfx-"&HouseToString(MyHouse)&"battle"&hitsound 
+            Else 
+                sound = "gotfx-"&HouseToString(MyHouse)&"battle"&hitscene
+            End if
             DMDPlayHitScene name,sound,1.5,BattleObjectivesShort(MyHouse),line2,line3,combo
             UpdateBattleScene
         End If
@@ -3082,7 +3095,7 @@ Class cBattleState
         ShotMask = ShotMask Or litmask
         HouseValue = HouseValue + 125000
         SetModeLights
-        DMDPlayHitScene "got-lannisterbattlehit1","",1.5,"HOUSE LANNISTER VALUE GROWS",HouseValue,litshots,0
+        DMDPlayHitScene "got-lannisterbattlehit1","gotfx-lannisterbattlehit1",1.5,"HOUSE LANNISTER VALUE GROWS",HouseValue,litshots,0
     End Sub
 
     ' Called when the 10 second timer runs down
@@ -4180,7 +4193,7 @@ Sub IncreaseBonusMultiplier(bx)
         Set scene = FlexDMD.NewGroup("testscene")
         scene.AddActor FlexDMD.NewLabel("lbl1",FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbBlack, 1),BonusMultiplier(CurrentPlayer))
         scene.GetLabel("lbl1").SetAlignedPosition 64,16,FlexDMD_Align_CENTER
-        scene.AddActor NewSceneFromImageSequence "img1","bonusx",50,20,2,false,0
+        scene.AddActor NewSceneFromImageSequence("img1","bonusx",50,20,2,false,0)
         DMDEnqueueScene scene,1,3000,4500,4000,"gotfx-wind-blowing"
     Else
         DisplayDMDText "",BonusMultiplier(CurrentPlayer)&"X BONUS",2000
@@ -4560,9 +4573,11 @@ Sub Outlane_Hit
     LastSwitchHit = "OutlaneSW"
     If bMultiBallMode Then Exit Sub
     If bBallSaverActive Then
+        bEarlyEject = True
         CreateMultiballTimer.Interval = 100
         DoBallSaved 0
     Elseif bLoLLit Then
+        bEarlyEject = True
         CreateMultiballTimer.Interval = 100
         DoBallSaved 1
         bLoLUsed = True
@@ -5040,6 +5055,7 @@ Sub SetGameTimer(tmr,val)
 End Sub
 
 Sub StopGameTimers
+    Dim i
     For i = 1 to MaxTimers:TimerFlags(i) = TimerFlags(i) And 254: Next
 End Sub
 
@@ -5139,12 +5155,12 @@ End Sub
 Sub EndHurryUp
     bHurryUpActive = False
     TimerFlags(tmrHurryUp) = TimerFlags(tmrHurryUp) And 254
-    If IsEmpty(HurryUpScene) Or HurryUpScene is Nothing Then
+    'If IsEmpty(HurryUpScene) Or HurryUpScene is Nothing Then
         'Update regular DMD somehow. Not yet supported
-    Else
+    'Else
         lbl = HurryUpScene.GetLabel("HurryUp")
         If Not lbl is Nothing Then lbl.Visible = False
-    End If
+    'End If
     If PlayerMode = 1 Then
         If HouseBattle1 > 0 Then House(CurrentPlayer).BattleState(HouseBattle1).EndHurryUp
         If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).EndHurryUp 
@@ -5380,7 +5396,7 @@ End Sub
 ' Create a "Hit" scene which plays every time a qualifying or battle target is hit
 '  vid   - the name of the video for the first part of the scene
 '  sound - the sound to play with the video
-'  delay - How long to wait before cutting to the second part of the scene
+'  delay - How long to wait before cutting to the second part of the scene, in seconds (float)
 '  line1-3 - Up to 3 lines of text
 '  combo - If 0, text is full width. Otherwise, Combo multiplier is on the right side
 Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo)
@@ -5624,7 +5640,7 @@ Sub DMDHouseBattleScene(h)
         Set scene = NewSceneWithVideo(hname&"battleintro","got-"&hname&"battleintro")
         Set vid = scene.GetVideo(hname&"battleintrovid")
         If vid is Nothing Then Set vid = scene.getImage(hname&"battleintroimg")
-        scene.AddActor FlexDMD.NewLabel("objective",FlexDMD.NewFont("FlexDMD.Resources.udmd-f3by7.fnt", vbWhite, vbWhite, 0),BattleObjectives(h))
+        scene.AddActor FlexDMD.NewLabel("objective",FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbWhite, 0),BattleObjectives(h))
         With scene.GetLabel("objective")
             .SetAlignedPosition 64,16, FlexDMD_Align_Center
             .Visible = False
@@ -5829,7 +5845,10 @@ Sub DMDCreateAlternateScoreScene(h1,h2)
         scene1.SetAlignedPosition 0,0,FlexDMD_Align_TopLeft
         scene.AddActor scene1
         mask = 41   ' score, combos, tmr1
-        If h1 = Martell and (TimerFlags(tmrMartellBattle) And 1) = 1 Then mask = 168
+        If h1 = Martell Then 
+            mask = 56
+            If (TimerFlags(tmrMartellBattle) And 1) = 1 Then mask = 184
+        End if
     End If
     SetGameTimer tmrUpdateBattleMode,5
     DMDSetAlternateScoreScene scene,mask
@@ -5979,9 +5998,14 @@ End Class
 ' √ need a mode timer for Tyrell. 30 seconds. targets add 5 seconds
 ' √ score was too big
 ' √ missing all battlesigil gifs
-' - no lannister hit sounds - they're there now, just need importing into VPX table
 ' √ During Stark, "value=" doesn't update.
-
+' - Martell and Greyjoy shields don't light. Stark and Lannister do
+' - need a fifth hit sound for Lannister for gold target hit
+' - SetBattleLights is never called for Martell
+' - Martell display is messed up: "shoot orbits" is a small font at bottom, and timer value overlaps it
+'     - larger negative number (10 second counter?) is displayed in the middle.
+' - Martell battle hit gifs and sounds missing
+' - After Martell was completed and lit solid, it did a qualifying hit #1
 ' Nice-To-Haves
 ' - Change the timer for selecting which house mode to play. It will start at three seconds. Each button press will add eight seconds. The timer will max out at 20 seconds.
 '    - Also, only display the instructions once per player.
