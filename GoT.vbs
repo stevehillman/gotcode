@@ -2004,16 +2004,8 @@ Sub Drain_Hit()
     If(bGameInPLay = True)AND(Tilted = False)Then
 
         ' is the ball saver active,
-        If(bBallSaverActive = True)Then
-
-            ' yep, create a new ball in the shooters lane
-            ' we use the Addmultiball in case the multiballs are being ejected
-            AddMultiball 1
-            ' we kick the ball with the autoplunger
-            bAutoPlunger = True
-            ' you may wish to put something on a display or play a sound at this point
-            bBallSaved = True
-            DoBallSaved
+        If(bBallSaverActive = True and bEarlyEject = False)Then
+            DoBallSaved 0
         Else
             ' cancel any multiball if on last ball (ie. lost all other balls)
             If(BallsOnPlayfield-RealBallsInLock = 1)Then
@@ -2454,6 +2446,7 @@ Class cHouse
         Dim i
         Dim combo:combo=1
         Dim combotext: combotext=""
+        Dim qsound:qsound = "gotfx-qualify-sword-hit1"
 
         if PlayerMode = 0 And bMultiBallMode = False Then
             Dim cbtimer: cbtimer=1000
@@ -2484,7 +2477,11 @@ Class cHouse
                 Elseif PlayfieldMultiplierVal > 1 Then
                     combotext = "playfield"
                 End If
-                DMDComboScene line0,line1,line2,combo*PlayfieldMultiplierVal,combotext,3000,"gotfx-qualify-sword-hit1"
+                If h = Martell or (h = Stark and QualifyCount < 3) Then
+                    vpmtimer.addtimer 2000, "PlaySoundVol "&qsound&","&VolDef&" '"
+                    qsound = "gotfx-"&HouseToString(h)&"qualify"&QualifyCount
+                End If
+                DMDComboScene line0,line1,line2,combo*PlayfieldMultiplierVal,combotext,3000,qsound
 
                  ' Increase Qualify value for next shot. Lots of randomness seems to factor in here
                 if QualifyValue = 100000 Then
@@ -2530,17 +2527,18 @@ Class cHouse
     Public Sub GoldHit(n)
         Dim i,j
         AddScore 30
-        If PlayerMode = 1 Then
+        If PlayerMode = 1 And (HouseBattle1 = Lannister Or HouseBattle2 = Lannister) Then
             If HouseBattle1 = Lannister Then
                 MyBattleState(HouseBattle1).RegisterGoldHit n
-            ElseIf HouseBattle2 = Lannister Then
+            Else
                 MyBattleState(HouseBattle2).RegisterGoldHit n
             End If
             If HouseSelected = Lannister Then AddGold 30 Else AddGold 15
-        ElseIf PlayerMode = 0 Then
-            ' Regular mode
-            If HouseSelected = Lannister Then AddGold 30 Else AddGold 15
+        Else
+            ' Any mode except Lannister Battle mode
             If Not bGoldTargets(n) Then
+                PlaySoundVol "gotfx-goldcoin",VolDef
+                If HouseSelected = Lannister Then AddGold 30 Else AddGold 15
                 bGoldTargets(n) = True
                 SetLightColor GoldTargetLights(n),yellow,1
                 j = True
@@ -2557,6 +2555,10 @@ Class cHouse
                     ' tell the gold target lights to turn off in 1 second. There's a timer on the first light
                     GoldTargetLights(0).TimerInterval = 1000: GoldTargetLights(0).TimerEnabled = True
                 End If
+            Else
+                ' Already lit
+                If HouseSelected = Lannister Then AddGold 15 Else AddGold 5
+                PlaySoundVol "gotfx-coins1",VolDef
             End If
         End If
     End Sub
@@ -3063,6 +3065,7 @@ Class cBattleState
         Dim litmask,litshots,growval
         If MyHouse <> Lannister Then Exit Sub
         If (GoldShotMask And 2^tgt) = 0 Then Exit Sub   ' Gold target wasn't lit
+        PlaySoundVol "gotfx-goldcoin",VolDef
         GoldShotMask = GoldShotMask Xor 2^tgt
         Select Case tgt
             Case 0: litmask = 144
@@ -3393,6 +3396,7 @@ Sub SetPlayfieldLights
     End If
     SetLockLight
     SetOutlaneLights
+    SetTopLaneLights
     SetMysteryLight
     SetSwordLight
     SetComboLights
@@ -3417,7 +3421,11 @@ Sub CreateNewBall()
 
 ' if there is 2 or more balls then set the multiball flag (remember to check for locked balls and other balls used for animations)
 ' set the bAutoPlunger flag to kick the ball in play automatically
-    If (BallsOnPlayfield-RealBallsInLock > 1) Then
+    If (BallsOnPlayfield-RealBallsInLock = 2) And LastSwitchHit = "OutlaneSW" And (bBallSaverActive = True Or bLoLLit = True) Then
+        ' Preemptive ball save
+        bAutoPlunger = True
+        If bBallSaverActive = False Then bLoLLit = False: SetOutlaneLights
+    ElseIf (BallsOnPlayfield-RealBallsInLock > 1) Then
         DOF 143, DOFPulse
         bMultiBallMode = True
         bAutoPlunger = True
@@ -3425,9 +3433,20 @@ Sub CreateNewBall()
 End Sub
 
 
-' TODO: Add ball-saved animation and sound
-Sub DoBallSaved
-    DMD "", CL(1, "BALL SAVED"), "", eNone, eNone, eNone, 1000, True, ""
+Sub DoBallSaved(l)
+    ' create a new ball in the shooters lane
+    ' we use the Addmultiball in case the multiballs are being ejected
+    AddMultiball 1
+    ' we kick the ball with the autoplunger
+    bAutoPlunger = True
+    bBallSaved = True
+    If l Then
+        PlaySoundVol "gotfx-lolsave",VolDef
+        bLoLLit = False
+    Else
+        ' TODO: Add ball-saved animation and sound
+        DMD "", CL(1, "BALL SAVED"), "", eNone, eNone, eNone, 1000, True, ""
+    End If
 End Sub
 
 Sub AddScore(points)
@@ -3853,9 +3872,25 @@ Sub RotateLaneLights(dir)
     If bTopLanes(0) or bTopLanes(1) Then
         bTopLanes(0) = Not bTopLanes(0)
         bTopLanes(1) = Not bTopLanes(1)
-        SetLightColor li162, white, bTopLanes(0)
-        SetLightColor li165, white, bTopLanes(1)
+        SetTopLaneLights
     End If
+End Sub
+
+Sub SetTopLaneLights
+    If bTopLanes(0) And bTopLanes(1) Then ' Flash the lights for a second and use a timer to shut them off
+        li162.BlinkInterval=100:li165.blinkInterval=100
+        li162.State=2:li165.State=2
+        li162.TimerInterval=1000
+        li162.TimerEnabled=1
+    Else
+        SetLightColor li162, white, bTopLanes(0)    
+        SetLightColor li165, white, bTopLanes(1)
+    End if
+End Sub
+
+Sub li162_Timer
+    li162.State = 0
+    li165.State = 0
 End Sub
 
 Sub SetLockLight
@@ -4146,7 +4181,7 @@ Sub IncreaseBonusMultiplier(bx)
         scene.AddActor FlexDMD.NewLabel("lbl1",FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbBlack, 1),BonusMultiplier(CurrentPlayer))
         scene.GetLabel("lbl1").SetAlignedPosition 64,16,FlexDMD_Align_CENTER
         scene.AddActor NewSceneFromImageSequence "img1","bonusx",50,20,2,false,0
-        DMDEnqueueScene scene,1,3000,4500,4000,""
+        DMDEnqueueScene scene,1,3000,4500,4000,"gotfx-wind-blowing"
     Else
         DisplayDMDText "",BonusMultiplier(CurrentPlayer)&"X BONUS",2000
     End If
@@ -4476,6 +4511,65 @@ Sub LightLock
     End If 
 End Sub
 
+'******************
+' Top Lane switches
+'******************
+
+Sub sw53_Hit
+    TopLane_Hit 0
+End Sub
+
+Sub sw54_Hit
+    TopLane_Hit 1
+End Sub
+
+Sub TopLane_Hit(sw)
+    If Tilted Then Exit Sub
+    if bTopLanes(sw) = False Then
+        AddScore 1000
+        AddBonus 5000
+        bTopLanes(sw) = True
+        'TODO: Play a sound when toplane is hit
+        SetTopLaneLights    ' sub takes care of flashing them if they're both lit
+        If bTopLanes(0) And bTopLanes(1) Then
+            PlaySoundVol "gotfx-toplanes-complete",VolDef
+            IncreaseBonusMultiplier 1
+            bTopLanes(0) = False: bToplanes(1) = False
+        End if
+    Else
+        AddScore 110
+    End If
+End Sub
+
+'*******************
+' Outlane Switches
+'*******************
+
+Sub sw3_Hit
+    Outlane_Hit
+End Sub
+
+Sub sw4_Hit
+    Outlane_Hit
+End Sub
+
+Sub Outlane_Hit
+    If Tilted then Exit Sub
+    AddScore 25000
+    AddBonus 25000
+    LastSwitchHit = "OutlaneSW"
+    If bMultiBallMode Then Exit Sub
+    If bBallSaverActive Then
+        CreateMultiballTimer.Interval = 100
+        DoBallSaved 0
+    Elseif bLoLLit Then
+        CreateMultiballTimer.Interval = 100
+        DoBallSaved 1
+        bLoLUsed = True
+        SetOutlaneLights
+    End If
+End Sub
+
 '*****************
 ' Ramp entrance switches
 '*****************
@@ -4590,7 +4684,6 @@ End Sub
 
 Sub GoldHit(n)
     If Tilted then Exit Sub
-    PlaySoundVol "gotfx-goldcoin",VolDef
     House(CurrentPlayer).GoldHit(n)
 End Sub
 
@@ -4743,11 +4836,11 @@ Sub doPictoPops(b)
     Select Case i    
         Case 1      ' Increase bonus multiplier
             IncreaseBonusMultiplier 1
-        Case 2      ' Increase wildfire
+        Case 2      ' Increase wildfire. TODO: Should play a scene
             TotalWildfire = TotalWildfire + 5
         Case 3      ' Increase Gold
             If SelectedHouse = Lannister Then AddGold 250 Else AddGold 150
-        Case 4      ' Light Swords
+        Case 4      ' Light Swords. TODO: Play a scene
             bSwordLit = True: SetSwordLight
         Case 5      ' Increase Winter Is Coming value
             IncreaseWinterIsComing
@@ -4762,8 +4855,8 @@ Sub doPictoPops(b)
             IncreaseBonusMultiplier 3
         Case 10     ' Add Time (to mode or Hurry Up)
             If PlayerMode = 1 Then
-                If TimerFlags(tmrBattleMode1) And 1 = 1 Then TimerTimestamp(tmrBattleMode1) = TimerTimestamp(tmrBattleMode1) + 100
-                If TimerFlags(tmrBattleMode2) And 1 = 1 Then TimerTimestamp(tmrBattleMode2) = TimerTimestamp(tmrBattleMode2) + 100
+                If (TimerFlags(tmrBattleMode1) And 1) = 1 Then TimerTimestamp(tmrBattleMode1) = TimerTimestamp(tmrBattleMode1) + 100
+                If (TimerFlags(tmrBattleMode2) And 1) = 1 Then TimerTimestamp(tmrBattleMode2) = TimerTimestamp(tmrBattleMode2) + 100
             End IF
             If bHurryUpActive Then
                 'TODO: Add "Time" to HurryUp
@@ -5531,7 +5624,7 @@ Sub DMDHouseBattleScene(h)
         Set scene = NewSceneWithVideo(hname&"battleintro","got-"&hname&"battleintro")
         Set vid = scene.GetVideo(hname&"battleintrovid")
         If vid is Nothing Then Set vid = scene.getImage(hname&"battleintroimg")
-        scene.AddActor FlexDMD.NewLabel("objective",FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0),BattleObjectives(h))
+        scene.AddActor FlexDMD.NewLabel("objective",FlexDMD.NewFont("FlexDMD.Resources.udmd-f3by7.fnt", vbWhite, vbWhite, 0),BattleObjectives(h))
         With scene.GetLabel("objective")
             .SetAlignedPosition 64,16, FlexDMD_Align_Center
             .Visible = False
@@ -5865,7 +5958,7 @@ End Class
 ' √ create scene for Modes. At very least, summary screen with score, accumulated value, and countdown timer
 ' - Implement LoL outlanes - they should release new ball as soon as existing ball rolls over outlane, if ball saver not lit
 '   - need to modify Drain and CreateNewBall code to not think we’re in multiball mode
-' - Implement toplane rollovers to increase bonus multiplier
+' √ Implement toplane rollovers to increase bonus multiplier
 ' - Implement post-ball bonus
 ' - implement elevator logic
 ' - fix right ramp to upper PF
