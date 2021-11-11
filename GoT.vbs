@@ -1483,6 +1483,7 @@ Function NewSceneFromImageSequence(name,imgdir,num,fps,hold,repeat,count)
             blink.Add af.Wait((num-i)*delay)
         End If
         If repeat Then actor.AddAction af.Repeat(blink,count) Else actor.AddAction blink
+        scene.AddActor actor
     Next
     Set NewSceneFromImageSequence = scene
 End Function
@@ -2248,6 +2249,7 @@ Dim bWildfireLit
 Dim bPlayfieldValidated
 Dim bMysteryLit
 Dim bSwordLit           ' TODO: Saved across balls?
+Dim bElevatorShotUsed   ' Whether a shot to the upper playfield via the right orbit has been made this ball yet or not
 Dim HouseBattle1        ' When in battle, the primary (top) House
 Dim HouseBattle2        ' When in two-way battle, the second House
 
@@ -2273,6 +2275,7 @@ BattleObjectives = Array("", _
 BattleObjectivesShort = Array("","ARYA'S TRAINING","AID FOR THE WALL","SAVE MYRCELLA","WINTERFELL BURNS",_
             "JOUSTING","TRIAL BY COMBAT","DEFEAT VISERION","DEFEAT DROGON","DEFEAT RHAEGAL")
 
+' Length of each scene in the qualifying shot animations. Arranged as (House# x 3) + HitNumber
 QAnimateTimes = Array(0,0,0,0,1,1,1.8,3,1,1,2,1.5,2,2.5,2.5,2.5,1.3,2.6,0,4.8,1.3,2.2,1.6,3.9,3.1)
 
 ' Assignment of Lol Target lights
@@ -2368,6 +2371,7 @@ Class cHouse
     Public Property Let MyHouse(h) 
         HouseSelected = h
         bQualified(h) = True
+        QualifyCount(h) = 3
         if (h = Greyjoy or h = Targaryen) Then bCompleted(h) = True 
         'TODO: Set all house-specific settings when House is Set. E.g. Persistent and Action functions
     End Property
@@ -2397,15 +2401,16 @@ Class cHouse
     ' Say the house name. Include "house " if not said before
     Public Sub Say(h)
         Dim tmp
-        if (bSaid(h)) Then tmp="" Else tmp="house-"
+        if (bSaid(h)=2) Then tmp="" Else tmp="house-":bSaid(h)=1
         PlaySoundVol "say-" & tmp & HouseToString(h) & "1", VolDef
     End Sub
 
     Public Sub StopSay(h)
         Dim tmp
-        if (bSaid(h)) Then tmp="" Else tmp="house-"
+        if bSaid(h)=0 Then Exit Sub
+        if (bSaid(h)=2) Then tmp="" Else tmp="house-"
         StopSound "say-" & tmp & HouseToString(h) & "1"
-        bSaid(h) = True
+        bSaid(h) = 2
     End Sub
 
     ' Set the shield/sigil lights to the houses' current state
@@ -2468,10 +2473,8 @@ Class cHouse
                     BattleReady = True
                     ResetLights
                     line2 = "house is lit"
-                    'TODO: Play an animation on house lit, some with sound
                 Else
                     line2 = (3 - QualifyCount(h)) & " more to light"
-                    'TODO: sometimes play an animation and optional sound effect on house advance
                 End If
                 line1 = FormatScore(QualifyValue*combo*PlayfieldMultiplierVal)
 
@@ -2681,6 +2684,7 @@ Class cBattleState
                     GoldTargetLights(i).State = 0
                 End If
             Next
+        ElseIf MyHouse = HouseBattle1 And HouseBattle2 <> Lannister Then SetGoldTargetLights
         End If
     End Sub
 
@@ -3099,7 +3103,7 @@ Class cBattleState
     End Sub
 
     ' Called when the 10 second timer runs down
-    Public Sub MartellTimer: CompletedShots = 0: End Sub
+    Public Sub MartellTimer: CompletedShots = 0: UpdateBattleScene: End Sub
 
 '  bit   data (Label name)
 '   0    Score
@@ -3184,10 +3188,10 @@ Class cBattleState
             FlexDMD.LockRenderThread
             If CompletedShots = 0 Or State > 1 Then 
                 MyBattleScene.GetLabel("tmr3").Visible = 0 
-                MyBattleScene.GetLabel("line3").SetAlignedPosition 32,16,FlexDMD_Align_Center
+                MyBattleScene.GetLabel("line3").SetAlignedPosition 30,16,FlexDMD_Align_Center
             Else 
                 MyBattleScene.GetLabel("tmr3").Visible = 1
-                MyBattleScene.GetLabel("line3").SetAlignedPosition 32,21,FlexDMD_Align_Center
+                MyBattleScene.GetLabel("line3").SetAlignedPosition 30,21,FlexDMD_Align_Center
             End if
             If State > 1 Then MyBattleScene.GetLabel("HurryUp").Visible = 1
             FlexDMD.UnlockRenderThread
@@ -3357,6 +3361,9 @@ Sub ResetForNewPlayerBall()
 
     bMysteryLit = False     ' TODO: Are these carried over across balls?
     bSwordLit = False
+    bElevatorShotUsed = False
+    topgatel.open = True
+    MoveDiverter 1
 
     HouseBattle1 = 0 : HouseBattle2 = 0
 
@@ -3367,6 +3374,12 @@ Sub ResetForNewPlayerBall()
         PlayerMode = -1
         SelectedHouse = 1
         FlashShields SelectedHouse,1
+        If CurrentPlayer = 1 Then
+            PlaySoundVol "say-choose-your-house1",VolDef
+        Else
+            PlaySoundVol "player"&CurrentPlayer,VolDef
+            vpmTimer.AddTimer 1000,"PlaySoundVol ""say-choose-your-house1"",VolDef '"
+        End If
         ChooseHouse 0
     Else 
         PlayerState(CurrentPlayer).Restore
@@ -3399,7 +3412,7 @@ End Sub
 
 Sub SetPlayfieldLights
     TurnOffPlayfieldLights
-    If PlayerMode = 1 Then
+    If PlayerMode = 1 or PlayerMode = -2.1 Then
         SetModeLights       ' Set Sigils and Shields for battle
     ElseIf PlayerMode = 0 Then
         If House(CurrentPlayer).MyHouse > 0 Then House(CurrentPlayer).ResetLights    ' Set Sigils and Shields for normal play
@@ -3415,7 +3428,6 @@ Sub SetPlayfieldLights
     SetComboLights
     SetWildfireLights
     SetTargetLights
-    ' TODO SetTopLaneLights
     ' TODO SetUpperPFLights
 End Sub
 
@@ -3896,8 +3908,8 @@ Sub SetTopLaneLights
         li162.TimerInterval=1000
         li162.TimerEnabled=1
     Else
-        SetLightColor li162, white, bTopLanes(0)    
-        SetLightColor li165, white, bTopLanes(1)
+        SetLightColor li162, white, ABS(bTopLanes(0))
+        SetLightColor li165, white, ABS(bTopLanes(1))
     End if
 End Sub
 
@@ -4191,7 +4203,7 @@ Sub IncreaseBonusMultiplier(bx)
     Dim scene
     If bUseFlexDMD Then
         Set scene = FlexDMD.NewGroup("testscene")
-        scene.AddActor FlexDMD.NewLabel("lbl1",FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbBlack, 1),BonusMultiplier(CurrentPlayer))
+        scene.AddActor FlexDMD.NewLabel("lbl1",FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbBlack, 1),BonusMultiplier(CurrentPlayer)&"X")
         scene.GetLabel("lbl1").SetAlignedPosition 64,16,FlexDMD_Align_CENTER
         scene.AddActor NewSceneFromImageSequence("img1","bonusx",50,20,2,false,0)
         DMDEnqueueScene scene,1,3000,4500,4000,"gotfx-wind-blowing"
@@ -4653,6 +4665,40 @@ Sub Kicker37_Hit
     Kicker37.Kick 190,30    'Angle,Power
 End Sub
 
+'*****************
+' Elevator Kickers
+'*****************
+' kickerfloor - bottom of elevator
+' kickerUPF - UpperPF level
+' kickertopfloor - Iron Throne level
+' kickerIT - kicker in Iron Throne
+
+Sub KickerFloor_Hit
+    Me.DestroyBall
+    MoveDiverter(0)
+    ' TODO: need logic for when the top gate should be left open
+    topgatel.open = False
+    bElevatorShotUsed = True
+    PlaySoundAt "fx_kicker",KickerFloor
+    ' TODO Add logic for any other modes that kick the ball to the Iron Throne
+    If bMysteryLit or bEBisLit Then
+        KickerTopFloor.CreateBall
+        KickerTopFloor.Kick 90,3
+    Else
+        KickerUPF.CreateBall
+        KickerUPF.Kick 180,5
+    End If
+End Sub
+
+' TODO Iron Throne Kicker modes - Extra Ball, Mystery selection, IT mode
+Sub KickerIT_Hit
+    vpmTimer.AddTimer 2000,"IronThroneKickout '"
+End Sub
+
+Sub IronThroneKickout
+    PlaySoundAt "fx_kicker",KickerIT
+End Sub
+
 '******************
 ' lock switch
 '******************
@@ -4714,6 +4760,12 @@ Sub sw2_Hit
     If Tilted then Exit Sub
     AddScore 560
     'TODO Process inlane hit
+End Sub
+
+' Battering Ram
+Sub BatteringRam_Hit
+    If Tilted Then Exit Sub
+    PlaySoundVol "gotfx-battering-ram",Voldef
 End Sub
 
 Sub Spinner001_Spin
@@ -4957,6 +5009,7 @@ Sub LockBall
         'Start BW multiball in 1 second - gives a chance to say 'ball locked'
         vpmtimer.addtimer 1600, "StartBWMultiball '"
     ElseIf PlayerMode >= 0 Then  ' Regular mode - release new ball
+        'TODO Add a flashing Ball Locked message w/ background
         If RealBallsInLock > BallsInLock Then
             RealBallsInLock = RealBallsInLock - 1
             ReleaseLockedBall 0
@@ -5878,25 +5931,10 @@ End Sub
 ' Set Score scene back to default for regular play
 Sub DMDResetScoreScene
     bAlternateScoreScene = False
+    If DisplayingScene Is ScoreScene Then DMDClearQueue
     ScoreScene = Empty
     AlternateScoreSceneMask = 0
     DMDLocalScore
-End Sub
-
-Dim BattleScoreScene
-Sub DMDBattleScoreScene(h)
-    If Not bUseFlexDMD Then Exit Sub
-    Dim ScoreFont,tinyfont,scene
-    
-    Set ScoreFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0)
-    Set tinyfont = FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0)
-    Set scene = FlexDMD.NewGroup("battlescene")
-    scene.AddActor FlexDMD.NewLabel("obj",tinyfont,BattleObjectivesShort(h))
-    scene.AddActor FlexDMD.NewLabel("Score",ScoreFont,Score(CurrentPlayer))
-    'TODO: Where to get accumulated value from
-    'TODO: Only some houses have a running HurryUp
-
-
 End Sub
 
 Dim ScoreScene,bAlternateScoreScene,AlternateScoreSceneMask
@@ -5975,11 +6013,11 @@ End Class
 
 ' - release of 4th ball: check Ball Search
 ' √ create scene for Modes. At very least, summary screen with score, accumulated value, and countdown timer
-' - Implement LoL outlanes - they should release new ball as soon as existing ball rolls over outlane, if ball saver not lit
+' √? Implement LoL outlanes - they should release new ball as soon as existing ball rolls over outlane, if ball saver not lit
 '   - need to modify Drain and CreateNewBall code to not think we’re in multiball mode
 ' √ Implement toplane rollovers to increase bonus multiplier
 ' - Implement post-ball bonus
-' - implement elevator logic
+' √ implement elevator logic
 ' - fix right ramp to upper PF
 ' - Implement upper PF switches
 ' - Implement playfield lighting effects
@@ -5999,13 +6037,15 @@ End Class
 ' √ score was too big
 ' √ missing all battlesigil gifs
 ' √ During Stark, "value=" doesn't update.
-' - Martell and Greyjoy shields don't light. Stark and Lannister do
-' - need a fifth hit sound for Lannister for gold target hit
-' - SetBattleLights is never called for Martell
-' - Martell display is messed up: "shoot orbits" is a small font at bottom, and timer value overlaps it
+' √? Martell and Greyjoy shields don't light. Stark and Lannister do
+' √ need a fifth hit sound for Lannister for gold target hit
+' √ SetBattleLights is never called for Martell
+' √? Martell display is messed up: "shoot orbits" is a small font at bottom, and timer value overlaps it
 '     - larger negative number (10 second counter?) is displayed in the middle.
-' - Martell battle hit gifs and sounds missing
-' - After Martell was completed and lit solid, it did a qualifying hit #1
+' √ Martell battle hit sounds missing
+' √? After Martell was completed and lit solid, it did a qualifying hit #1
+
+
 ' Nice-To-Haves
 ' - Change the timer for selecting which house mode to play. It will start at three seconds. Each button press will add eight seconds. The timer will max out at 20 seconds.
 '    - Also, only display the instructions once per player.
