@@ -2324,6 +2324,7 @@ Class cPState
     End Sub
 
     Public Sub Restore
+        Dim i
         bWildfireTargets(0) = bWFTargets(0):bWildfireTargets(1) = bWFTargets(1)
         WildfireTargetsCompleted = WFTargetsCompleted
         LoLTargetsCompleted = LTargetsCompleted
@@ -2562,7 +2563,7 @@ Class cHouse
                     ' Target bank completed. Light mystery, turn off target lights 
                     ' Probably need to play a sound here
                     If HouseSelected = Lannister Then AddGold 450 Else AddGold 250
-                    For i = 0 to 4: bGoldTargets(n) = False: Next
+                    For i = 0 to 4: bGoldTargets(i) = False: Next
                     bMysteryLit = True              ' Does this get saved across balls?
                     SetLightColor li153, white, 2  ' Turn on Mystery light
                     ' tell the gold target lights to turn off in 1 second. There's a timer on the first light
@@ -2849,14 +2850,16 @@ Class cBattleState
                 Dim huvalue
                 If State = 1 And (h = Greyjoy or h = Martell) Then
                     CompletedShots = CompletedShots + 1
+                    debug.print "Martell Compl shots: " & CompletedShots & " LastSwHit: " &LastSwitchHit
                     hitscene = "hit"&CompletedShots
                     If CompletedShots = 3 Then 'State 1 complete
                         HouseValue = HouseValue + 9000000 + RndNbr(7)*125000
                         ScoredValue = HouseValue
                         TimerFlags(tmrMartellBattle) = 0
                         State = 2
+                        UpdateBattleScene
                         'TODO: Create a HurryUp Scene
-                        'StartHurryUp ScoredValue,
+                        StartHurryUp ScoredValue,MyBattleScene,0
                         SetModeLights
                     Else
                         If HouseValue = 0 Then HouseValue = 19250000 Else HouseValue = HouseValue + 500000 + RndNbr(25)*125000:
@@ -2872,11 +2875,13 @@ Class cBattleState
                 End if
                 If State = 2 And (h = Stark or h = Lannister) Then
                     huvalue = HurryUpValue
+                    StopHurryUp
                     If huvalue > 0 Then
                         'Hurry-up hit in time
                         HouseValue = huvalue
                         DoCompleteMode h
-                    End If
+                    End if
+                    
                 End If
 
             ' Need to think about this. DoCompleteMode is adding scoring to the total score, but so is HitScene
@@ -2973,7 +2978,7 @@ Class cBattleState
 
     ' Finish the mode. 'Shot' is the shot # that completed the mode, in case a combo multiplier is involved
     Public Sub DoCompleteMode(shot)
-        Dim comboval,line2,name
+        Dim comboval,line2,name,sound
 
         bComplete = True
         House(CurrentPlayer).HouseCompleted MyHouse
@@ -2993,7 +2998,9 @@ Class cBattleState
         line2 = FormatScore(HouseValue * comboval)
         If comboval = 1 Then comboval = 0  ' Don't bother printing Combo value for final shot if it's just 1x
         name = "got-"&HouseToString(MyHouse)&"battlecomplete"
-        DMDPlayHitScene name,name,1.5,BattleObjectivesShort(MyHouse),line2,"COMPLETE",comboval
+        sound = "gotfx-"&HouseToString(MyHouse)&"battlecomplete"
+        'TODO Make the delay variable based on how long the Complete animation is
+        DMDPlayHitScene name,sound,1.5,BattleObjectivesShort(MyHouse),line2,"COMPLETE",comboval
         
     End Sub
 
@@ -3043,7 +3050,7 @@ Class cBattleState
         End if
     End Sub
 
-    Public Sub EndHurryUp
+    Public Sub BEndHurryUp
         EndBattleMode
         ' TODO: Remove Battle-mode HurryUp Scene
     End Sub
@@ -3128,7 +3135,7 @@ Class cBattleState
             Case Stark,Baratheon: line3 = "VALUE = "&FormatScore(HouseValue) : x3 = 40: x4 = 40: y4 = 22
             Case Lannister,Greyjoy: line3 = "SHOTS = " & 5-CompletedShots : x3 = 20: x4 = 56
             Case Tyrell: x4 = 40
-            Case Martell: line3 = "SHOOT ORBITS":x4 = 56
+            Case Martell: line3 = "SHOOT ORBITS":x3=40:x4 = 56
         End Select
         If MyHouse <> Tyrell Then
             BattleScene.AddActor FlexDMD.NewLabel("line3",tinyfont,line3) 
@@ -3138,10 +3145,11 @@ Class cBattleState
         BattleScene.GetLabel("obj").SetAlignedPosition 40,3,FlexDMD_Align_Center
 
         If MyHouse = Martell Then
-            BattleScene.AddActor FlexDMD.NewLabel("tmr3",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0),Int((TimerTimestamp(tmrMartellBattle)-GameTimeStamp)/10))
+            BattleScene.AddActor FlexDMD.NewLabel("tmr3",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0),"10")
             BattleScene.GetLabel("tmr3").SetAlignedPosition 40,13,FlexDMD_Align_Center
             If CompletedShots = 0 Or State > 1 Then BattleScene.GetLabel("tmr3").Visible = 0
-            BattleScene.AddActor FlexDMD.NewLabel("HurryUp",tinyfont,HurryUpValue)
+            BattleScene.AddActor FlexDMD.NewLabel("HurryUp",tinyfont,"20000000") 'Placeholder value to ensure text is centered
+            BattleScene.GetLabel("HurryUp").SetAlignedPosition 32,13,FlexDMD_Align_Center
             If State < 2 Then BattleScene.GetLabel("HurryUp").Visible = 0
         Else
             ' Every other house has the score showing
@@ -3156,7 +3164,7 @@ Class cBattleState
     End Sub
 
     Public Function CreateSmallBattleProgressScene(ByRef BattleScene, n)
-        Dim tinyfont,ScoreFont,line3,x3,x4,y4,i
+        Dim tinyfont,ScoreFont,line2,x3,x4,y4,i
         'Set ScoreFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0)
         Set tinyfont = FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbBlack, 1)
         BattleScene.AddActor FlexDMD.NewLabel("obj",tinyfont,HouseToUCString(MyHouse))
@@ -3186,14 +3194,22 @@ Class cBattleState
         Dim line3
         If MyHouse = Martell Then
             FlexDMD.LockRenderThread
-            If CompletedShots = 0 Or State > 1 Then 
-                MyBattleScene.GetLabel("tmr3").Visible = 0 
-                MyBattleScene.GetLabel("line3").SetAlignedPosition 30,16,FlexDMD_Align_Center
-            Else 
-                MyBattleScene.GetLabel("tmr3").Visible = 1
-                MyBattleScene.GetLabel("line3").SetAlignedPosition 30,21,FlexDMD_Align_Center
+            If State = 2 Then
+                MyBattleScene.GetLabel("tmr3").Visible = 0
+                With MyBattleScene.GetLabel("line3")
+                    .Text = "SHOOT RAMPS"
+                    .SetAlignedPosition 30,21,FlexDMD_Align_Center
+                End with
+                MyBattleScene.GetLabel("HurryUp").Visible = 1
+            Else
+                If CompletedShots = 0 Then 
+                    MyBattleScene.GetLabel("tmr3").Visible = 0
+                    MyBattleScene.GetLabel("line3").SetAlignedPosition 30,16,FlexDMD_Align_Center
+                Else 
+                    MyBattleScene.GetLabel("tmr3").Visible = 1
+                    MyBattleScene.GetLabel("line3").SetAlignedPosition 30,21,FlexDMD_Align_Center
+                End if
             End if
-            If State > 1 Then MyBattleScene.GetLabel("HurryUp").Visible = 1
             FlexDMD.UnlockRenderThread
             Exit Sub
         Else
@@ -4488,6 +4504,7 @@ Sub doWFTargetHit(t)
                 FlashForMs li83,1000,100,2
         End Select
     End If
+    LastSwitchHit = "wftarget"&t
 End Sub
 
 Sub SetWildfireLights
@@ -4564,6 +4581,7 @@ Sub TopLane_Hit(sw)
     Else
         AddScore 110
     End If
+    LastSwitchHit = "toplane"
 End Sub
 
 '*******************
@@ -4604,13 +4622,15 @@ End Sub
 ' Left ramp
 Sub sw38_Hit
     If Tilted then Exit Sub
-    If PlayerMode = 1 Then PlaySoundVol "gotfx-ramphit1",VolDef Else PlaySoundVol "gotfx-swordswoosh",VolDef
+    If PlayerMode = 1 Then PlaySoundVol "gotfx-ramphit1",VolDef/4 Else PlaySoundVol "gotfx-swordswoosh",VolDef
+    LastSwitchHit = "sw38"
 End Sub
 
 ' Right Ramp
 Sub sw41_Hit
     If Tilted then Exit Sub
-    If PlayerMode = 1 Then PlaySoundVol "gotfx-ramphit2",VolDef Else PlaySoundVol "gotfx-swordswoosh",VolDef
+    If PlayerMode = 1 Then PlaySoundVol "gotfx-ramphit2",VolDef/4 Else PlaySoundVol "gotfx-swordswoosh",VolDef
+    LastSwitchHit = "sw41"
 End Sub
 
 '******************
@@ -4619,9 +4639,13 @@ End Sub
 Sub LOrbitSW30_Hit
     If Tilted then Exit Sub
     AddScore 1000
-    'If LastSwitchHit <> "ROrbitsw31" Then House(CurrentPlayer).RegisterHit(Greyjoy)
-    House(CurrentPlayer).RegisterHit(Greyjoy)
+    If LastSwitchHit <> "ROrbitsw31" Then House(CurrentPlayer).RegisterHit(Greyjoy)
+    'House(CurrentPlayer).RegisterHit(Greyjoy)
     LastSwitchHit = "LOrbitSW30"
+End Sub
+
+Sub sw30a_Hit
+    LastSwitchHit = "sw30a"
 End Sub
 
 ' Left ramp switch
@@ -4640,15 +4664,15 @@ Sub sw42_Hit
     If Tilted then Exit Sub
     AddScore 1000
     House(CurrentPlayer).RegisterHit(Stark)
-    LastSwitchHit = "sw40"
+    LastSwitchHit = "sw42"
 End Sub
 
 Sub ROrbitsw31_Hit
     If Tilted then Exit Sub
     If LastSwitchHit <> "swPlungerRest" Then 
         AddScore 1000
-        'If LastSwitchHit <> "LOrbitsw30" Then House(CurrentPlayer).RegisterHit(Martell)
-        House(CurrentPlayer).RegisterHit(Martell)
+        If LastSwitchHit <> "LOrbitSW30" Then House(CurrentPlayer).RegisterHit(Martell)
+        'House(CurrentPlayer).RegisterHit(Martell)
     End If
     LastSwitchHit = "ROrbitsw31"
 End Sub
@@ -4721,7 +4745,7 @@ Sub sw48_Hit
     ElseIf RealBallsInLock > 0 Then     ' Lock isn't lit but we have a ball locked
         ReleaseLockedBall 0
     End If
-        
+    LastSwitchHit = "sw48"    
 End Sub
 
 '*****************
@@ -4746,6 +4770,7 @@ End Sub
 Sub GoldHit(n)
     If Tilted then Exit Sub
     House(CurrentPlayer).GoldHit(n)
+    LastSwitchHit = "gold"&n
 End Sub
 
 ' Left Inlane
@@ -4753,6 +4778,7 @@ Sub sw1_Hit
     If Tilted then Exit Sub
     AddScore 560
     'TODO Process inlane hit
+    LastSwitchHit = "sw1"
 End Sub
 
 ' Right Inlane
@@ -4760,6 +4786,7 @@ Sub sw2_Hit
     If Tilted then Exit Sub
     AddScore 560
     'TODO Process inlane hit
+    LastSwitchHit = "sw2"
 End Sub
 
 ' Battering Ram
@@ -5165,12 +5192,16 @@ Sub HurryUpTimer
     Dim lbl
     HurryUpCounter = HurryUpCounter + 1
     If HurryUpCounter < HurryUpGrace Then Exit Sub
-    If IsEmpty(HurryUpScene) Or HurryUpScene is Nothing Then
-        'Update regular DMD somehow. Not yet supported
+    If bUseFlexDMD Then
+        If Not IsEmpty(HurryUpScene) Then
+            If Not (HurryUpScene is Nothing) Then
+                Set lbl = HurryUpScene.GetLabel("HurryUp")
+                If Not lbl is Nothing Then lbl.Text = FormatScore(HurryUpValue)
+            End if
+        End If
     Else
-        lbl = HurryUpScene.GetLabel("HurryUp")
-        If Not lbl is Nothing Then lbl.Text = FormatScore(HurryUpValue)
-    End If
+        'TODO Update regular DMD with hurryUp value
+    End if
     HurryUpValue = HurryUpValue - HurryUpChange
     If HurryUpValue <= 0 Then
         HurryUpValue = 0
@@ -5194,7 +5225,11 @@ Sub StartHurryUp(value,scene,grace)
         debug.print "HurryUp already active! Can't have two!"
         Exit Sub
     End If
-    Set HurryUpScene = scene
+    If bUseFlexDMD Then
+        Set HurryUpScene = scene
+    Else
+        'TODO: Display hurryUp on regular DMD in place of score
+    End If
     HurryUpGrace = grace
     HurryUpValue = value
     HurryUpCounter = 0
@@ -5203,20 +5238,30 @@ Sub StartHurryUp(value,scene,grace)
     SetGameTimer tmrHurryUp,2
 End Sub
 
-' Called when the HurryUp runs down, or by another subroutine if the HurryUp has been scored
+' Called when the HurryUp runs down. Ends battle mode if running
 ' HurryUps can be frozen, so preserve the "frozen" flags
 Sub EndHurryUp
+    StopHurryUp
+    If PlayerMode = 1 Then
+        If HouseBattle1 > 0 Then House(CurrentPlayer).BattleState(HouseBattle1).BEndHurryUp
+        If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).BEndHurryUp 
+    End if
+End Sub
+
+' Called when the HurryUp has been scored. Ends the HurryUp but doesn't end the battle (if applicable)
+Sub StopHurryUp
+    Dim lbl
     bHurryUpActive = False
     TimerFlags(tmrHurryUp) = TimerFlags(tmrHurryUp) And 254
-    'If IsEmpty(HurryUpScene) Or HurryUpScene is Nothing Then
-        'Update regular DMD somehow. Not yet supported
-    'Else
-        lbl = HurryUpScene.GetLabel("HurryUp")
-        If Not lbl is Nothing Then lbl.Visible = False
-    'End If
-    If PlayerMode = 1 Then
-        If HouseBattle1 > 0 Then House(CurrentPlayer).BattleState(HouseBattle1).EndHurryUp
-        If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).EndHurryUp 
+    if bUseFlexDMD Then
+        If Not IsEmpty(HurryUpScene) Then
+            If Not (HurryUpScene is Nothing) Then 
+                Set lbl = HurryUpScene.GetLabel("HurryUp")
+                If Not lbl is Nothing Then lbl.Visible = False
+            End If
+        End if
+    Else
+        'TODO Set DMD back to regular score
     End if
 End Sub
 
@@ -5986,6 +6031,7 @@ Sub DMDLocalScore
             If (AlternateScoreSceneMask And 16) = 16 Then ScoreScene.GetLabel("HurryUp").Text = FormatScore(HurryUpValue)
             If (AlternateScoreSceneMask And 32) = 32 Then ScoreScene.GetLabel("tmr1").Text = Int((TimerTimestamp(tmrBattleMode1) - GameTimeStamp)/10)
             If (AlternateScoreSceneMask And 64) = 64 Then ScoreScene.GetLabel("tmr2").Text = Int((TimerTimestamp(tmrBattleMode2) - GameTimeStamp)/10)
+            If (AlternateScoreSceneMask And 128)=128 Then ScoreScene.GetLabel("tmr3").Text = Int((TimerTimestamp(tmrMartellBattle) - GameTimeStamp)/10)
         End If
         FlexDMD.UnlockRenderThread
         Set DefaultScene = ScoreScene
@@ -6034,16 +6080,24 @@ End Class
 ' Mode things to fix
 ' √ need a ModePauseTimer that pauses the timers if no score for 2 seconds
 ' √ need a mode timer for Tyrell. 30 seconds. targets add 5 seconds
-' √ score was too big
 ' √ missing all battlesigil gifs
-' √ During Stark, "value=" doesn't update.
 ' √? Martell and Greyjoy shields don't light. Stark and Lannister do
-' √ need a fifth hit sound for Lannister for gold target hit
-' √ SetBattleLights is never called for Martell
 ' √? Martell display is messed up: "shoot orbits" is a small font at bottom, and timer value overlaps it
-'     - larger negative number (10 second counter?) is displayed in the middle.
-' √ Martell battle hit sounds missing
-' √? After Martell was completed and lit solid, it did a qualifying hit #1
+' - stark value increases for the first two shots when it shouldn't. It was 12 mil for Joffrey.
+' - martell timer still needs moving a bit.
+' - If you hit magnasave while ChooseBattle instructions are still on, battle starts with no houses selected
+' - during Baratheon battle, value goes up way too slowly, and music starts over too often
+
+' - multiball end does not reset playfield lights
+
+' - hitting start before inserting a credit throws an error - eblink undefined. Need to do Attract Mode
+
+' - on ball 2, DMD shows ball 0. On ball 3, -1. 
+
+' - End of game processing doesn't exist - highscore, etc. Throws error for DMDUpdate
+
+' - coin1.wav sound is too loud
+
 
 
 ' Nice-To-Haves
