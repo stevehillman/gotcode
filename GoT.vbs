@@ -124,6 +124,8 @@ Dim RealBallsInLock			' These are actually locked on the table
 Dim BallsInLock             ' Number of balls the current player has locked
 Dim BallSearchCnt
 Dim LastSwitchHit
+Dim LightSaveState(100,4)   ' Array for saving state of lights. We save state, colour, fade to restore after Sequences (sequences only save state)
+Dim TotalPlayfieldLights
 
 ' flags
 Dim bMultiBallMode
@@ -1756,6 +1758,36 @@ Sub GiEffect(n)
     End Select
 End Sub
 
+Sub SavePlayfieldLightState
+    Dim i,a
+    i = 0
+    For each a in aPlayfieldLights
+        LightSaveState(i,0) = a.State
+        LightSaveState(i,1) = a.Color
+        LightSaveState(i,2) = a.Colorfull
+        LightSaveState(i,3) = a.FadeSpeedUp
+        LightSaveState(i,4) = a.FadeSpeedDown
+        i = i + 1
+    Next
+End Sub
+
+Sub RestorePlayfieldLightState
+    Dim i,a
+    i = 0
+    For each a in aPlayfieldLights
+        a.State = LightSaveState(i,0)
+        a.Color = LightSaveState(i,1)
+        a.ColorFull = LightSaveState(i,2)
+        a.FadeSpeedUp = LightSaveState(i,3)
+        a.FadeSpeedDown = LightSaveState(i,4)
+        i = i + 1
+    Next
+End Sub
+
+' Set Playfield lights to slow fade a color
+Sub PlayfieldSlowFade(color,fadespeed)
+End Sub
+
 '********************
 ' Real Time updates
 '********************
@@ -1777,8 +1809,6 @@ End Sub
 '*******************************
 
 Sub StartAttractMode
-    Dim a
-    'StartRainbow aArrows
     StartLightSeq
     GameStartAttractMode
 End Sub
@@ -2392,15 +2422,15 @@ Class cHouse
 		Next
         HouseSelected = 0
         QualifyValue = 100000
-        bBattleReady = True
-        LockWall.collidable = True
+        bBattleReady = False
+        LockWall.collidable = False
 	End Sub
 
     Public Property Let MyHouse(h) 
         HouseSelected = h
         bQualified(h) = True
         QualifyCount(h) = 3
-        if (h = Greyjoy or h = Targaryen) Then bCompleted(h) = True 
+        if (h = Greyjoy or h = Targaryen) Then bCompleted(h) = True Else BattleReady = True
         'TODO: Set all house-specific settings when House is Set. E.g. Persistent and Action functions
     End Property
 	Public Property Get MyHouse : MyHouse = HouseSelected : End Property
@@ -2408,7 +2438,11 @@ Class cHouse
     Public Property Let BattleReady(e)
         if Not bMultiBallMode Then 
             bBattleReady = e
-            if (e) Then LockWall.collidable = True
+            if (e) Then 
+                LockWall.collidable = True
+            ElseIf RealBallsInLock = 0 And bLockIsLit = False Then
+                LockWall.collidable = False
+
         End If
     End Property
 
@@ -2644,7 +2678,7 @@ Class cBattleState
         CompletedDragons = 0
         ShotMask = 0
         GoldShotMask = 31
-        State = 0
+        State = 1
         bComplete = False
         TotalScore = 0
         HouseValueIncrement = 0
@@ -2867,7 +2901,7 @@ Class cBattleState
                     Else
                         hitscene = "hit"& (State MOD 2) + 1
                         ScoredValue = HouseValue
-                        HouseValue = HouseValue + 900000 + 325000*(State-1)
+                        HouseValue = HouseValue + 900000 + (325000*(State-1))
                         If HouseValue > 18000000 Then HouseValue = 18000000
                         SetModeLights
                     End If
@@ -4538,8 +4572,8 @@ Sub SetTargetLights
 End Sub
 
 Sub SetOutlaneLights
-    SetLightColor li11,white,bLoLLit
-    SetLightColor li74,white,bLoLLit
+    SetLightColor li11,white,ABS(bLoLLit)
+    SetLightColor li74,white,ABS(bLoLLit)
 End Sub
 
 '*****************************
@@ -6409,18 +6443,16 @@ End Class
 ' √ missing all battlesigil gifs
 ' √? martell timer still needs moving a bit.
 ' √? If you hit magnasave while ChooseBattle instructions are still on, battle starts with no houses selected
-' - If playing as Greyjoy, BattleReady is lit at start, even though no houses are qualified
-' - hitting tyrell shot did not advance State. Jackpot went up but by a tiny amount
-' - can't stack battle modes - only shows single choices
+' √? If playing as Greyjoy, BattleReady is lit at start, even though no houses are qualified
+' √? hitting tyrell shot did not advance State. Jackpot went up but by a tiny amount
 
-' - completing LoL target bank doesn't light LoL outlanes
+' √? completing LoL target bank doesn't light LoL outlanes
 
 ' √? multiball end does not reset playfield lights
 
 ' √? hitting start before inserting a credit throws an error - eblink undefined. 
 
-' - Need to do Attract Mode
-
+' - Need to do Attract Mode lighting
 
 ' - End of game processing doesn't exist - highscore, etc. Throws error for DMDUpdate
 
