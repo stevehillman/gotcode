@@ -109,8 +109,9 @@ Dim BonusPoints(4)
 Dim BonusHeldPoints(4)
 Dim BonusMultiplier(4)
 Dim Score(4)
-Dim HighScore(4)
-Dim HighScoreName(4)
+Dim HighScore(16)
+Dim HighScoreName(16)
+Dim ReplayScore
 Dim BallsRemaining(4)
 Dim ExtraBallsAwards(4)     ' I don't think we need an array here - EBs can't be carried over
 Dim Tilt
@@ -845,10 +846,10 @@ Sub Reseths
     HighScoreName(1) = "BBB"
     HighScoreName(2) = "CCC"
     HighScoreName(3) = "DDD"
-    HighScore(0) = 150000
-    HighScore(1) = 140000
-    HighScore(2) = 130000
-    HighScore(3) = 120000
+    HighScore(0) = 150000000
+    HighScore(1) = 140000000
+    HighScore(2) = 130000000
+    HighScore(3) = 120000000
     Savehs
 End Sub
 
@@ -1025,6 +1026,7 @@ End Sub
 '******************************************************** 
 
 Const eNone = 0        ' Instantly displayed
+Const eBlink = 1
 
 'Dim FlexPath
 Dim UltraDMD
@@ -1188,10 +1190,35 @@ Sub DMDScoreNow
 End Sub
 
 Sub DMD(Text0, Text1, Text2, Effect0, Effect1, Effect2, TimeOn, bFlush, Sound)
-	DisplayDMDText Text0, Text1, TimeOn
-	'if bUsePUPDMD and bPupStarted Then pupDMDDisplay "default", Text0 & "^" & Text1, "" ,2, 0, 10
-	'if (bUsePUPDMD) Then pupDMDDisplay "attract", Text1 & "^" Text2, "@vidIntro.mp4" ,9, 1,		10
-	PlaySoundVol Sound, VolDef
+    Dim scene,line0
+    if bUseFlexDMD Then
+        Set scene = FlexDMD.NewGroup("dmd")
+        If Text0 <> "" Then
+            scene.AddActor FlexDMD.NewLabel("line0",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0) Text0)
+            Set line0 = scene.GetLabel("line0")
+            line0.SetAlignedPosition 0,0,FlexDMD_Align_TopLeft
+            if Effect0 = eBlink Then BlinkActor line0,100,int(TimeOn/200)
+        End If
+        If Text1 <> "" Then
+            scene.AddActor FlexDMD.NewLabel("line1",FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbWhite, 0) Text1)
+            Set line0 = scene.GetLabel("line1")
+            line0.SetAlignedPosition 0,9,FlexDMD_Align_TopLeft
+            if Effect1 = eBlink Then BlinkActor line0,100,int(TimeOn/200)
+        End If
+        If Text2 <> "" Then
+            scene.AddActor FlexDMD.NewLabel("line0",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0) Text2)
+            Set line0 = scene.GetLabel("line2")
+            line0.SetAlignedPosition 0,30,FlexDMD_Align_BottomLeft
+            if Effect2 = eBlink Then BlinkActor line0,100,int(TimeOn/200)
+        End If
+        if bFlush Then DMDClearQueue
+        DMDEnqueueScene scene,0,TimeOn,TimeOn,1000,Sound
+    Else
+        DisplayDMDText Text0, Text1, TimeOn
+        'if bUsePUPDMD and bPupStarted Then pupDMDDisplay "default", Text0 & "^" & Text1, "" ,2, 0, 10
+        'if (bUsePUPDMD) Then pupDMDDisplay "attract", Text1 & "^" Text2, "@vidIntro.mp4" ,9, 1,		10
+        PlaySoundVol Sound, VolDef
+    End If
 End Sub
 
 Function ExpandLine(TempStr, id) 'id is the number of the dmd line
@@ -1753,18 +1780,11 @@ Sub StartAttractMode
     Dim a
     'StartRainbow aArrows
     StartLightSeq
-    DMDFlush
-    ShowTableInfo
-    a = RndNbr(2)
-    Select Case a
-        Case 1:PlaySong "mu_gameover"
-        case 2:PlaySong "mu_boom-dp-rap"
-    End Select
+    GameStartAttractMode
 End Sub
 
 Sub StopAttractMode
-    'StopRainbow
-    DMDScoreNow
+    GameStopAttractMode
     LightSeqAttract.StopPlay
 End Sub
 
@@ -2204,6 +2224,7 @@ Dim TotalGold           ' Total gold collected in the game
 Dim CurrentGold         ' Current gold balance
 Dim TotalWildfire
 Dim SwordsCollected
+Dim CastlesCollected
 Dim bGoldTargets(5)
 
 ' Support for game timers
@@ -2237,6 +2258,9 @@ Dim HurryUpChange
 ' Player state data
 Dim House(4)  ' Current state of each house - some house modes aren't saved, while others are. May need a Class to save detailed state
 Dim PlayerState(4) ' Structure to save global player-specific variables across balls
+
+'Other
+Dim bBattleInstructionsDone ' Whether Battle selection instructions have been shown this game
 
 ' Ball-specific variables (not saved across balls)
 Dim PlayfieldMultiplierVal
@@ -2305,6 +2329,7 @@ Class cPState
     Dim myCurrentGold
     Dim myTotalWildfire
     Dim mySwordsCollected
+    Dim myCastlesCollected
 
     Public Sub Save
         Dim i
@@ -2320,6 +2345,7 @@ Class cPState
         myCurrentGold = CurrentGold
         myTotalWildfire = TotalWildfire
         mySwordsCollected = SwordsCollected
+        myCastlesCollected = CastlesCollected
         For i = 0 to 5:myGoldTargets(i) = bGoldTargets(i):Next
     End Sub
 
@@ -2337,6 +2363,7 @@ Class cPState
         TotalGold = myTotalGold
         TotalWildfire = myTotalWildfire
         CurrentGold = myCurrentGold
+        CastlesCollected = myCastlesCollected
         For i = 0 to 5:bGoldTargets(i) = myGoldTargets(i):Next
 
     End Sub
@@ -2572,7 +2599,7 @@ Class cHouse
             Else
                 ' Already lit
                 If HouseSelected = Lannister Then AddGold 15 Else AddGold 5
-                PlaySoundVol "gotfx-coins1",VolDef
+                PlaySoundVol "gotfx-coins1",VolDef/4
             End If
         End If
     End Sub
@@ -3059,7 +3086,7 @@ Class cBattleState
     Public Sub RegisterSpinnerHit
         If MyHouse <> Baratheon Then Exit Sub
         ShotMask = ShotMask And 239 ' turn off bit 4
-        HouseValue = HouseValue + SpinnerValue
+        HouseValue = HouseValue + HouseValueIncrement
         If HouseValue > 150000000 Then HouseValue = 150000000
         DMDBaratheonSpinnerScene HouseValue
         
@@ -3130,7 +3157,7 @@ Class cBattleState
         Set tinyfont = FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0)
         BattleScene.AddActor FlexDMD.NewLabel("obj",tinyfont,BattleObjectivesShort(MyHouse))
         BattleScene.AddActor FlexDMD.NewLabel("tmr1",tinyfont,Int((TimerTimestamp(tmrBattleMode1)-GameTimeStamp)/10))
-        y4 = 16
+        y4 = 20
         Select Case MyHouse
             Case Stark,Baratheon: line3 = "VALUE = "&FormatScore(HouseValue) : x3 = 40: x4 = 40: y4 = 22
             Case Lannister,Greyjoy: line3 = "SHOTS = " & 5-CompletedShots : x3 = 20: x4 = 56
@@ -3281,6 +3308,7 @@ Sub VPObjects_Init
     Dim i
     BumperWeightTotal = 0
     For i = 1 To BumperAwards:BumperWeightTotal = BumperWeightTotal + PictoPops(i)(2): Next
+    ReplayScore = 298000000
 End Sub
 
 Sub Game_Init()     'called at the start of a new game
@@ -3312,6 +3340,7 @@ Sub ResetForNewGame()
     SwordsCollected = 0
     bLockIsLit = False
     BWMultiballsCompleted = 0
+    bBattleInstructionsDone = False
     bWildfireTargets(0) = False:bWildfireTargets(1) = False
     For i = 1 To MaxPlayers
         Score(i) = 0
@@ -3587,12 +3616,126 @@ End Sub
 '************************************
 
 ' The Player has lost his ball (there are no more balls on the playfield).
-' Handle any bonus points awarded
+' Handle any bonus points awarded. This is a mini state machine. State is
+' stored in timer.UserValue. States:
+' "BONUS" 0.25s
+' Base Bonus 0.45s
+' X Houses complete 0.45s
+' Swords 150k each 0.45s
+' Castles 0.45s
+' Gold (405=121500) 0.45s  e.g “405 GOLD” on line 1, “121,500” on line 2
+' Wildfire (22=121000) 0.55s
+' Then bonus X times all added together 1.2s
+' Then Total bonus. 1.4s
+'
+' Note, there are 7 "notes" in the ROM, but only 6 bonuses. Perhaps note 7 is reserved.
+' In any case, we skip over it below, in case we want it in the future.
+
 Dim tmpBonusTotal
 dim bonusCnt
 Sub tmrEndOfBallBonus_Timer()
-    ' TODO: This is where we'll add up the ball's total bonus. Look at GOTG line 2549 onwards for a good example
-    vpmtimer.addtimer 200, "EndOfBall2 '"
+    Dim scene,line1,line2,ol,skip,font
+    ol = False
+    skip = False
+    bonusCnt = 0
+    tmrEndOfBallBonus.Enabled = False
+    tmrEndOfBallBonus.Interval = 450
+    ' State machine based on GoTG line 2549 onwards
+    Select Case tmrEndOfBallBonus.UserValue
+        Case 0
+            line1 = "BONUS"
+            ol = True
+            tmrEndOfBallBonus.Interval = 250
+        Case 1
+            line1 = "BASE BONUS" & vbLf & FormatScore(BonusPoints(CurrentPlayer))
+            BonusCnt = BonusPoints(CurrentPlayer)
+        Case 2 
+            If CompletedHouses > 0 Then
+                line1 = CompletedHouses & " HOUSES COMPLETE":line2= FormatScore(175000*CompletedHouses)
+                BonusCnt = BonusCnt + (175000*CompletedHouses))
+            Else
+                Skip = True
+            End If
+        Case 3 
+            If SwordsCollected > 0 Then
+                line1 = SwordsCollected & " SWORD"
+                If SwordsCollected > 1 Then line1 = line1&"S"
+                line2 = FormatScore(150000*SwordsCollected)
+                BonusCnt = BonusCnt + (150000*SwordsCollected))
+            Else
+                Skip = True
+            End If
+        Case 4
+            If CastlesCollected > 0 Then
+                line1 = CastlesCollected & " CASTLE"
+                If CastlesCollected > 1 Then line1 = line1&"S" 
+                line2 = FormatScore(7500000*CastlesCollected)
+                BonusCnt = BonusCnt + (7500000*CastlesCollected))
+            Else
+                Skip = True
+            End If
+        Case 5
+            If TotalGold > 0 Then
+                line1 = FormatScore(TotalGold) & " GOLD" : line2 = FormatScore(300*TotalGold)
+                BonusCnt = BonusCnt + (300*TotalGold))
+            Else
+                Skip = True
+            End If
+        Case 6
+            If TotalWildfire > 0 Then
+                line1 = FormatScore(TotalWildfire) & " WILDFIRE" : line2 = FormatScore(5500*TotalWildfire)
+                BonusCnt = BonusCnt + (5500*TotalWildfire))
+                tmrEndOfBallBonus.Interval = 550
+            Else
+                Skip = True
+            End If
+        Case 8
+            line1 = BonusMultiplier(CurrentPlayer)&"X" : line2 = FormatScore(BonusCnt)
+            tmrEndOfBallBonus.Interval = 1200
+        Case 9
+            line1 = "TOTAL BONUS" : line2 = FormatScore(BonusCnt * BonusMultiplier(CurrentPlayer))
+            Score(CurrentPlayer) = Score(CurrentPlayer) + (BonusCnt * BonusMultiplier(CurrentPlayer))
+            tmrEndOfBallBonus.Interval = 1400
+        Case 10
+            vpmtimer.addtimer 100, "EndOfBall2 '"
+            Exit Sub
+        Case Else
+            Skip = True
+    End Select
+
+    If Skip Then
+        tmrEndOfBallBonus.Interval = 10
+    Else
+        ' Do Bonus Scene
+        If bUseFlexDMD Then
+            Set scene = FlexDMD.NewGroup("bonus")
+            If ol Then
+                Set font = FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbWhite, 0)
+            Else
+                line1 = line1 & vbLf & line2
+                Set font = FlexDMD.NewFont("udmd-f6x8.fnt",vbWhite, vbWhite, 0)
+            End if
+            scene.AddActor FlexDMD.NewFrame("bonusbox")
+            With scene.GetFrame("bonusbox")
+                .Thickness = 1
+                .SetBounds 0, 0, 128, 32      ' Each frame is 43W by 32H, and offset by 0, 42, or 84 pixels
+            End With
+            scene.AddActor FlexDMD.NewLabel("line1",font,line1)
+            scene.GetLabel("line1").SetAlignedPosition 64,16,FlexDMD_Align_CENTER
+            DMDClearQueue
+            DMDEnqueueScene scene,0,1400,1400,10,"gotfx-spike-count"&tmrEndOfBallBonus.UserValue
+        Else
+            If ol Then 
+                DisplayDMDText "",line1,tmrEndOfBallBonus.Interval
+            Else
+                DisplayDMDText line1,line2,tmrEndOfBallBonus.Interval
+            End If
+            PlaySoundVol "gotfx-spike-count"&tmrEndOfBallBonus.UserValue, VolDef
+        End If
+    End If
+
+    tmrEndOfBallBonus.UserValue = tmrEndOfBallBonus.UserValue + 1
+    tmrEndOfBallBonus.Enabled = True
 End Sub
 
 Sub EndOfBall()
@@ -3614,21 +3757,9 @@ Sub EndOfBall()
         ' Count the bonus. This table uses several bonus
         DMDflush
 
-		'if bUsePupDMD then PuPlayer.LabelShowPage pBonusScreen,1,0,"":PuPlayer.LabelShowPage pBackglass, 2,0,""
-		
-		'pDMDEvent(kDMD_BonusBG)
-		'playmedia "Video-0x007A-2.mp4", "PupVideos", pBonusScreen, "", -1, "", 1, 1
-		'This command merged Black and White background with video 
-		'    ffmpeg -i Video-0x007A.mp4  -i BonusScreen-BW2.png -filter_complex "[1:v]scale=1360:768 [ovrl],[0:v][ovrl]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2" -strict -2 ./output.mp4
-
-
-        'TODO: Figure out how to do bonuses. For now, skip
-        ' Below is how GOTG does it
-        ' add a bit of a delay to allow for the bonus points to be shown & added up
-		'tmrEndOfBallBonus.Interval = 800
-		'tmrEndOfBallBonus.UserValue = 0		' Timer will start EndOfBall2 when it is done
-		'tmrEndOfBallBonus.Enabled = true
-        vpmtimer.addtimer 100, "EndOfBall2 '"
+		tmrEndOfBallBonus.Interval = 400
+		tmrEndOfBallBonus.UserValue = 0		' Timer will start EndOfBall2 when it is done
+		tmrEndOfBallBonus.Enabled = true
     Else
         vpmtimer.addtimer 100, "EndOfBall2 '"
     End If
@@ -3907,6 +4038,7 @@ Sub StopMBmodes
     bBWMultiballActive = False
     PlayModeSong
     If PlayerMode = 1 Then DMDCreateAlternateScoreScene HouseBattle1,HouseBattle2
+    SetPlayfieldLights
 End Sub
 
 Sub RotateLaneLights(dir)
@@ -4804,6 +4936,7 @@ Sub Spinner001_Spin
     If PlayerMode = 1 and (HouseBattle1 = Baratheon or HouseBattle2 = Baratheon) Then
         House(CurrentPlayer).BattleState(HouseBattle1).RegisterSpinnerHit
         House(CurrentPlayer).BattleState(HouseBattle2).RegisterSpinnerHit
+        AccumulatedSpinnerValue = 1 ' Ensure a new scene isn't created for each spin hit
         Exit Sub
     End If
     spinval = SpinnerValue * (2^(SpinnerLevel-1))
@@ -5307,7 +5440,7 @@ Sub StartChooseBattle
 
     TurnOffPlayfieldLights
     
-    DMDChooseBattleScene "","","",10
+    If Not bBattleInstructionsDone Then DMDChooseBattleScene "","","",10
 
     ' Check to see if there are any unlit houses. If not, "Pass For Now" is not allowed
     done = True
@@ -5324,8 +5457,8 @@ Sub StartChooseBattle
     For i = 0 to 7
         If (SelectedHouse <> Greyjoy And House(CurrentPlayer).Qualified(i)) or i = 0 then   ' Greyjoy can't stack house battles
             For j = 1 to 7
-                If House(CurrentPlayer).Qualified(j) And House(CurrentPlayer).Completed(j) = False And j<>i Then 
-                    BattleChoices(TotalBattleChoices) = i*7+j
+                If House(CurrentPlayer).Qualified(j) And House(CurrentPlayer).Completed(j) = False And j<>i Then
+                    If i=0 Then  BattleChoices(TotalBattleChoices) = j*8 Else BattleChoices(TotalBattleChoices) = i*8+j
                     TotalBattleChoices = TotalBattleChoices + 1
                 End If
             Next
@@ -5346,9 +5479,14 @@ Sub StartChooseBattle
 
     ' Disable BattleReady for next time
     House(CurrentPlayer).BattleReady = False
-        
-    ' Set up the update timer to update after instructions have been displayed for 1.5 seconds
-    vpmTimer.AddTimer 1500, "UpdateChooseBattle() '"
+
+    If bBattleInstructionsDone Then
+        UpdateChooseBattle
+    Else    
+        ' Set up the update timer to update after instructions have been displayed for 1.5 seconds
+        vpmTimer.AddTimer 1500, "UpdateChooseBattle() '"
+        bBattleInstructionsDone = True
+    End If
     PlayModeSong
 End Sub
 
@@ -5372,8 +5510,8 @@ Sub UpdateChooseBattle
     If IsEmpty(CBScene) Then Exit Sub
     Set DefaultScene = CBScene
 
-    HouseBattle1 = BattleChoices(CurrentBattleChoice) MOD 7
-    HouseBattle2 = Int(BattleChoices(CurrentBattleChoice)/7)
+    HouseBattle1 = BattleChoices(CurrentBattleChoice) MOD 8
+    HouseBattle2 = Int(BattleChoices(CurrentBattleChoice)/8)
     house2 = ""
     If HouseBattle1 = 0 Then
         house1 = "PASS FOR NOW"
@@ -5415,6 +5553,9 @@ Sub PreLaunchBattleMode
         LaunchBattleMode
         Exit Sub
     End If
+    
+    HouseBattle1 = BattleChoices(CurrentBattleChoice) MOD 8
+    HouseBattle2 = Int(BattleChoices(CurrentBattleChoice)/8)
 
     ' Start battle!
     DMDHouseBattleScene HouseBattle1
@@ -5466,6 +5607,180 @@ Sub UpdateBattleMode
     SetGameTimer tmrUpdateBattleMode,5
     DMDLocalScore
 End Sub
+
+'***************************
+' Game-specific Attract Mode
+'***************************
+
+Dim OathSeq
+OathSeq = Array("NIGHT GATHERS"&vbLf&"AND NOW"&vbLf&"MY WATCH BEGINGS"&vbLf&"IT SHALL"&vbLf&"NOT END"&vbLf&"UNTIL"&vbLf&"MY DEATH",_
+            "I SHALL"&vbLf&"TAKE NO WIFE"&vbLf&"HOLD"&vbLf&"NO LANDS"&vbLf&"FATHER"&vbLf&"NO CHILDREN", _
+            "I SHALL"&vbLf&"WEAR NO CROWNS"&vbLf&"AND WIN"&vbLf&"NO GLORY"&vbLf&"I SHALL"&vbLf&"LIVE AND DIE"&vbLf&"AT MY POST", _
+            "I AM"&vbLf&"THE SWORD"&vbLf&"IN THE"&vbLf&"DARKNESS"&vbLf&"I AM"&vbLf&"THE WATCHER"&vbLf&"ON THE WALLS", _
+            "I AM"&vbLf&"THE SHIELD"&vbLf&"THAT GUARDS"&vbLf&"THE REALMS"&vbLf&"OF MEN", _
+            "I PLEDGE"&vbLf&"MY LIFE"&vbLf&"AND HONOR"&vbLf&"TO THE"&vbLf&"NIGHT'S WATCH"&vbLf&"FOR THIS NIGHT"&vbLf&"AND ALL"&vbLf&"THE NIGHTS"&vbLf&"TO COME.")
+Dim OathCnt
+OathCnt = 0
+
+Function GetNextOath()
+    GetNextOauth = OathSeq(OathCnt)
+    OathCnt = OathCnt + 1
+    If OathCnt >= 6 then OathCnt = 0
+End Function
+
+Dim ChampionNames
+ChampionNames = Array("STARK","BARATHEON","LANNISTER","GREYJOY","TYRELL","MARTELL","TARGARYEN","WINTER IS COMING","WINTER HAS COME","HAND OF THE KING","IRON THRONE")
+
+Sub GameStartAttractMode
+    tmrDMDUpdate.Enabled = False
+    tmrAttractModeScene.UserValue = 0
+    tmrAttractModeScene.Interval = 10
+    tmrAttractModeScene.Enabled = True
+    ' TODO Enable light sequences too
+End Sub
+
+Sub GameStopAttractMode
+    ' TODO Stop light sequences
+    tmrAttractModeScene.Enabled = False
+    DMDClearQueue
+    tmrDMDUpdate.Enabled = True
+End Sub
+
+' To launch attract mode, disable DMDUpdateTimer and enble tmrAttractModeScene
+' Attract mode is a big state machine running through various scenes in a loop. The timer is called
+' after the scene has displayed for the set time, to move onto the next scene
+' Scenes:
+' 0: Stern logo - 3 seconds
+' 1: PRESENTS - 2 seconds
+' 2: GoT logo video - 21 seconds
+' 3: part of Nights Watch oath on winter storm bg - 9 seconds
+' 4: most recent score (just p1?) - 2 sec
+' 5: credits - 2 sec
+' 6: Replay at <x> - 2 sec
+' 7: more oath - 9 sec
+' 8: game logo - 3 sec
+' 9-24: various high scores - 2 seconds each
+
+' Format tells us how to format each scene
+'  1: 1 line of text
+'  2: 2 lines of text (same size)
+'  3: 3 lines of text (small, big, medium)
+'  4: image only, no text
+'  5: video only, no text
+'  6: video, scrolling text
+'  7: 2 lines of text (big, small)
+'  8: 3 lines of text (same size)
+'  9: scrolling image
+' 10: 1 line of text with outline
+Sub tmrAttractModeScene_Timer
+    Dim scene,scene2,img,line1,line2,line3
+    Dim skip,font,format,scrolltime,y,delay,skipifnoflex,i
+    Dim font1,font2,font3
+    skip = False
+    tmrAttractModeScene.Enabled = False
+    delay = 2000
+    skipifnoflex = True  ' Most scenes won't render without FlexDMD
+    scrolltime = 0
+    i = tmrAttractModeScene.UserValue
+    Select Case tmrAttractModeScene.UserValue
+        Case 0:img = "got-sternlogo":format=4:scrolltime=3:y=73:delay=3000
+        Case 1:line1 = "PRESENTS":format=10:font="skinny10x12.fnt":delay=2000
+        Case 2:img = "got-intro":format=5:delay=21000
+        Case 3,7:img = "got-winterstorm":format=6:line1 = GetNextOath():delay=9000:font = "skinny10x12.fnt":scrolltime=9:y=100   ' Oath Text
+        Case 4
+            format=7:font="FlexDMD.Resources.udmd-f12by24.fnt":line1=FormatScore(Score(0)):skipifnoflex=False  ' Last score
+            If Score(0) > 999999999 Then font="udmd-f7x10"
+            If bFreePlay Then line2 = "FREE PLAY" Else Line2 = "CREDITS "&Credits
+        Case 5
+            format=1:font="udmd-f7x10.fnt":skipifnoflex=False
+            If bFreePlay Then 
+                line1 = "FREE PLAY" 
+            ElseIf Credits > 0 Then 
+                Line1 = "CREDITS "&Credits
+            Else 
+                Line1 = "INSERT COINS"
+            End if
+        Case 6:format=1:font="udmd-f7x10.fnt":line1 = "REPLAY AT" &vbLf&ReplayScore
+        Case 8:img = "got-introframe":format=4:delay=3000
+        Case 9:format=8:line1="GRAND CHAMPION":line2=HighScoreName(5):line3=FormatScore(HighScore(5)):font="udmd-f6x8.fnt":skipifnoflex=False
+        Case 10:format=8:line1="HIGH SCORE #1":line2=HighScoreName(1):line3=FormatScore(HighScore(1)):font="udmd-f6x8.fnt":skipifnoflex=False
+        Case 11:format=8:line1="HIGH SCORE #2":line2=HighScoreName(2):line3=FormatScore(HighScore(2)):font="udmd-f6x8.fnt":skipifnoflex=False
+        Case 12:format=8:line1="HIGH SCORE #3":line2=HighScoreName(3):line3=FormatScore(HighScore(3)):font="udmd-f6x8.fnt":skipifnoflex=False
+        Case 13:format=8:line1="HIGH SCORE #4":line2=HighScoreName(4):line3=FormatScore(HighScore(4)):font="udmd-f6x8.fnt":skipifnoflex=False
+        Case 14,15,16,17,18,19,20,21,22,23,24
+            format=3:skipifnoflex=False
+            line1 = ChampionNames(i-14)&" CHAMPION"
+            line2 = HighScoreName(i-8):line3 = HighScore(i-8)
+    End Select
+    If i = 24 Then tmrAttractModeScene.UserValue = 0 Else tmrAttractModeScene.UserValue = i + 1
+    If skipifnoflex=True Then tmrAttractModeScene.Interval = 10 Else tmrAttractModeScene.Interval = delay
+    tmrAttractModeScene.Enabled = True
+
+    ' Create the scene
+    if bUseFlexDMD Then
+        If format=4 or Format=5 or Format=6 Then
+            Set scene = NewSceneWithVideo("attract"&i,img)
+        Else
+            Set scene = FlexDMD.NewGroup("attract"&i)
+        End If
+
+        Select Case format
+            Case 1,6
+                scene.AddActor FlexDMD.NewLabel("line1",FlexDMD.NewFont(font,vbWhite,vbWhite,0),line1)
+                If format = 1 Then
+                    scene.GetLabel("line1").SetAlignedPosition 64,16,FlexDMD_Align_Center
+                Else
+                    scene.SetBounds 0,0-y,128,32+(2*y)  ' Create a large canvas for the image to scroll through
+                    scene.GetVideo("attract"&i&"vid").SetAlignedPosition 0,y,FlexDMD_Align_TopLeft ' move image below bottom of screen
+                    With scene.GetLabel("line1")
+                        .SetAlignedPosition 64,y+32,FlexDMD_Align_Top
+                        .AddAction scene.GetLabel("line1").ActionFactory().MoveTo(64,0,scrolltime)
+                    End With
+                End If
+            Case 3
+                Set font1 = FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0):y1=5
+                Set font2 = FlexDMD.NewFont("skinny10x12.fnt",vbWhite,vbWhite,0):y2=16
+                Set font3 = FlexDMD.NewFont("udmd-f6x8.fnt",vbWhite,vbWhite,0):y3=27
+            Case 7
+                scene.AddActor FlexDMD.NewLabel("line1",FlexDMD.NewFont(font,vbWhite,vbWhite,0),line1)
+                scene.AddActor FlexDMD.NewLabel("line2",FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0),line2)
+                scene.GetLabel("line1").SetAlignedPosition 64,14,FlexDMD_Align_Center
+                scene.GetLabel("line2").SetAlignedPosition 64,27,FlexDMD_Align_Center
+            Case 8
+                Set font1 = FlexDMD.NewFont(font,vbWhite,vbWhite,0)
+                scene.AddActor FlexDMD.NewLabel("line1",font1,line1)
+                scene.AddActor FlexDMD.NewLabel("line2",font1,line2)
+                scene.AddActor FlexDMD.NewLabel("line3",font1,line3)
+                scene.GetLabel("line1").SetAlignedPosition 64,5,FlexDMD_Align_Center
+                scene.GetLabel("line2").SetAlignedPosition 64,16,FlexDMD_Align_Center
+                scene.GetLabel("line3").SetAlignedPosition 64,27,FlexDMD_Align_Center
+            Case 9
+                scene.SetBounds 0,0-y,128,32+(2*y)  ' Create a large canvas for the text to scroll through
+                With scene.GetImage("attract"&i&"img")
+                    .SetAlignedPosition 64,y+32,FlexDMD_Align_Top
+                    .AddAction scene.GetImage("attract"&i&"img").ActionFactory().MoveTo(64,0,scrolltime)
+                End With
+            Case 10
+                scene.AddActor FlexDMD.NewLabel("line1",FlexDMD.NewFont(font,vbWhite,RGB(64, 64, 64),1),line1)
+                scene.GetLabel("line1").SetAlignedPosition 64,16,FlexDMD_Align_Center
+        End Select
+
+        DMDDisplayScene scene
+    Else
+        ' TODO: Do attract mode for regular DMD
+    End If
+End Sub
+
+' Attract mode light sequence
+' For first part, light sequence is sigils and playfield X rotating, all others flashing quickly bottom to top.
+' The lights that are on are all the same colour as whichever sigil is lit, if we care
+' Then sequences:
+'       - 4-color slow transition thru RGBP
+'       - bottom-to-top fade sweeps in sequential colours 6 total) ROYGBP
+'       - top-to-bottom fade sweeps
+'       - right to left fade sweeps, faster
+'       - left to right fade sweep
+'       - 7 color faster transition 
 
 '**************************
 ' Game-specific DMD support
@@ -5993,8 +6308,8 @@ Sub DMDLocalScore
             ' Score text
             ScoreScene.AddActor FlexDMD.NewLabel("Score", ScoreFont, "0")
             ' Ball, credits
-            ScoreScene.AddActor FlexDMD.NewLabel("Ball", ComboFont, "0")
-            ScoreScene.AddActor FlexDMD.NewLabel("Credit", ComboFont, "0")
+            ScoreScene.AddActor FlexDMD.NewLabel("Ball", ComboFont, "BALL 1")
+            ScoreScene.AddActor FlexDMD.NewLabel("Credit", ComboFont, "CREDITS 0")
             If bFreePlay Then ScoreScene.GetLabel("Credit").Text = "Free Play"
             ' Align them 
             ScoreScene.GetLabel("Score").SetAlignedPosition 80,0, FlexDMD_Align_TopRight
@@ -6012,8 +6327,13 @@ Sub DMDLocalScore
         FlexDMD.LockRenderThread
         ' Update fields
         If bAlternateScoreScene = False or (AlternateScoreSceneMask And 1) = 1 Then ScoreScene.GetLabel("Score").Text = FormatScore(Score(CurrentPlayer))
-        If bAlternateScoreScene = False or (AlternateScoreSceneMask And 2) = 2 Then ScoreScene.GetLabel("Ball").Text = "Ball " & CStr(BallsRemaining(CurrentPlayer) - BallsPerGame + 1)
-        If Not bFreePlay And (bAlternateScoreScene = False or (AlternateScoreSceneMask And 4) = 4) Then ScoreScene.GetLabel("Credit").Text = "Credits " & CStr(Credits)
+        If bAlternateScoreScene = False or (AlternateScoreSceneMask And 2) = 2 Then ScoreScene.GetLabel("Ball").Text = "BALL " & CStr(BallsPerGame - BallsRemaining(CurrentPlayer) + 1)
+        If Not bFreePlay And (bAlternateScoreScene = False or (AlternateScoreSceneMask And 4) = 4) Then 
+            With ScoreScene.GetLabel("Credit")
+                .Text = "CREDITS " & CStr(Credits)
+                .SetAlignedPosition 96,20, FlexDMD_Align_Center
+            End With
+        End If
         
         If bAlternateScoreScene = False Then ScoreScene.GetLabel("Score").SetAlignedPosition 80,0, FlexDMD_Align_TopRight
         If bAlternateScoreScene = False or (AlternateScoreSceneMask And 8) = 8 Then
@@ -6062,7 +6382,7 @@ End Class
 ' √? Implement LoL outlanes - they should release new ball as soon as existing ball rolls over outlane, if ball saver not lit
 '   - need to modify Drain and CreateNewBall code to not think we’re in multiball mode
 ' √ Implement toplane rollovers to increase bonus multiplier
-' - Implement post-ball bonus
+' √? Implement post-ball bonus
 ' √ implement elevator logic
 ' - fix right ramp to upper PF
 ' - Implement upper PF switches
@@ -6081,22 +6401,21 @@ End Class
 ' √ need a ModePauseTimer that pauses the timers if no score for 2 seconds
 ' √ need a mode timer for Tyrell. 30 seconds. targets add 5 seconds
 ' √ missing all battlesigil gifs
-' √? Martell and Greyjoy shields don't light. Stark and Lannister do
-' √? Martell display is messed up: "shoot orbits" is a small font at bottom, and timer value overlaps it
-' - stark value increases for the first two shots when it shouldn't. It was 12 mil for Joffrey.
-' - martell timer still needs moving a bit.
-' - If you hit magnasave while ChooseBattle instructions are still on, battle starts with no houses selected
-' - during Baratheon battle, value goes up way too slowly, and music starts over too often
+' √? martell timer still needs moving a bit.
+' √? If you hit magnasave while ChooseBattle instructions are still on, battle starts with no houses selected
+' √? during Baratheon battle, value goes up way too slowly, and music starts over too often
 
-' - multiball end does not reset playfield lights
+' √? multiball end does not reset playfield lights
 
-' - hitting start before inserting a credit throws an error - eblink undefined. Need to do Attract Mode
+' √? hitting start before inserting a credit throws an error - eblink undefined. 
 
-' - on ball 2, DMD shows ball 0. On ball 3, -1. 
+' - Need to do Attract Mode
+
+' √? on ball 2, DMD shows ball 0. On ball 3, -1. 
 
 ' - End of game processing doesn't exist - highscore, etc. Throws error for DMDUpdate
 
-' - coin1.wav sound is too loud
+' √ coins1.wav sound is too loud
 
 
 
