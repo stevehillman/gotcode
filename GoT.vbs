@@ -1613,6 +1613,7 @@ End Sub
 ' in this table this colors are use to keep track of the progress during the modes
 
 'colors
+Const midblue = 12
 Const ice = 11
 Const red = 10
 Const orange = 9
@@ -1635,6 +1636,9 @@ Const teal = 0
 
 Sub SetLightColor(n, col, stat) 'stat 0 = off, 1 = on, 2 = blink, -1= no change
     Select Case col
+        Case midblue
+            n.color = RGB(0,0,18)
+            n.colorfull = RGB(0,0,255)
         Case ice
             n.color = RGB(0, 18, 18)
             n.colorfull = RGB(192, 255, 255)
@@ -1786,6 +1790,12 @@ End Sub
 
 ' Set Playfield lights to slow fade a color
 Sub PlayfieldSlowFade(color,fadespeed)
+    Dim a
+    For each a in aPlayfieldLights
+        SetLightColor a,color,-1
+        a.FadeSpeedUp = fadespeed
+        a.FadeSpeedDown = fadespeed
+    Next
 End Sub
 
 '********************
@@ -1809,13 +1819,13 @@ End Sub
 '*******************************
 
 Sub StartAttractMode
-    StartLightSeq
+    'StartLightSeq
     GameStartAttractMode
 End Sub
 
 Sub StopAttractMode
     GameStopAttractMode
-    LightSeqAttract.StopPlay
+    'LightSeqAttract.StopPlay
 End Sub
 
 Sub StartLightSeq()
@@ -2648,6 +2658,9 @@ End Class
 
 Dim ModeLightPattern
 Dim AryaKills
+Dim CompletionAnimationTimes
+CompletionAnimationTimes = Array(0,2,2,1.5,4,2.3,6,2)
+
 'Each number is a bit mask of which shields light up for the given mode
 'TODO Targaryen light pattern needs more investigation
 ModeLightPattern = Array(0,10,16,0,218,138,80,10)
@@ -2897,7 +2910,7 @@ Class cBattleState
                         li83.State = 2
                     End If        
                     If State = 7 Then
-                        DoCompleteMode h
+                        DoCompleteMode 0
                     Else
                         hitscene = "hit"& (State MOD 2) + 1
                         ScoredValue = HouseValue
@@ -2944,9 +2957,6 @@ Class cBattleState
                     End if
                     
                 End If
-
-            ' Need to think about this. DoCompleteMode is adding scoring to the total score, but so is HitScene
-            ' For Modes that award throughout, as well as at the end, make sure score isn't being added twice.
 
             Case Targaryen 'TODO
                 hit = False:done=False
@@ -3039,7 +3049,7 @@ Class cBattleState
 
     ' Finish the mode. 'Shot' is the shot # that completed the mode, in case a combo multiplier is involved
     Public Sub DoCompleteMode(shot)
-        Dim comboval,line2,name,sound
+        Dim comboval,line2,name,sound,delay
 
         bComplete = True
         House(CurrentPlayer).HouseCompleted MyHouse
@@ -3060,8 +3070,8 @@ Class cBattleState
         If comboval = 1 Then comboval = 0  ' Don't bother printing Combo value for final shot if it's just 1x
         name = "got-"&HouseToString(MyHouse)&"battlecomplete"
         sound = "gotfx-"&HouseToString(MyHouse)&"battlecomplete"
-        'TODO Make the delay variable based on how long the Complete animation is
-        DMDPlayHitScene name,sound,1.5,BattleObjectivesShort(MyHouse),line2,"COMPLETE",comboval
+        delay = CompletionAnimationTimes(MyHouse)
+        DMDPlayHitScene name,sound,delay,BattleObjectivesShort(MyHouse),line2,"COMPLETE",comboval
         
     End Sub
 
@@ -4086,84 +4096,6 @@ Sub RotateLaneLights(dir)
     End If
 End Sub
 
-Sub SetTopLaneLights
-    If bTopLanes(0) And bTopLanes(1) Then ' Flash the lights for a second and use a timer to shut them off
-        li162.BlinkInterval=100:li165.blinkInterval=100
-        li162.State=2:li165.State=2
-        li162.TimerInterval=1000
-        li162.TimerEnabled=1
-    Else
-        SetLightColor li162, white, ABS(bTopLanes(0))
-        SetLightColor li165, white, ABS(bTopLanes(1))
-    End if
-End Sub
-
-Sub li162_Timer
-    li162.State = 0
-    li165.State = 0
-End Sub
-
-Sub SetLockLight
-    If bLockIsLit Then
-        ' Flash the lock light
-        li111.BlinkInterval = 300
-        SetLightColor li111,darkgreen,2
-    Else
-        SetLightColor li111,darkgreen,0
-    End If
-End Sub
-
-Sub SetSwordLight
-    If bSwordLit Then
-        li138.BlinkPattern = 110
-        li138.BlinkInterval = 150
-        SetLightColor li138,yellow,2
-    Else
-        SetLightColor li138,yellow,0
-    End If
-End Sub
-
-Sub SetMysteryLight
-    ' TODO: Figure out mystery light's blink pattern
-    if bMysteryLit Then
-        li153.BlinkInterval = 250
-        SetLightColor li153,white,2
-    Else
-        SetLightColor li153,white,0
-    End If
-End Sub
-
-Sub SetGoldTargetLights
-    Dim i
-    For i=0 to 4
-        SetLightColor GoldTargetLights(i),yellow,ABS(bGoldTargets(i))
-    Next
-End Sub
-
-' We'll use the timer on each lit combo light to gradually speed up the flashing
-Sub SetComboLights
-    Dim i,stat,x
-    stat = 0:x=False
-    For i = 1 to 5
-        If ComboMultiplier(i) > 1 Then stat=2:x=True Else stat=0
-        SetLightColor ComboLights(i),red,stat
-    Next
-    If x Then
-        ComboLights(1).TimerEnabled = True
-        ComboLights(1).TimerInterval = 1000
-    Else
-        ComboLights(1).TimerEnabled = False
-    End if
-End Sub
-
-Sub setEBLight
-    if bEBisLit Then
-        SetLightColor li150,amber,1
-    Else
-        SetLightColor li150,white,0
-    End If
-End Sub
-
 Sub OpenTopGates: topgatel.open = True: topgater.open = True: End Sub
 Sub CloseTopGates
     topgater.open = False
@@ -4564,18 +4496,6 @@ Sub InstantInfo
 'TODO
 End Sub
 
-Sub SetTargetLights
-    Dim i
-    For i = 0 to 2
-        if i >= LoLTargetsCompleted Then LoLLights(i).State = 0 Else SetLightColor LoLLights(i),yellow,1
-    Next
-End Sub
-
-Sub SetOutlaneLights
-    SetLightColor li11,white,ABS(bLoLLit)
-    SetLightColor li74,white,ABS(bLoLLit)
-End Sub
-
 '*****************************
 '  Handle target hits
 '*****************************
@@ -4674,11 +4594,6 @@ Sub doWFTargetHit(t)
         End Select
     End If
     LastSwitchHit = "wftarget"&t
-End Sub
-
-Sub SetWildfireLights
-    SetLightColor li80,green,ABS(bWildfireTargets(0))
-    SetLightColor li83,green,ABS(bWildfireTargets(1))
 End Sub
 
 'WF target light timer
@@ -5645,6 +5560,132 @@ Sub UpdateBattleMode
     DMDLocalScore
 End Sub
 
+
+'*************************
+' Table lighting control
+'*************************
+
+Sub SetWildfireLights
+    SetLightColor li80,green,ABS(bWildfireTargets(0))
+    SetLightColor li83,green,ABS(bWildfireTargets(1))
+End Sub
+
+Sub SetTopLaneLights
+    If bTopLanes(0) And bTopLanes(1) Then ' Flash the lights for a second and use a timer to shut them off
+        li162.BlinkInterval=100:li165.blinkInterval=100
+        li162.State=2:li165.State=2
+        li162.TimerInterval=1000
+        li162.TimerEnabled=1
+    Else
+        SetLightColor li162, white, ABS(bTopLanes(0))
+        SetLightColor li165, white, ABS(bTopLanes(1))
+    End if
+End Sub
+
+Sub SetTargetLights
+    Dim i
+    For i = 0 to 2
+        if i >= LoLTargetsCompleted Then LoLLights(i).State = 0 Else SetLightColor LoLLights(i),yellow,1
+    Next
+End Sub
+
+Sub SetOutlaneLights
+    SetLightColor li11,white,ABS(bLoLLit)
+    SetLightColor li74,white,ABS(bLoLLit)
+End Sub
+
+Sub li162_Timer
+    li162.State = 0
+    li165.State = 0
+End Sub
+
+Sub SetLockLight
+    If bLockIsLit Then
+        ' Flash the lock light
+        li111.BlinkInterval = 300
+        SetLightColor li111,darkgreen,2
+    Else
+        SetLightColor li111,darkgreen,0
+    End If
+End Sub
+
+Sub SetSwordLight
+    If bSwordLit Then
+        li138.BlinkPattern = 110
+        li138.BlinkInterval = 150
+        SetLightColor li138,yellow,2
+    Else
+        SetLightColor li138,yellow,0
+    End If
+End Sub
+
+Sub SetMysteryLight
+    ' TODO: Figure out mystery light's blink pattern
+    if bMysteryLit Then
+        li153.BlinkInterval = 250
+        SetLightColor li153,white,2
+    Else
+        SetLightColor li153,white,0
+    End If
+End Sub
+
+Sub SetGoldTargetLights
+    Dim i
+    For i=0 to 4
+        SetLightColor GoldTargetLights(i),yellow,ABS(bGoldTargets(i))
+    Next
+End Sub
+
+' We'll use the timer on each lit combo light to gradually speed up the flashing
+Sub SetComboLights
+    Dim i,stat,x
+    stat = 0:x=False
+    For i = 1 to 5
+        If ComboMultiplier(i) > 1 Then stat=2:x=True Else stat=0
+        SetLightColor ComboLights(i),red,stat
+    Next
+    If x Then
+        ComboLights(1).TimerEnabled = True
+        ComboLights(1).TimerInterval = 1000
+    Else
+        ComboLights(1).TimerEnabled = False
+    End if
+End Sub
+
+Sub setEBLight
+    if bEBisLit Then
+        SetLightColor li150,amber,1
+    Else
+        SetLightColor li150,white,0
+    End If
+End Sub
+
+' Set up all of the default colours for playfield lights
+Sub SetDefaultPlayfieldLights
+    Dim i
+    For i = 1 to 5: SetLightColor ComboLights(i),red,-1: Next
+    For i = 0 to 4: SetLightColor GoldTargetLights(i),yellow,-1: Next
+    For i = 0 to 2: SetLightColor LoLLights(i),yellow,-1: Next
+    SetLightColor li80,green,-1     ' WF targets
+    SetLightColor li83,green,-1     ' WF targets
+    SetLightColor li150,amber,-1    ' EB light
+    SetLightColor li153,white,-1    ' Mystery light
+    SetLightColor li138,yellow,-1   ' Sword light
+    SetLightColor li111,darkgreen,-1 ' Lock light
+    SetLightColor li11,white,-1     ' Outlane lights
+    SetLightColor li74,white,-1     ' Outlane lights
+    SetLightColor li162,white,-1    ' Toplane lights
+    SetLightColor li165,white,-1    ' Toplane lights
+    SetLightColor li132,midblue,-1  ' Battering Ram
+    SetLightColor li129,white,-1    ' Playfield mul light
+    SetLightColor li126,darkgreen,-1    ' Wildfire light
+    For i = 1 to 7
+        SetLightColor HouseShield(i),HouseColor(i),-1
+        SetLightColor HouseSigil(i),HouseColor(i),-1
+    Next
+
+End Sub    
+
 '***************************
 ' Game-specific Attract Mode
 '***************************
@@ -5673,12 +5714,18 @@ Sub GameStartAttractMode
     tmrAttractModeScene.UserValue = 0
     tmrAttractModeScene.Interval = 10
     tmrAttractModeScene.Enabled = True
-    ' TODO Enable light sequences too
+
+    SavePlayfieldLightState
+    tmrAttrachModeLighting.UserValue = 0
+    tmrAttrachModeLighting.Interval = 10
+    tmrAttrachModeLighting.Enabled = True
 End Sub
 
 Sub GameStopAttractMode
-    ' TODO Stop light sequences
     tmrAttractModeScene.Enabled = False
+    tmrAttrachModeLighting.Enabled = False
+    LightSeqAttract.StopPlay
+    RestorePlayfieldLightState
     DMDClearQueue
     tmrDMDUpdate.Enabled = True
 End Sub
@@ -5745,6 +5792,7 @@ Sub tmrAttractModeScene_Timer
         Case 12:format=8:line1="HIGH SCORE #3":line2=HighScoreName(3):line3=FormatScore(HighScore(3)):font="udmd-f6by8.fnt":skipifnoflex=False
         Case 13:format=8:line1="HIGH SCORE #4":line2=HighScoreName(4):line3=FormatScore(HighScore(4)):font="udmd-f6by8.fnt":skipifnoflex=False
         Case 14,15,16,17,18,19,20,21,22,23,24
+            If HighScore(i-8) = 0 Then delay = 5
             format=3:skipifnoflex=False
             line1 = ChampionNames(i-14)&" CHAMPION"
             line2 = HighScoreName(i-8):line3 = HighScore(i-8)
@@ -5821,6 +5869,61 @@ End Sub
 '       - right to left fade sweeps, faster
 '       - left to right fade sweep
 '       - 7 color faster transition 
+
+Dim AttractPFcolors
+Dim PFCurrentColor
+AttractPFcolors = (red,orange,yellow,green,blue,purple)
+Sub tmrAttrachModeLighting_Timer
+    Dim i,seqtime,c
+    tmrAttrachModeLighting.Enabled = False
+    i=1
+    Select Case Int(tmrAttrachModeLighting.UserValue)
+        Case 0  ' Random
+            RestorePlayfieldLightState
+            LightSeqAttract.UpdateInterval = 25
+            LightSeqAttract.Play SeqRandom, , 5, 150    'TODO figure out right values
+            LightSeqAttract.Play SeqAllOff
+            seqtime = 20000
+        Case 1
+            'TODO. Skipping for now as color fading is hard
+            seqtime = 10
+        Case 2
+            c = (tmrAttrachModeLighting.UserValue - Int(tmrAttrachModeLighting.UserValue))*10
+            if c = 5 then i = 0.5 Else i = 0.1
+            PlayfieldSlowFade c,1000
+            LightSeqAttract.UpdateInterval = 10
+            LightSeqAttract.Play SeqUpOn, 25, 1
+            seqtime = 2000
+        Case 3
+            c = (tmrAttrachModeLighting.UserValue - Int(tmrAttrachModeLighting.UserValue))*10
+            if c = 5 then i = 0.5 Else i = 0.1
+            PlayfieldSlowFade c,1000
+            LightSeqAttract.UpdateInterval = 10
+            LightSeqAttract.Play SeqDownOn, 25, 1
+            seqtime = 2000
+        Case 4
+            c = (tmrAttrachModeLighting.UserValue - Int(tmrAttrachModeLighting.UserValue))*10
+            if c = 5 then i = 0.5 Else i = 0.1
+            PlayfieldSlowFade c,1000
+            LightSeqAttract.UpdateInterval = 5
+            LightSeqAttract.Play SeqRightOn, 25, 1
+            seqtime = 1000
+        Case 5
+            c = (tmrAttrachModeLighting.UserValue - Int(tmrAttrachModeLighting.UserValue))*10
+            if c = 5 then i = 0.5 Else i = 0.1
+            PlayfieldSlowFade c,1000
+            LightSeqAttract.UpdateInterval = 5
+            LightSeqAttract.Play SeqLeftOn, 25, 1
+            seqtime = 1000
+        Case 6
+            'TODO. Skipping for now as color fading is hard
+            seqtime = 10
+    End Select
+
+    tmrAttrachModeLighting.UserValue = tmrAttrachModeLighting.UserValue + i
+    tmrAttrachModeLighting.Enabled = True
+
+End Sub
 
 '**************************
 ' Game-specific DMD support
@@ -6452,7 +6555,7 @@ End Class
 
 ' √? hitting start before inserting a credit throws an error - eblink undefined. 
 
-' - Need to do Attract Mode lighting
+' √? Need to do Attract Mode lighting
 
 ' - End of game processing doesn't exist - highscore, etc. Throws error for DMDUpdate
 
