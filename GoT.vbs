@@ -1775,11 +1775,11 @@ Sub SavePlayfieldLightState
     Next
 End Sub
 
-Sub RestorePlayfieldLightState
+Sub RestorePlayfieldLightState(state)
     Dim i,a
     i = 0
     For each a in aPlayfieldLights
-        a.State = LightSaveState(i,0)
+        If state Then a.State = LightSaveState(i,0)
         a.Color = LightSaveState(i,1)
         a.ColorFull = LightSaveState(i,2)
         a.FadeSpeedUp = LightSaveState(i,3)
@@ -1949,9 +1949,9 @@ Sub StartLightSeq()
     LightSeqAttract.Play SeqLeftOn, 15, 1
 End Sub
 
-'Sub LightSeqAttract_PlayDone()
-'    StartLightSeq()
-'End Sub
+Sub LightSeqAttract_PlayDone()
+    RestorePlayfieldLightState False    ' Restore color and fade speed but not state. Sequencer takes care of that
+End Sub
 
 Sub LightSeqTilt_PlayDone()
     LightSeqTilt.Play SeqAllOff
@@ -2638,8 +2638,7 @@ Class cHouse
                     ' Probably need to play a sound here
                     If HouseSelected = Lannister Then AddGold 450 Else AddGold 250
                     For i = 0 to 4: bGoldTargets(i) = False: Next
-                    bMysteryLit = True              ' Does this get saved across balls?
-                    SetLightColor li153, white, 2  ' Turn on Mystery light
+                    SetMystery True
                     ' tell the gold target lights to turn off in 1 second. There's a timer on the first light
                     GoldTargetLights(0).TimerInterval = 1000: GoldTargetLights(0).TimerEnabled = True
                 End If
@@ -4104,7 +4103,7 @@ End Sub
 Sub OpenTopGates: topgatel.open = True: topgater.open = True: End Sub
 Sub CloseTopGates
     topgater.open = False
-    If bEBisLit or bMysteryLit Then Exit Sub
+    If bEBisLit or bMysteryLit or bElevatorShotUsed = False Then Exit Sub
     topgatel.open = False
 End Sub
 
@@ -4130,6 +4129,13 @@ Sub ResetComboMultipliers
     Dim i
     For i = 0 to 5: ComboMultiplier(i) = 1: Next
     SetComboLights
+End Sub
+
+Sub SetMystery
+    bMysteryLit = True              ' Does this get saved across balls?
+    SetLightColor li153, white, 2  ' Turn on Mystery light
+    MoveDiverter 1
+    topgatel.open = True
 End Sub
 
 Sub GameGiOn
@@ -4789,17 +4795,19 @@ End Sub
 Sub KickerFloor_Hit
     Me.DestroyBall
     MoveDiverter(0)
-    ' TODO: need logic for when the top gate should be left open
-    topgatel.open = False
-    bElevatorShotUsed = True
     PlaySoundAt "fx_kicker",KickerFloor
     ' TODO Add logic for any other modes that kick the ball to the Iron Throne
     If bMysteryLit or bEBisLit Then
         KickerTopFloor.CreateBall
         KickerTopFloor.Kick 90,3
     Else
+        bElevatorShotUsed = True
         KickerUPF.CreateBall
         KickerUPF.Kick 180,5
+    End If
+     ' TODO: need logic for when the top gate should be left open
+    If bElevatorShotUsed And HouseBattle1 <> Greyjoy And HouseBattle2 <> Greyjoy And HouseBattle1 <> Martell And HouseBattle2 <> Martell Then
+        topgatel.open = False
     End If
 End Sub
 
@@ -5113,12 +5121,16 @@ End Sub
 
 Dim bBattleCreateBall
 Sub LockBall
-    Dim i
+    Dim i,scene,g
     BallsInLock = BallsInLock + 1
     RealBallsInLock = RealBallsInLock + 1
     debug.print "Locked ball " & BallsInLock
     bLockIsLit = False
     SetLightColor li111,darkgreen,0     ' Turn off Lock light
+    If SelectedHouse = Lannister Then g = 250 Else g = 75
+    TotalGold = TotalGold + g
+    CurrentGold = CurrentGold + g
+    TotalWildfire = TotalWildfire + 5 'TODO Does this go up with BallInPlay? 
     i = RndNbr(3)
     if i > 1 Then i = ""
     PlaySoundVol "say-ball-" & BallsInLock & "-locked" & i, VolDef
@@ -5126,7 +5138,6 @@ Sub LockBall
         'Start BW multiball in 1 second - gives a chance to say 'ball locked'
         vpmtimer.addtimer 1600, "StartBWMultiball '"
     ElseIf PlayerMode >= 0 Then  ' Regular mode - release new ball
-        'TODO Add a flashing Ball Locked message w/ background
         If RealBallsInLock > BallsInLock Then
             RealBallsInLock = RealBallsInLock - 1
             ReleaseLockedBall 0
@@ -5138,14 +5149,29 @@ Sub LockBall
     Else ' battle mode selection and not all balls locked - let PreLaunchBattleMode take care of releasing a ball
         bBattleCreateBall = True
     End If
-
+    If BallsInLock < 3 Then
+        DoLockBallSeq
+        If bUseFlexDMD Then
+            Set scene = NewSceneWithImage("lock","got-balllock")
+            scene.AddActor FlexDMD.NewLabel("lbl1",FlexDMD.NewFont("udmd-f6by8"vbWhite, vbWhite, 0) ,"BLACKWATER")
+            scene.GetLabel("lbl1").SetAlignedPosition 2,1,FlexDMD_Align_TopLeft
+            scene.AddActor FlexDMD.NewLabel("lbl2",FlexDMD.NewFont("udmd-f6by8"vbWhite, vbWhite, 0) ,"BALL "&BallsInLock&" LOCKED")
+            With scene.GetLabel("lbl2")
+                .SetAlignedPosition 2,11,FlexDMD_Align_TopLeft
+                .BlinkActor scene.GetLabel("lbl2"),100,7
+            End With
+            scene.AddActor FlexDMD.NewLabel("wfgold", FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0) ,"+5 WILDFIRE"&vbLf&"+"&g&" GOLD")
+            scene.GetLabel("wfgold").SetAlignedPosition 2,30,FlexDMD_Align_BottomLeft
+            DMDEnqueueScene scene,0,1000,1500,500,""
+        End If
+    End If
 End Sub
 
 Sub StartBWMultiball
     bMultiBallMode = True
     Dim scene
     Set scene = NewSceneWithVideo("bwmb","got-blackwatermb")
-    scene.AddActor FlexDMD.NewLabel("balllock", FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0) ,"Ball 3"&vbLf&"Locked")
+    scene.AddActor FlexDMD.NewLabel("balllock", FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0) ,"BALL 3"&vbLf&"LOCKED")
     scene.GetLabel("balllock").SetAlignedPosition 126,30,FlexDMD_Align_BottomRight
     BlinkActor scene.GetLabel("balllock"),0.1,12
     DMDEnqueueScene scene,0,2000,4000,500,"gotfx-blackwater-multiball-start"
@@ -5690,7 +5716,17 @@ Sub SetDefaultPlayfieldLights
         SetLightColor HouseSigil(i),HouseColor(i),-1
     Next
 
-End Sub    
+End Sub
+
+'TODO May need a separate sequencer for in-game effects so we can have a separate _playdone sub
+Sub DoLockBallSeq
+    SavePlayfieldLightState
+    PlayfieldSlowFade green,0.1
+    LightSeqAttract.UpdateInterval = 10
+    LightSeqAttract.Play SeqUpOn, 25, 1
+    LightSeqAttract.Play SeqBlinking,,2,250
+    LightSeqAttract.Play SeqAllOff
+End Sub
 
 '***************************
 ' Game-specific Attract Mode
@@ -5731,7 +5767,7 @@ Sub GameStopAttractMode
     tmrAttractModeScene.Enabled = False
     tmrAttractModeLighting.Enabled = False
     LightSeqAttract.StopPlay
-    RestorePlayfieldLightState
+    RestorePlayfieldLightState True
     DMDClearQueue
     tmrDMDUpdate.Enabled = True
 End Sub
@@ -5885,7 +5921,7 @@ Sub tmrAttractModeLighting_Timer
     i=1
     Select Case Int(tmrAttractModeLighting.UserValue)
         Case 0  ' Random
-            RestorePlayfieldLightState
+            RestorePlayfieldLightState True
             LightSeqAttract.UpdateInterval = 75
             LightSeqAttract.Play SeqRandom,25,,10000    'TODO figure out right values
             LightSeqAttract.Play SeqAllOff
@@ -6539,7 +6575,18 @@ End Class
 ' - fix right ramp to upper PF
 ' - Implement upper PF switches
 ' - Implement playfield lighting effects
+'   
 ' - Implement Wall MB countdown. Wall MB comes later
+' - Finish BWmultiball
+'   √? ball locked scene
+'   √? add wildfire and gold
+'   - lighting effects for ball locked - all lights off, green wave bottom to top, two fade up/down of all green PF lights
+'   - lighting effects for ball release
+'   - implement jackpots
+'   - scene, sound, and lighting effects for jackpots
+'   - implement Super Jackpot at the battering ram
+'
+' - diverter needs to open at the right times
 
 ' - gold targets need to be bouncier. 
 ' - battering ram needs to be less bouncy and more scattery
@@ -6563,8 +6610,6 @@ End Class
 ' √? multiball end does not reset playfield lights
 
 ' √? hitting start before inserting a credit throws an error - eblink undefined. 
-
-' √? Need to do Attract Mode lighting
 
 ' - End of game processing doesn't exist - highscore, etc. Throws error for DMDUpdate
 
