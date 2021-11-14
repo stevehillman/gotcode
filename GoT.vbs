@@ -1949,9 +1949,9 @@ Sub StartLightSeq()
     LightSeqAttract.Play SeqLeftOn, 15, 1
 End Sub
 
-Sub LightSeqAttract_PlayDone()
-    StartLightSeq()
-End Sub
+'Sub LightSeqAttract_PlayDone()
+'    StartLightSeq()
+'End Sub
 
 Sub LightSeqTilt_PlayDone()
     LightSeqTilt.Play SeqAllOff
@@ -2241,6 +2241,7 @@ Dim LoLLights
 Dim ComboLaneMap
 Dim ComboLights
 Dim GoldTargetLights
+Dim pfmuxlights
 Dim BattleObjectives
 Dim BattleObjectivesShort
 Dim QAnimateTimes       ' Length of each qualifying shot's animation time
@@ -2351,6 +2352,8 @@ ComboLaneMap = Array(0,4,0,3,1,0,5,2)
 
 ComboLights = Array(li89,li89,li101,li117,li144,li159)
 
+pfmuxlights = Array(li56,li59,li62,li65)
+
 
 
 
@@ -2452,7 +2455,7 @@ Class cHouse
                 LockWall.collidable = True
             ElseIf RealBallsInLock = 0 And bLockIsLit = False Then
                 LockWall.collidable = False
-
+            End if
         End If
     End Property
 
@@ -3353,9 +3356,11 @@ Sub VPObjects_Init
     BumperWeightTotal = 0
     For i = 1 To BumperAwards:BumperWeightTotal = BumperWeightTotal + PictoPops(i)(2): Next
     ReplayScore = 298000000
+    SetDefaultPlayfieldLights   ' Sets all playfield lights to their default colours
 End Sub
 
 Sub Game_Init()     'called at the start of a new game
+    SetDefaultPlayfieldLights   ' Sets all playfield lights to their default colours
     TurnOffPlayfieldLights()
     ResetComboMultipliers
 End Sub
@@ -5666,6 +5671,7 @@ Sub SetDefaultPlayfieldLights
     For i = 1 to 5: SetLightColor ComboLights(i),red,-1: Next
     For i = 0 to 4: SetLightColor GoldTargetLights(i),yellow,-1: Next
     For i = 0 to 2: SetLightColor LoLLights(i),yellow,-1: Next
+    For i = 0 to 3: SetLightColor pfmuxlights(i),amber,-1: Next
     SetLightColor li80,green,-1     ' WF targets
     SetLightColor li83,green,-1     ' WF targets
     SetLightColor li150,amber,-1    ' EB light
@@ -5716,14 +5722,14 @@ Sub GameStartAttractMode
     tmrAttractModeScene.Enabled = True
 
     SavePlayfieldLightState
-    tmrAttrachModeLighting.UserValue = 0
-    tmrAttrachModeLighting.Interval = 10
-    tmrAttrachModeLighting.Enabled = True
+    tmrAttractModeLighting.UserValue = 0
+    tmrAttractModeLighting.Interval = 10
+    tmrAttractModeLighting.Enabled = True
 End Sub
 
 Sub GameStopAttractMode
     tmrAttractModeScene.Enabled = False
-    tmrAttrachModeLighting.Enabled = False
+    tmrAttractModeLighting.Enabled = False
     LightSeqAttract.StopPlay
     RestorePlayfieldLightState
     DMDClearQueue
@@ -5872,56 +5878,59 @@ End Sub
 
 Dim AttractPFcolors
 Dim PFCurrentColor
-AttractPFcolors = (red,orange,yellow,green,blue,purple)
-Sub tmrAttrachModeLighting_Timer
+AttractPFcolors = Array(red,orange,yellow,green,blue,purple)
+Sub tmrAttractModeLighting_Timer
     Dim i,seqtime,c
-    tmrAttrachModeLighting.Enabled = False
+    tmrAttractModeLighting.Enabled = False
     i=1
-    Select Case Int(tmrAttrachModeLighting.UserValue)
+    Select Case Int(tmrAttractModeLighting.UserValue)
         Case 0  ' Random
             RestorePlayfieldLightState
-            LightSeqAttract.UpdateInterval = 25
-            LightSeqAttract.Play SeqRandom, , 5, 150    'TODO figure out right values
+            LightSeqAttract.UpdateInterval = 75
+            LightSeqAttract.Play SeqRandom,25,,10000    'TODO figure out right values
             LightSeqAttract.Play SeqAllOff
-            seqtime = 20000
+            seqtime = 10000
         Case 1
             'TODO. Skipping for now as color fading is hard
             seqtime = 10
         Case 2
-            c = (tmrAttrachModeLighting.UserValue - Int(tmrAttrachModeLighting.UserValue))*10
+            c = int((tmrAttractModeLighting.UserValue - Int(tmrAttractModeLighting.UserValue))*10)
             if c = 5 then i = 0.5 Else i = 0.1
-            PlayfieldSlowFade c,1000
+            PlayfieldSlowFade AttractPFcolors(c),0.1
             LightSeqAttract.UpdateInterval = 10
             LightSeqAttract.Play SeqUpOn, 25, 1
             seqtime = 2000
         Case 3
-            c = (tmrAttrachModeLighting.UserValue - Int(tmrAttrachModeLighting.UserValue))*10
+            c = int((tmrAttractModeLighting.UserValue - Int(tmrAttractModeLighting.UserValue))*10)
             if c = 5 then i = 0.5 Else i = 0.1
-            PlayfieldSlowFade c,1000
+            PlayfieldSlowFade AttractPFcolors(c),0.1
             LightSeqAttract.UpdateInterval = 10
             LightSeqAttract.Play SeqDownOn, 25, 1
             seqtime = 2000
         Case 4
-            c = (tmrAttrachModeLighting.UserValue - Int(tmrAttrachModeLighting.UserValue))*10
+            c = int((tmrAttractModeLighting.UserValue - Int(tmrAttractModeLighting.UserValue))*10)
             if c = 5 then i = 0.5 Else i = 0.1
-            PlayfieldSlowFade c,1000
-            LightSeqAttract.UpdateInterval = 5
-            LightSeqAttract.Play SeqRightOn, 25, 1
+            PlayfieldSlowFade AttractPFcolors(c),0.1
+            LightSeqAttract.UpdateInterval = 7
+            LightSeqAttract.Play SeqRightOn, 50, 1
             seqtime = 1000
         Case 5
-            c = (tmrAttrachModeLighting.UserValue - Int(tmrAttrachModeLighting.UserValue))*10
+            c = int((tmrAttractModeLighting.UserValue - Int(tmrAttractModeLighting.UserValue))*10)
             if c = 5 then i = 0.5 Else i = 0.1
-            PlayfieldSlowFade c,1000
-            LightSeqAttract.UpdateInterval = 5
-            LightSeqAttract.Play SeqLeftOn, 25, 1
+            PlayfieldSlowFade AttractPFcolors(c),0.1
+            LightSeqAttract.UpdateInterval = 7
+            LightSeqAttract.Play SeqLeftOn, 50, 1
             seqtime = 1000
         Case 6
             'TODO. Skipping for now as color fading is hard
             seqtime = 10
+        Case Else
+			tmrAttractModeLighting.UserValue = 0:i=0
     End Select
 
-    tmrAttrachModeLighting.UserValue = tmrAttrachModeLighting.UserValue + i
-    tmrAttrachModeLighting.Enabled = True
+    tmrAttractModeLighting.UserValue = tmrAttractModeLighting.UserValue + i
+    tmrAttractModeLighting.Interval = seqtime
+    tmrAttractModeLighting.Enabled = True
 
 End Sub
 
