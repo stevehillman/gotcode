@@ -5728,6 +5728,42 @@ Sub DoLockBallSeq
     LightSeqAttract.Play SeqAllOff
 End Sub
 
+' Do the light sequence for the start of BW Multiball
+Sub DoBWMultiballSeq
+    SavePlayfieldLightState
+    PlayfieldSlowFade green,0.1
+    LightSeqAttract.UpdateInterval = 10
+    LightSeqAttract.Play SeqBlinking,,2,250
+    LightSeqAttract.Play SeqDownOn,75,2
+    LightSeqAttract.Play SeqAllOff
+    LightSeqAttract.UpdateInterval = 25
+    LightSeqAttract.Play SeqBlinking,,60,25
+
+    tmrMultiballSequencer.Interval = 2500  ' Tune this value to ensure it starts just after the wave sequence ends
+    tmrMultiballSequencer.UserValue = 0
+    tmrMultiballSequencer.Enabled = True
+End Sub
+
+' During multiball light sequence, randomly change the playfield colours
+' between green and red during the fast random flash sequence
+Sub tmrMultiballSequencer_Timer
+    Dim a,c,i
+    tmrMultiballSequencer.Enabled = False
+    tmrMultiballSequencer.UserValue = tmrMultiballSequencer.UserValue + 1
+    if tmrMultiballSequencer.UserValue > 50 Then    ' We've run for 2.5 seconds
+        LightSeqAttract.StopPlay
+        Exit Sub
+    End If
+    For a in aPlayfieldLights
+        c = green
+        i = RndNbr(2)
+        if i = 2 then c = red
+        SetLightColor a,c,-1
+    Next
+    tmrMultiballSequencer.Interval = 50
+    tmrMultiballSequencer.Enabled = True
+End Sub
+
 '***************************
 ' Game-specific Attract Mode
 '***************************
@@ -5915,8 +5951,28 @@ End Sub
 Dim AttractPFcolors
 Dim PFCurrentColor
 AttractPFcolors = Array(red,orange,yellow,green,blue,purple)
+Dim ColorWheel
+' Wheel of colours used to fade between 6 primary colours
+' These values were calculated using a script. They are the intermediate values between the primary colours,
+' calculated as "R*65536 + G*256 + B", equivalent to the hex number &H00RRGGBB
+ColorWheel = Array(16711680,16711936,16712192,16712448,16712704,16712960,16713216,16713472,16713728,16713984,16714496,16714752,16715008,16715264,16715520,16715776,16716032,16716288,16716544,16716800, _
+                    16717312,16717568,16717824,16718080,16718336,16718592,16718848,16719104,16719360,16719616,16720128,16720384,16720640,16720896,16721152,16721408,16721664,16721920,16722176,16722688, _
+                    16722944,16723200,16723456,16723712,16723968,16724224,16724480,16724736,16724992,16725504,16725760,16726016,16726272,16726528,16726784,16727040,16727296,16727552, _
+                    16728064,16728832,16729600,16730368,16731392,16732160,16732928,16733952,16734720,16735488,16736256,16737280,16738048,16738816,16739840,16740608,16741376,16742144,16743168,16743936, _
+                    16744704,16745728,16746496,16747264,16748288,16749056,16749824,16750592,16751616,16752384,16753152,16754176,16754944,16755712,16756480,16757504,16758272,16759040,16760064,16760832, _
+                    16761600,16762624,16763392,16764160,16764928,16765952,16766720,16767488,16768512,16769280,16770048,16770816,16771840,16772608,16773376,16774400,16775168,16775936, _
+                    16776960,16449280,16187136,15859456,15597312,15335168,15007488,14745344,14417664,14155520,13893376,13565696,13303552,12975872,12713728,12451584,12123904,11861760,11534080,11271936, _
+                    11009792,10682112,10419968,10092288,9830144,9568000,9240320,8978176,8650496,8388352,8126208,7798528,7536384,7208704,6946560,6684416,6356736,6094592,5766912,5504768, _
+                    5242624,4914944,4652800,4325120,4062976,3800832,3473152,3211008,2883328,2621184,2359040,2031360,1769216,1441536,1179392,917248,589568,327424, _
+                    65280,64004,62984,61709,60689,59669,58394,57374,56099,55079,54059,52784,51764,50489,49469,48449,47174,46154,44879,43859, _
+                    42839,41564,40544,39269,38249,37229,35954,34934,33659,32639,31619,30344,29324,28049,27029,26009,24734,23714,22439,21419, _
+                    20399,19124,18104,16829,15809,14789,13514,12494,11219,10199,9179,7904,6884,5609,4589,3569,2294,1274, _
+                    255,131325,262396,393467,524538,721145,852216,983287,1114358,1245429,1442036,1573107,1704177,1835248,1966319,2162926,2293997,2425068,2556139,2687210, _
+                    2883817,3014888,3145959,3277030,3408100,3604707,3735778,3866849,3997920,4128991,4325598,4456669,4587740,4718811,4915418,5046488,5177559,5308630,5439701,5636308, _
+                    5767379,5898450,6029521,6160592,6357199,6488270,6619341,6750411,6881482,7078089,7209160,7340231,7471302,7602373,7798980,7930051,8061122,8192193,8388800     )
+
 Sub tmrAttractModeLighting_Timer
-    Dim i,seqtime,c
+    Dim i,seqtime,c,a
     tmrAttractModeLighting.Enabled = False
     i=1
     Select Case Int(tmrAttractModeLighting.UserValue)
@@ -5926,42 +5982,73 @@ Sub tmrAttractModeLighting_Timer
             LightSeqAttract.Play SeqRandom,25,,10000    'TODO figure out right values
             LightSeqAttract.Play SeqAllOff
             seqtime = 10000
-        Case 1
-            'TODO. Skipping for now as color fading is hard
-            seqtime = 10
+        Case 1,9
+            ' Step through the colorwheel values, once every 30ms (about 10 seconds to fade between the 6 main colours)
+            seqtime = 30:i=0.001
+            c = int((tmrAttractModeLighting.UserValue - Int(tmrAttractModeLighting.UserValue))*1000)
+            If c > 299 then 
+                ' Jump to the next effect
+                i = 0: tmrAttractModeLighting.UserValue = Int(tmrAttractModeLighting.UserValue)+1
+            Else
+                c = ColorWheel(c)
+                For a in aPlayfieldLights
+                    a.colorfull = c
+                Next
+            End If
         Case 2
             c = int((tmrAttractModeLighting.UserValue - Int(tmrAttractModeLighting.UserValue))*10)
             if c = 5 then i = 0.5 Else i = 0.1
             PlayfieldSlowFade AttractPFcolors(c),0.1
             LightSeqAttract.UpdateInterval = 10
-            LightSeqAttract.Play SeqUpOn, 25, 1
+            LightSeqAttract.Play SeqUpOn, 75, 1
             seqtime = 2000
         Case 3
             c = int((tmrAttractModeLighting.UserValue - Int(tmrAttractModeLighting.UserValue))*10)
             if c = 5 then i = 0.5 Else i = 0.1
             PlayfieldSlowFade AttractPFcolors(c),0.1
             LightSeqAttract.UpdateInterval = 10
-            LightSeqAttract.Play SeqDownOn, 25, 1
+            LightSeqAttract.Play SeqDownOn, 75, 1
             seqtime = 2000
         Case 4
             c = int((tmrAttractModeLighting.UserValue - Int(tmrAttractModeLighting.UserValue))*10)
             if c = 5 then i = 0.5 Else i = 0.1
             PlayfieldSlowFade AttractPFcolors(c),0.1
             LightSeqAttract.UpdateInterval = 7
-            LightSeqAttract.Play SeqRightOn, 50, 1
+            LightSeqAttract.Play SeqRightOn, 75, 1
             seqtime = 1000
         Case 5
             c = int((tmrAttractModeLighting.UserValue - Int(tmrAttractModeLighting.UserValue))*10)
             if c = 5 then i = 0.5 Else i = 0.1
             PlayfieldSlowFade AttractPFcolors(c),0.1
             LightSeqAttract.UpdateInterval = 7
-            LightSeqAttract.Play SeqLeftOn, 50, 1
+            LightSeqAttract.Play SeqLeftOn, 75, 1
             seqtime = 1000
         Case 6
-            'TODO. Skipping for now as color fading is hard
-            seqtime = 10
+            SeqClockLeftOn
+            c = int((tmrAttractModeLighting.UserValue - Int(tmrAttractModeLighting.UserValue))*10)
+            if c = 5 then i = 0.5 Else i = 0.1
+            PlayfieldSlowFade AttractPFcolors(c),0.1
+            LightSeqAttract.UpdateInterval = 7
+            LightSeqAttract.Play SeqCircleOutOn, 75, 1
+        Case 7
+            SeqClockLeftOn
+            c = int((tmrAttractModeLighting.UserValue - Int(tmrAttractModeLighting.UserValue))*10)
+            if c = 5 then i = 0.5 Else i = 0.1
+            PlayfieldSlowFade AttractPFcolors(c),0.1
+            LightSeqAttract.UpdateInterval = 7
+            LightSeqAttract.Play SeqClockLeftOn, 75, 1
+            seqtime = 1000
+        Case 8
+            SeqClockLeftOn
+            c = int((tmrAttractModeLighting.UserValue - Int(tmrAttractModeLighting.UserValue))*10)
+            if c = 5 then i = 0.5 Else i = 0.1
+            PlayfieldSlowFade AttractPFcolors(c),0.1
+            LightSeqAttract.UpdateInterval = 7
+            LightSeqAttract.Play SeqRadarRightOn, 75, 1
+            seqtime = 1000
         Case Else
-			tmrAttractModeLighting.UserValue = 0:i=0
+            ' Loop back to first effect
+			tmrAttractModeLighting.UserValue = 0:i=0:seqtime=10
     End Select
 
     tmrAttractModeLighting.UserValue = tmrAttractModeLighting.UserValue + i
