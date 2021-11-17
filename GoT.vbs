@@ -2392,6 +2392,7 @@ Class cPState
     Dim myTotalWildfire
     Dim mySwordsCollected
     Dim myCastlesCollected
+    Dim myCurrentWildfire
 
     Public Sub Save
         Dim i
@@ -2647,6 +2648,7 @@ Class cHouse
                     SetGameTimer tmrBlackwaterSJP,200
                     bBlackwaterSJPMode = True
                     UpdateBWMBScene
+                End If
             End If
         End If
 
@@ -2742,7 +2744,7 @@ Class cHouse
                     ' Probably need to play a sound here
                     If HouseSelected = Lannister Then AddGold 450 Else AddGold 250
                     For i = 0 to 4: bGoldTargets(i) = False: Next
-                    SetMystery True
+                    SetMystery
                     ' tell the gold target lights to turn off in 1 second. There's a timer on the first light
                     GoldTargetLights(0).TimerInterval = 1000: GoldTargetLights(0).TimerEnabled = True
                 End If
@@ -3810,7 +3812,7 @@ Sub tmrEndOfBallBonus_Timer()
     ol = False
     skip = False
     tmrEndOfBallBonus.Enabled = False
-    tmrEndOfBallBonus.Interval = 450
+    tmrEndOfBallBonus.Interval = 500
     ' State machine based on GoTG line 2549 onwards
     Select Case tmrEndOfBallBonus.UserValue
         Case 0
@@ -3818,7 +3820,7 @@ Sub tmrEndOfBallBonus_Timer()
             StopSound Song
             line1 = "BONUS"
             ol = True
-            tmrEndOfBallBonus.Interval = 250
+            'tmrEndOfBallBonus.Interval = 250
         Case 1
             line1 = "BASE BONUS" & vbLf & FormatScore(BonusPoints(CurrentPlayer))
             BonusCnt = BonusPoints(CurrentPlayer)
@@ -3858,7 +3860,7 @@ Sub tmrEndOfBallBonus_Timer()
             If TotalWildfire > 0 Then
                 line1 = FormatScore(TotalWildfire) & " WILDFIRE" : line2 = FormatScore(5500*TotalWildfire)
                 BonusCnt = BonusCnt + (5500*TotalWildfire)
-                tmrEndOfBallBonus.Interval = 550
+                tmrEndOfBallBonus.Interval = 600
             Else
                 Skip = True
             End If
@@ -4249,9 +4251,13 @@ Sub ResetDropTargets
 End Sub
 
 Sub MoveDiverter(o)
-    Dim ang: ang=0
-    if o = True then ang = 22
-    Diverter.ObjRotZ = ang
+    if o then
+        Diverter.ObjRotZ = 22
+        Diverter.collidable = 0
+    Else
+        Diverter.ObjRotZ = 0
+        Diverter.collidable = 1
+    End If
 End Sub
 
 Sub ResetComboMultipliers
@@ -4298,7 +4304,8 @@ Sub UpdatePFXLights(Level)
             SetLightColor pfmuxlights(i-2),amber,2
         Else 
             SetLightColor pfmuxlights(i-2),amber,1
-    End If
+        End If
+    Next
 End Sub
 
 ' During Battle mode, Shield lights may be in one of several states
@@ -5194,7 +5201,7 @@ Sub doPictoPops(b)
             bLoLLit = True:SetOutlaneLights
             'TODO: Play sound or animation?
         Case 15
-            bMysteryLit = True: SetMysteryLight
+            SetMystery
         Case 16
             ' TODO: This has a scene
             bWildfireLit = True: SetLightColor li126, darkgreen, 1
@@ -5280,9 +5287,9 @@ Sub LockBall
         DoLockBallSeq
         If bUseFlexDMD Then
             Set scene = NewSceneWithImage("lock","got-balllock")
-            scene.AddActor FlexDMD.NewLabel("lbl1",FlexDMD.NewFont("udmd-f6by8"vbWhite, vbWhite, 0) ,"BLACKWATER")
+            scene.AddActor FlexDMD.NewLabel("lbl1",FlexDMD.NewFont("udmd-f6by8.fnt",vbWhite, vbWhite, 0) ,"BLACKWATER")
             scene.GetLabel("lbl1").SetAlignedPosition 2,1,FlexDMD_Align_TopLeft
-            scene.AddActor FlexDMD.NewLabel("lbl2",FlexDMD.NewFont("udmd-f6by8"vbWhite, vbWhite, 0) ,"BALL "&BallsInLock&" LOCKED")
+            scene.AddActor FlexDMD.NewLabel("lbl2",FlexDMD.NewFont("udmd-f6by8.fnt",vbWhite, vbWhite, 0) ,"BALL "&BallsInLock&" LOCKED")
             scene.GetLabel("lbl2").SetAlignedPosition 2,11,FlexDMD_Align_TopLeft
             BlinkActor scene.GetLabel("lbl2"),100,7
             scene.AddActor FlexDMD.NewLabel("wfgold", FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0) ,"+5 WILDFIRE"&vbLf&"+"&g&" GOLD")
@@ -5789,7 +5796,6 @@ Sub SetSwordLight
 End Sub
 
 Sub SetMysteryLight
-    ' TODO: Figure out mystery light's blink pattern
     if bMysteryLit Then
         li153.BlinkInterval = 250
         SetLightColor li153,white,2
@@ -5892,7 +5898,7 @@ Sub tmrMultiballSequencer_Timer
         LightSeqAttract.StopPlay
         Exit Sub
     End If
-    For a in aPlayfieldLights
+    For each a in aPlayfieldLights
         c = green
         i = RndNbr(2)
         if i = 2 then c = red
@@ -5989,7 +5995,7 @@ Sub tmrAttractModeScene_Timer
         Case 3,7:img = "got-winterstorm":format=6:line1 = GetNextOath():delay=9000:font = "skinny10x12.fnt":scrolltime=9:y=100   ' Oath Text
         Case 4
             format=7:font="FlexDMD.Resources.udmd-f12by24.fnt":line1=FormatScore(Score(0)):skipifnoflex=False  ' Last score
-            If Score(0) > 999999999 Then font="udmd-f7by10"
+            If Score(0) > 999999999 Then font="udmd-f7by10.fnt"
             If bFreePlay Then line2 = "FREE PLAY" Else Line2 = "CREDITS "&Credits
         Case 5
             format=1:font="udmd-f7by10.fnt":skipifnoflex=False
@@ -6115,6 +6121,7 @@ Sub tmrAttractModeLighting_Timer
     i=1
     Select Case Int(tmrAttractModeLighting.UserValue)
         Case 0  ' Random
+            LightSeqAttract.StopPlay
             RestorePlayfieldLightState True
             LightSeqAttract.UpdateInterval = 75
             LightSeqAttract.Play SeqRandom,25,,10000    'TODO figure out right values
@@ -6124,71 +6131,86 @@ Sub tmrAttractModeLighting_Timer
             ' Step through the colorwheel values, once every 30ms (about 10 seconds to fade between the 6 main colours)
             seqtime = 30:i=0.001
             c = int((tmrAttractModeLighting.UserValue - Int(tmrAttractModeLighting.UserValue))*1000)
-            If c > 299 then 
+            if c = 0 Then
+                LightSeqAttract.StopPlay
+                PlayfieldSlowFade red,10
+                For each a in aPlayfieldLights
+                    a.State = 1
+                Next
+            End if
+            If c > 290 then 
                 ' Jump to the next effect
                 i = 0: tmrAttractModeLighting.UserValue = Int(tmrAttractModeLighting.UserValue)+1
+                For each a in aPlayfieldLights
+                    a.State = 0
+                Next
             Else
                 c = ColorWheel(c)
-                For a in aPlayfieldLights
+                For each a in aPlayfieldLights
                     a.colorfull = c
                 Next
             End If
         Case 2
+            LightSeqAttract.StopPlay
             c = int((tmrAttractModeLighting.UserValue - Int(tmrAttractModeLighting.UserValue))*10)
-            if c = 5 then i = 0.5 Else i = 0.1
+            if c = 5 then Me.UserValue = 3:i = 0 Else i = 0.1
             PlayfieldSlowFade AttractPFcolors(c),0.1
-            LightSeqAttract.UpdateInterval = 10
-            LightSeqAttract.Play SeqUpOn, 75, 1
-            seqtime = 2000
+            LightSeqAttract.UpdateInterval = 20
+            LightSeqAttract.Play SeqUpOn, 25, 1
+            seqtime = 2500
         Case 3
+            LightSeqAttract.StopPlay
             c = int((tmrAttractModeLighting.UserValue - Int(tmrAttractModeLighting.UserValue))*10)
-            if c = 5 then i = 0.5 Else i = 0.1
+            if c = 5 then Me.UserValue = 4:i = 0 Else i = 0.1
+            PlayfieldSlowFade AttractPFcolors(c),0.1
+            LightSeqAttract.UpdateInterval = 20
+            LightSeqAttract.Play SeqDownOn, 25, 1
+            seqtime = 2500
+        Case 4
+            LightSeqAttract.StopPlay
+            c = int((tmrAttractModeLighting.UserValue - Int(tmrAttractModeLighting.UserValue))*10)
+            if c = 5 then Me.UserValue = 5:i = 0 Else i = 0.1
             PlayfieldSlowFade AttractPFcolors(c),0.1
             LightSeqAttract.UpdateInterval = 10
-            LightSeqAttract.Play SeqDownOn, 75, 1
-            seqtime = 2000
-        Case 4
-            c = int((tmrAttractModeLighting.UserValue - Int(tmrAttractModeLighting.UserValue))*10)
-            if c = 5 then i = 0.5 Else i = 0.1
-            PlayfieldSlowFade AttractPFcolors(c),0.1
-            LightSeqAttract.UpdateInterval = 7
-            LightSeqAttract.Play SeqRightOn, 75, 1
+            LightSeqAttract.Play SeqRightOn, 25, 1
             seqtime = 1000
         Case 5
+            LightSeqAttract.StopPlay
             c = int((tmrAttractModeLighting.UserValue - Int(tmrAttractModeLighting.UserValue))*10)
-            if c = 5 then i = 0.5 Else i = 0.1
+            if c = 5 then Me.UserValue = 6:i = 0 Else i = 0.1
             PlayfieldSlowFade AttractPFcolors(c),0.1
-            LightSeqAttract.UpdateInterval = 7
-            LightSeqAttract.Play SeqLeftOn, 75, 1
+            LightSeqAttract.UpdateInterval = 10
+            LightSeqAttract.Play SeqLeftOn, 25, 1
             seqtime = 1000
         Case 6
-            SeqClockLeftOn
+            LightSeqAttract.StopPlay
             c = int((tmrAttractModeLighting.UserValue - Int(tmrAttractModeLighting.UserValue))*10)
-            if c = 5 then i = 0.5 Else i = 0.1
+            if c = 5 then Me.UserValue = 7:i = 0 Else i = 0.1
             PlayfieldSlowFade AttractPFcolors(c),0.1
-            LightSeqAttract.UpdateInterval = 7
-            LightSeqAttract.Play SeqCircleOutOn, 75, 1
+            LightSeqAttract.UpdateInterval = 20
+            LightSeqAttract.Play SeqCircleOutOn, 25, 1
+            seqtime = 2500
         Case 7
-            SeqClockLeftOn
+            LightSeqAttract.StopPlay
             c = int((tmrAttractModeLighting.UserValue - Int(tmrAttractModeLighting.UserValue))*10)
-            if c = 5 then i = 0.5 Else i = 0.1
+            if c = 5 then Me.UserValue = 8:i = 0 Else i = 0.1
             PlayfieldSlowFade AttractPFcolors(c),0.1
-            LightSeqAttract.UpdateInterval = 7
-            LightSeqAttract.Play SeqClockLeftOn, 75, 1
-            seqtime = 1000
+            LightSeqAttract.UpdateInterval = 20
+            LightSeqAttract.Play SeqClockLeftOn, 25, 1
+            seqtime = 2500
         Case 8
-            SeqClockLeftOn
+            LightSeqAttract.StopPlay
             c = int((tmrAttractModeLighting.UserValue - Int(tmrAttractModeLighting.UserValue))*10)
-            if c = 5 then i = 0.5 Else i = 0.1
+            if c = 5 then Me.UserValue = 9:i = 0 Else i = 0.1
             PlayfieldSlowFade AttractPFcolors(c),0.1
             LightSeqAttract.UpdateInterval = 7
-            LightSeqAttract.Play SeqRadarRightOn, 75, 1
-            seqtime = 1000
+            LightSeqAttract.Play SeqRadarRightOn, 25, 1
+            seqtime = 2500
         Case Else
             ' Loop back to first effect
 			tmrAttractModeLighting.UserValue = 0:i=0:seqtime=10
     End Select
-
+debug.print tmrAttractModeLighting.UserValue
     tmrAttractModeLighting.UserValue = tmrAttractModeLighting.UserValue + i
     tmrAttractModeLighting.Interval = seqtime
     tmrAttractModeLighting.Enabled = True
@@ -6269,8 +6291,6 @@ Sub tmrSJPScene_Timer
     Me.UserValue = i
     Me.Interval = delay
     Me.Enabled = True
-
-    End If
 End Sub
 
 Dim BaratheonSpinnerScene
@@ -6792,7 +6812,7 @@ Sub DMDCreateAlternateScoreScene(h1,h2)
         scene.AddActor scene1
         scene.AddActor scene2
         mask = 104  ' combos, tmr1, tmr2
-        If h1 = Targaryen or h2 = Targaryen or h1 = Martell or h2 = Martell Then mask = mask Or 16 ' HurryUp
+        'If h1 = Targaryen or h2 = Targaryen or h1 = Martell or h2 = Martell Then mask = mask Or 16 ' HurryUp
     Else
         Set scene1 = FlexDMD.NewGroup(HouseToString(h1))
         House(CurrentPlayer).BattleState(h1).CreateBattleProgressScene scene1
@@ -6866,7 +6886,7 @@ Sub DMDLocalScore
                 ScoreScene.AddActor FlexDMD.NewLabel("combo"&i, ComboFont, "0")
             Next
         End If
-        FlexDMD.LockRenderThread
+        'FlexDMD.LockRenderThread
         ' Update fields
         If bAlternateScoreScene = False or (AlternateScoreSceneMask And 1) = 1 Then ScoreScene.GetLabel("Score").Text = FormatScore(Score(CurrentPlayer))
         If bAlternateScoreScene = False or (AlternateScoreSceneMask And 2) = 2 Then ScoreScene.GetLabel("Ball").Text = "BALL " & CStr(BallsPerGame - BallsRemaining(CurrentPlayer) + 1)
@@ -6894,9 +6914,9 @@ Sub DMDLocalScore
             If (AlternateScoreSceneMask And 32) = 32 Then ScoreScene.GetLabel("tmr1").Text = Int((TimerTimestamp(tmrBattleMode1) - GameTimeStamp)/10)
             If (AlternateScoreSceneMask And 64) = 64 Then ScoreScene.GetLabel("tmr2").Text = Int((TimerTimestamp(tmrBattleMode2) - GameTimeStamp)/10)
             If (AlternateScoreSceneMask And 128)=128 Then ScoreScene.GetLabel("tmr3").Text = Int((TimerTimestamp(tmrMartellBattle) - GameTimeStamp)/10)
-            If (AlternateScoreSceneMask And 256)=256 Then ScoreScene.GetLabel("tmr1").Text = Int((TimerTimestamp(tmrBWSuperJP) - GameTimeStamp)/10)
+            If (AlternateScoreSceneMask And 256)=256 Then ScoreScene.GetLabel("tmr1").Text = Int((TimerTimestamp(tmrBlackwaterSJP) - GameTimeStamp)/10)
         End If
-        FlexDMD.UnlockRenderThread
+        'FlexDMD.UnlockRenderThread
         Set DefaultScene = ScoreScene
     Else
         DisplayDMDText "",FormatScore(Score(CurrentPlayer)),0
@@ -6938,9 +6958,22 @@ End Class
 '   √? scene, sound, and lighting effects for jackpots
 '   √? implement Super Jackpot at the battering ram
 '   √? implement SJP scene and lighting
-'
-' - diverter needs to open at the right times
 
+' - dual battle mode scene is unfinished. No alignment is being done. HurryUp for Martell not set up. tmr3 is not set up
+' -  hurryup disable in scenemask for now.
+
+' - after BW light sequence, light fade rate is not restored
+' - on 3rd ball locked, Choose Battle scene doesn't show, but is there
+' - ball got released during ChooseBattle, with no balls locked
+' - second, third, times doing ChooseBattle, scene wasn't displayed
+' - Greyjoy shots don't register
+' - Jackpot lights didn't work, maybe was second time?
+' - tyrell countdown starts way too high (600?)
+' - tyrell doesn't seem to recognize target hit. doWFTargetHit doesn't call registertargethit.
+' - tyrell may have required all 3 ramp shots. Check.
+'
+' - top floor kicker needs tuning
+'
 ' - gold targets need to be bouncier. 
 ' - battering ram needs to be less bouncy and more scattery
 
