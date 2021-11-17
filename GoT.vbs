@@ -1391,7 +1391,14 @@ Sub tmrDMDUpdate_Timer
             debug.print "Displaying scene at " & DMDqHead
             DMDDisplayScene DMDSceneQueue(DMDqHead,0)
             DMDSceneQueue(DMDqHead,6) = DMDtimestamp
-            If DMDSceneQueue(DMDqHead,5) <> ""  Then PlaySoundVol DMDSceneQueue(DMDqHead,5),VolDef
+            If DMDSceneQueue(DMDqHead,5) <> ""  Then 
+                PlaySoundVol DMDSceneQueue(DMDqHead,5),VolDef
+            ' Note, code below is game-specific - triggers the SuperJackpot scene update timer as soon as the scene plays
+            ElseIf DMDSceneQueue(DMDqHead,0).Name = "bwsjp" Then
+                tmrSJPScene.UserValue = 0
+                tmrSJPScene.Interval = 600
+                tmrSJPScene.Enabled = True
+            End If
         Else
             ' Check to see whether there are any queued scenes with equal or higher priority than currently playing one
             bEqual = False: bHigher = False
@@ -1430,7 +1437,14 @@ Sub tmrDMDUpdate_Timer
                 debug.print "Displaying scene at " &j
                 DMDDisplayScene DMDSceneQueue(j,0)
                 DMDSceneQueue(j,6) = DMDtimestamp
-                If DMDSceneQueue(j,5) <> ""  Then PlaySoundVol DMDSceneQueue(j,5),VolDef
+                If DMDSceneQueue(j,5) <> ""  Then 
+                    PlaySoundVol DMDSceneQueue(j,5),VolDef
+                ' Note, code below is game-specific - triggers the SuperJackpot scene update timer as soon as the scene plays
+                ElseIf DMDSceneQueue(j,0).Name = "bwsjp" Then
+                    tmrSJPScene.UserValue = 0
+                    tmrSJPScene.Interval = 600
+                    tmrSJPScene.Enabled = True
+                End If
             End If
         End If
     End If
@@ -2423,7 +2437,8 @@ End Class
 Dim BWExplosionTimes
 BWExplosionTimes = Array(1,1,2.9,2.8,3.6,1)
 
-' This class holds everything to do with House logic
+' This class holds everything to do with House logic.
+' We also put most of the Blackwater Jackpot processing in here, as it uses the same shots
 Class cHouse
     Dim bSaid(7)             ' Whether the house's name has been said yet during ChooseHouse state
     Dim bQualified(7)        ' Whether the house has qualified for battle
@@ -2619,6 +2634,8 @@ Class cHouse
                 DMDPlayHitScene "got-bwexplosion"&i-1,"gotfx-bwexplosion",BWExplosionTimes(i-1), _
                                 BWJackpotLevel&"X BLACKWATER JACKPOT",BWJackpotValue*combo*BWJackpotLevel,"",combo,3
                 'TODO: Jackpot lighting effect
+                SetModeLights   ' Update shield light colors
+                'Check to see if all jackpot shots have been made the required number of times
                 t = True
                 For i = 1 to 7
                     If BWJackpotShots(i) > 0 Then t=False:Exit For
@@ -2885,6 +2902,8 @@ Class cBattleState
         if bComplete Then Exit Sub
         hitscene="":hitsound=""
         Select Case MyHouse
+            ' Stark Battle mode. State 1 is shooting the left ramp. Once 3 shots have been made, switch to State 2
+            ' In State 2, left ramp shots can continue to be made, and an orbit shot finishes the mode
             Case Stark
                 If h = Lannister or h = Stark Then
                     ' Process ramp shot
@@ -2915,6 +2934,8 @@ Class cBattleState
                     DoCompleteMode h
                 End if
 
+            ' Baratheon Battle mode. State 1 only involves the spinner. Once enough value is built, switch to State 2
+            ' State 2: Shot to the Dragon, followed by a shot to the left bank.
             Case Baratheon
                 If State = 2 Then
                     If (ShotMask And 2^h) > 0 Then
@@ -2929,6 +2950,10 @@ Class cBattleState
                     End If
                 End If
 
+            ' Lannister battle mode. Only 1 state. Shoot gold targets to light ramps on either side, then shoot
+            ' ramps. Accumulate 5 shots total. Progress is saved. Each gold target can only be hit once, but there is
+            ' some overlap in shots that they light, so some shots can be made twice to avoid harder shots. Greyjoy must
+            ' shoot all 5 unique shots
             Case Lannister
                 If (ShotMask And 2^h) > 0 Then
                     ShotMask = ShotMask And (2^h Xor 255)
@@ -2946,6 +2971,8 @@ Class cBattleState
                     End If
                 End If
             
+            ' Greyjoy battle mode. Only 1 state: Shoot the 5 main shots. 15 second timer, but the timer resets after
+            ' each shot
             Case Greyjoy
                 If GreyjoyMask And 2^h = 0 Then
                     ' Completed shot
@@ -2968,6 +2995,7 @@ Class cBattleState
                     End If
                 End If
 
+            ' Tyrell battle mode. 6 States. States 1/3/5 involve choice of 3/2/1 main shot(s), States 2/4/6 require a right-bank target shot
             Case Tyrell
                 hit=False
                 Select Case State
@@ -3009,6 +3037,9 @@ Class cBattleState
                     End If
                 End If
 
+            ' Martell battle mode: State 1 requires 3 orbit shots within a 10 second period. After this, mode is
+            ' complete, but State 2 is started, which is a HurryUp at the ramps. Shoot the ramps for bonus. If
+            ' you miss the HurryUp, mode still completes
             Case Martell
                 Dim huvalue
                 If State = 1 And (h = Greyjoy or h = Martell) Then
@@ -3047,7 +3078,19 @@ Class cBattleState
                     
                 End If
 
-            Case Targaryen 'TODO
+            ' Targaryen: 3 LEVELS, each with 3 states except last which has 2? - 8 states total
+            ' All shots involve HurryUps. Mode ends if HurryUp runs down
+                ' Level 1 Start: light 2 ramps for HurryUp
+                ' State 1: Shoot 1 of the lit ramps to advance to State 2
+                ' State 2: Light 2 loops. Shoot one to advance to dragon
+                ' State 3: Start hurry-up on Dragon. 
+                ' Level 2: Repeat Level 1, but require all 4 shots in State 1 & 2
+                ' Level 3: Light 3 random shots as hurry-ups (mode ends if hurry-ups timeout?)
+                ' State 1: Shoot all 3 hurry-ups. Shooting Dragon spots a hurry-up
+                ' State 2: Shoot Dragon hurry-up
+                ' Timer on Level 3: If you take too long, you are attacked with “DRAGON FIRE”, and wave restarts with new randomly chosen shots (State 1, but same Wave)
+                ' Greyjoy players have a Hurry-Up to hit any target to start State 1 on each Level
+            Case Targaryen 'TODO. Needs modifying to use HurryUps for all shots?
                 hit = False:done=False
                 Select Case State
                     Case 1
@@ -3096,17 +3139,6 @@ Class cBattleState
                     SetModeLights
                 End If  
 
-            ' Targaryen: 3 LEVELS, each with 3 states except last which has 2? - 8 states total
-                ' Level 1 Start: light 2 ramps
-                ' State 1: Shoot lit 1 lit ramp to advance to State 2
-                ' State 2: Light 2 loops. Shoot one to advance to dragon
-                ' State 3: Start hurry-up on Dragon. 
-                ' Level 2: Repeat Level 1, but require all 4 shots in State 1 & 2
-                ' Level 3: Light 3 random shots as hurry-ups (mode ends if hurry-ups timeout?)
-                ' State 1: Shoot all 3 hurry-ups. Shooting Dragon spots a hurry-up
-                ' State 2: Shoot Dragon hurry-up
-                ' Timer on Level 3: If you take too long, you are attacked with “DRAGON FIRE”, and wave restarts with new randomly chosen shots (State 1, but same Wave)
-                ' Greyjoy players have a Hurry-Up to hit any target to start State 1 on each Level
         End Select
 
         If hitscene <> "" Then
@@ -6167,6 +6199,80 @@ End Sub
 ' Game-specific DMD support
 '**************************
 
+' The SuperJackpot scene is pretty complicated, but a highlight of the real table, so
+' we need to try and reproduce it.
+' Sequence is:
+'   - battering ram doors open on DMD leaving a space in the middle
+'   - in the middle space, the letters S-U-P-E-R-J-A-C-K-P-O-T spell out sequential with a deep drum hit for each
+'   - drum is timed with the letter showing, so need a timer that does both at once
+'   - at the end of the letters, scene flashes rapidly between score and all white
+'   - all lights on playfield flash. Can this be done with a single sequence?
+Dim BWSJPScene
+Sub DMDBlackwaterSJPScene(score)
+    Dim i
+    If bUseFlexDMD Then
+        Set BWSJPScene = NewSceneWithVideo("bwsjp","got-blackwatersjp")
+        For i = 1 to 12
+            BWSJPScene.AddActor FlexDMD.NewImage("img"&i,"got-bwsjpletter"&i)
+            With BWSJPScene.GetLabel("img"&i)
+                .SetAlignedPosition 64,16,FlexDMD_Align_Center
+                .Visible = 0
+            End With
+        Next
+        ' Add the score and white background
+        BWSJPScene.AddActor FlexDMD.NewLabel("score",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbBlack, 0),score)
+        BWSJPScene.AddActor FlexDMD.NewImage("blank","got-blankwhite.png")
+        BWSJPScene.AddActor FlexDMD.NewLabel("scoreinv",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbBlack, 0),score)
+        BWSJPScene.GetLabel("score").SetAlignedPosition 64,16,FlexDMD_Align_Center
+        BWSJPScene.GetLabel("scoreinv").SetAlignedPosition 64,16,FlexDMD_Align_Center
+        DMDEnqueueScene BWSJPScene,0,4100,2200,1500,""
+    End If
+End Sub
+
+'This timer is triggered from DMDUpdate_Timer once the super jackpot scene starts playing
+Sub tmrSJPScene_Timer
+    Dim i,delay
+    Me.Enabled = False
+    i = Me.UserValue
+    i = i + 1
+    delay = 125
+    If i = 1 Then   ' Turn on the first letter
+        BWSJPScene.GetLabel("img"&i).Visible = 1
+        PlaySoundVol "gotfx-choosebattle-right",VolDef
+        LightSeqAttract.UpdateInterval = 20
+        LightSeqAttract.Play SeqBlinking, 12, 62
+        LightSeqGi.UpdateInterval = 20
+        LightSeqGi.Play SeqBlinking, , 12, 62
+    ElseIf i < 13 Then  ' turn on the next letter
+        BWSJPScene.GetLabel("img"&(i-1)).Visible = 0
+        BWSJPScene.GetLabel("img"&i).Visible = 1
+        PlaySoundVol "gotfx-choosebattle-right",VolDef
+    ElseIf i = 13 Then ' turn off the last letter and turn on the score
+        BWSJPScene.GetLabel("img"&(i-1)).Visible = 0
+        BWSJPScene.GetVideo("bwsjpvid").Visible = 0
+        BWSJPScene.GetLabel("score").Visible = 1
+        PlaySoundVol "say-super-jackpot"
+        delay = 33
+    ElseIf i < 73 Then  ' toggle inverted score with white background on and off
+        delay = 33
+        If (i MOD 2) = 0 Then
+            BWSJPScene.GetLabel("scoreinv").Visible = 1
+            BWSJPScene.GetIamge("blank").Visible = 1
+        Else
+            BWSJPScene.GetLabel("scoreinv").Visible = 0
+            BWSJPScene.GetIamge("blank").Visible = 0
+            PlaySoundVol "gotfx-drum1",VolDef
+        End if
+    Else
+        Exit Sub
+    End If
+    Me.UserValue = i
+    Me.Interval = delay
+    Me.Enabled = True
+
+    End If
+End Sub
+
 Dim BaratheonSpinnerScene
 Sub DMDBaratheonSpinnerScene(value)
     If bUseFlexDMD Then
@@ -6198,7 +6304,6 @@ End Sub
 '           1 - top line 5x7, middle line 7x12 skinny, bottom line 7x5. Used for most battle scenes
 '           2 - 3 lines of 3x7 font, used for lannister battle gold hits
 '           3 - 2 lines of text. Top line 3x7, main line 6x8 score. Used for jackpots and Targaryen hurry-up hits
-TODO: Modify to add a format parameter that changes fonts
 Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo,format)
     Dim scene,scenevid,font1,font2,font3,x,y1,y2,y3,combotxt,blink,af
     If bUseFlexDMD Then
@@ -6280,6 +6385,7 @@ Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo,format)
         DMDEnqueueScene scene,1,delay*1000+1000,delay*1000+2000,3000,sound
     Else
         DisplayDMDText line1,line2,2000
+        PlaySoundVol sound,VolDef
     End If
 
 End Sub
@@ -6811,14 +6917,11 @@ Class PinupNULL	' Dummy Pinup class so I dont have to keep adding if cases when 
 	End Sub 
 End Class 
 
-' gold coins play sound even when already lit. Should they?
 ' *3rd ball locked ejected a 4th ball - needs more debugging
 
 ' - release of 4th ball: check Ball Search
-' √ create scene for Modes. At very least, summary screen with score, accumulated value, and countdown timer
 ' √? Implement LoL outlanes - they should release new ball as soon as existing ball rolls over outlane, if ball saver not lit
 '   - need to modify Drain and CreateNewBall code to not think we’re in multiball mode
-' √ Implement toplane rollovers to increase bonus multiplier
 ' √? Implement post-ball bonus
 ' √ implement elevator logic
 ' - fix right ramp to upper PF
@@ -6832,9 +6935,9 @@ End Class
 '   √? lighting effects for ball locked - all lights off, green wave bottom to top, two fade up/down of all green PF lights
 '   √? lighting effects for ball release
 '   √? implement jackpots
-'   - scene, sound, and lighting effects for jackpots
-'   √ implement Super Jackpot at the battering ram
-'   - implement SJP scene and lighting
+'   √? scene, sound, and lighting effects for jackpots
+'   √? implement Super Jackpot at the battering ram
+'   √? implement SJP scene and lighting
 '
 ' - diverter needs to open at the right times
 
