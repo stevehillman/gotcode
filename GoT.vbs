@@ -2636,6 +2636,7 @@ Class cHouse
                                 BWJackpotLevel&"X BLACKWATER JACKPOT",BWJackpotValue*combo*BWJackpotLevel,"",combo,3
                 'TODO: Jackpot lighting effect
                 SetModeLights   ' Update shield light colors
+
                 'Check to see if all jackpot shots have been made the required number of times
                 t = True
                 For i = 1 to 7
@@ -2795,7 +2796,7 @@ Class cBattleState
     Private Sub Class_Initialize(  )
         CompletedShots = 0
         LannisterGreyjoyMask = 0
-        GreyjoyMask = 0
+        GreyjoyMask = 218
         CompletedDragons = 0
         ShotMask = 0
         GoldShotMask = 31
@@ -2831,7 +2832,7 @@ Class cBattleState
             Case Lannister
                 mask = ShotMask
             Case Greyjoy
-                mask = mask xor GreyjoyMask             ' Turn off lights that have been completed
+                mask = GreyjoyMask
             Case Tyrell
                 Select Case State
                     Case 2,4,6: mask = 32
@@ -2893,7 +2894,7 @@ Class cBattleState
             If MyHouse = HouseBattle2 Then SetGameTimer tmrBattleMode2,tmr Else SetGameTimer tmrBattleMode1,tmr
         End If
 
-    ' TODO: Are there any other lights/sounds assocaited with starting battle for a specific house?
+    ' TODO: Are there any other lights/sounds associated with starting battle for a specific house?
     End Sub
 
     ' Update the state machine based on the ball hitting a target
@@ -2976,11 +2977,11 @@ Class cBattleState
             ' Greyjoy battle mode. Only 1 state: Shoot the 5 main shots. 15 second timer, but the timer resets after
             ' each shot
             Case Greyjoy
-                If GreyjoyMask And 2^h = 0 Then
+                If (GreyjoyMask And 2^h) > 0 Then
                     ' Completed shot
                     CompletedShots = CompletedShots+1
-                    GreyjoyMask = GreyjoyMask Or 2^h
-                    If GreyjoyMask = 218 Then 'Completed req'd shots!
+                    GreyjoyMask = GreyjoyMask And (2^h Xor 255)
+                    If GreyjoyMask = 0 Then 'Completed req'd shots!
                         DoCompleteMode h
                     Else
                         hitscene = "hit"&CompletedShots
@@ -3008,9 +3009,9 @@ Class cBattleState
                             hit = true
                             ' Target hit. Add 5 seconds to the mode timer
                             If MyHouse = HouseBattle2 Then 
-                                SetGameTimer tmrBattleMode2,TimerTimestamp(tmrBattleMode2)+50 
+                                TimerTimestamp(tmrBattleMode2) = TimerTimestamp(tmrBattleMode2)+50 
                             Else 
-                                SetGameTimer tmrBattleMode1,TimerTimestamp(tmrBattleMode1)+50
+                                TimerTimestamp(tmrBattleMode1) = TimerTimestamp(tmrBattleMode1)+50 
                             End If
                         End if
                     Case 3
@@ -4705,6 +4706,10 @@ Sub doWFTargetHit(t)
     debug.print "prev hitstate 0: " & bWildfireTargets(0) & " 1: " & bWildfireTargets(1)
     if bWildfireTargets(t) then Exit Sub
     bWildfireTargets(t) = True
+    If PlayerMode = 1 Then
+        If HouseBattle1 > 0 Then House(CurrentPlayer).BattleState(HouseBattle1).RegisterTargetHit 1
+        If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).RegisterTargetHit 1
+    End If
 
     If (BWMultiballsCompleted = 0 or bWildfireTargets(t1)) And Not bMultiBallMode Then LightLock 'TODO: Should we be able to light lock during a mode?
     if bWildfireTargets(t1) Then
@@ -4717,7 +4722,7 @@ Sub doWFTargetHit(t)
         li80.TimerInterval = 1100
         li80.TimerEnabled = True
         bWildfireTargets(0)=False:bWildfireTargets(1)=False
-        House(CurrentPlayer).RegisterHit(Tyrell)
+        If PlayerMode <> 1 Then House(CurrentPlayer).RegisterHit(Tyrell)
         bWildfireLit = True: SetLightColor li126, darkgreen, 1
     Else
         Select Case t
@@ -4962,9 +4967,11 @@ Sub sw48_Hit
     End If
 
     If PlayerMode < 0 Then Exit Sub     ' ChooseBattle mode already started - let it take care of doing ball lock when done
+    debug.print "sw48_hit: got here1"
     If bLockIsLit Then 
         vpmtimer.addtimer 400, "LockBall '"     ' Slight delay to give ball time to settle
     ElseIf RealBallsInLock > 0 Then     ' Lock isn't lit but we have a ball locked
+        debug.print "sw48_hit: releaselockedball"
         ReleaseLockedBall 0
     End If
     LastSwitchHit = "sw48"    
@@ -5290,10 +5297,10 @@ Sub LockBall
             scene.AddActor FlexDMD.NewLabel("lbl1",FlexDMD.NewFont("udmd-f6by8.fnt",vbWhite, vbWhite, 0) ,"BLACKWATER")
             scene.GetLabel("lbl1").SetAlignedPosition 2,1,FlexDMD_Align_TopLeft
             scene.AddActor FlexDMD.NewLabel("lbl2",FlexDMD.NewFont("udmd-f6by8.fnt",vbWhite, vbWhite, 0) ,"BALL "&BallsInLock&" LOCKED")
-            scene.GetLabel("lbl2").SetAlignedPosition 2,11,FlexDMD_Align_TopLeft
+            scene.GetLabel("lbl2").SetAlignedPosition 2,10,FlexDMD_Align_TopLeft
             BlinkActor scene.GetLabel("lbl2"),100,7
             scene.AddActor FlexDMD.NewLabel("wfgold", FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0) ,"+5 WILDFIRE"&vbLf&"+"&g&" GOLD")
-            scene.GetLabel("wfgold").SetAlignedPosition 2,30,FlexDMD_Align_BottomLeft
+            scene.GetLabel("wfgold").SetAlignedPosition 2,31,FlexDMD_Align_BottomLeft
             DMDEnqueueScene scene,0,1000,1500,500,""
         End If
     End If
@@ -5568,7 +5575,7 @@ Sub StartChooseBattle
 
     TurnOffPlayfieldLights
     
-    If Not bBattleInstructionsDone Then DMDChooseBattleScene "","","",10
+    DMDChooseBattleScene "","","",10
 
     ' Check to see if there are any unlit houses. If not, "Pass For Now" is not allowed
     done = True
@@ -5896,6 +5903,7 @@ Sub tmrMultiballSequencer_Timer
     tmrMultiballSequencer.UserValue = tmrMultiballSequencer.UserValue + 1
     if tmrMultiballSequencer.UserValue > 50 Then    ' We've run for 2.5 seconds
         LightSeqAttract.StopPlay
+        RestorePlayfieldLightState False
         Exit Sub
     End If
     For each a in aPlayfieldLights
@@ -6512,12 +6520,14 @@ Sub DMDChooseBattleScene(line0,line1,line2,tmr)
     If line0 = "" Then  ' Initial screen
         If bUseFlexDMD Then
             ' Create the instructions scene first
-            Set instscene = FlexDMD.NewGroup("choosebattleinstr")
-            instscene.AddActor FlexDMD.NewLabel("instructions",FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbWhite, 0), _ 
-                    "CHOOSE YOUR BATTLE" & vbLf & "USE FLIPPERS TO" & vbLf & "CHANGE YOUR CHOICE" )
-            instscene.GetLabel("instructions").SetAlignedPosition 64,16,FlexDMD_Align_Center
-            DMDFlush
-            DMDEnqueueScene instscene,0,1500,1500,100,""
+            If Not bBattleInstructionsDone Then 
+                Set instscene = FlexDMD.NewGroup("choosebattleinstr")
+                instscene.AddActor FlexDMD.NewLabel("instructions",FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbWhite, 0), _ 
+                        "CHOOSE YOUR BATTLE" & vbLf & "USE FLIPPERS TO" & vbLf & "CHANGE YOUR CHOICE" )
+                instscene.GetLabel("instructions").SetAlignedPosition 64,16,FlexDMD_Align_Center
+                DMDFlush
+                DMDEnqueueScene instscene,0,1500,1500,100,""
+            End If
 
             ' Create ChooseBattle scene
             If IsEmpty(CBScene) Then
@@ -6960,16 +6970,16 @@ End Class
 '   √? implement SJP scene and lighting
 
 ' - dual battle mode scene is unfinished. No alignment is being done. HurryUp for Martell not set up. tmr3 is not set up
-' -  hurryup disable in scenemask for now.
+' -  hurryup disabled in scenemask for now.
 
-' - after BW light sequence, light fade rate is not restored
-' - on 3rd ball locked, Choose Battle scene doesn't show, but is there
+' √? after BW light sequence, light fade rate is not restored
+' √? on 3rd ball locked, Choose Battle scene doesn't show, but is there
 ' - ball got released during ChooseBattle, with no balls locked
-' - second, third, times doing ChooseBattle, scene wasn't displayed
-' - Greyjoy shots don't register
+' √? second, third, times doing ChooseBattle, scene wasn't displayed
+' √? Greyjoy shots don't register
 ' - Jackpot lights didn't work, maybe was second time?
-' - tyrell countdown starts way too high (600?)
-' - tyrell doesn't seem to recognize target hit. doWFTargetHit doesn't call registertargethit.
+' √? tyrell countdown starts way too high (600?) - needs more debugging
+' √? tyrell doesn't seem to recognize target hit. doWFTargetHit doesn't call registertargethit.
 ' - tyrell may have required all 3 ramp shots. Check.
 '
 ' - top floor kicker needs tuning
