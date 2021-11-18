@@ -1564,7 +1564,7 @@ Sub SaveLUT
     SaveValue cGameName, "LUTImage", LUTImage
 End Sub
 
-Sub NextLUT:LUTImage = (LUTImage + 1)MOD 10:UpdateLUT:SaveLUT:End Sub
+Sub NxtLUT:LUTImage = (LUTImage + 1)MOD 10:UpdateLUT:SaveLUT:End Sub
 
 Sub UpdateLUT
     Select Case LutImage
@@ -6282,7 +6282,7 @@ Sub tmrSJPScene_Timer
         BWSJPScene.GetImage("img"&i).Visible = 1
         PlaySoundVol "gotfx-choosebattle-right",VolDef
         LightSeqAttract.UpdateInterval = 20
-        LightSeqAttract.Play SeqBlinking, 12, 62
+        LightSeqAttract.Play SeqBlinking, ,12, 62
         LightSeqGi.UpdateInterval = 20
         LightSeqGi.Play SeqBlinking, , 12, 62
     ElseIf i < 13 Then  ' turn on the next letter
@@ -6299,10 +6299,10 @@ Sub tmrSJPScene_Timer
         delay = 33
         If (i MOD 2) = 0 Then
             BWSJPScene.GetLabel("scoreinv").Visible = 1
-            BWSJPScene.GetIamge("blank").Visible = 1
+            BWSJPScene.GetImage("blank").Visible = 1
         Else
             BWSJPScene.GetLabel("scoreinv").Visible = 0
-            BWSJPScene.GetIamge("blank").Visible = 0
+            BWSJPScene.GetImage("blank").Visible = 0
             PlaySoundVol "gotfx-drum1",VolDef
         End if
     Else
@@ -6989,12 +6989,15 @@ End Class
 '    First two shots say "Jackpot builds". First value is ~12-13M, second is 13-14M, final value was ~17M.
 '
 ' Mode things to fix
-' √ need a ModePauseTimer that pauses the timers if no score for 2 seconds
 ' √? martell timer still needs moving a bit.
 ' √? If you hit magnasave while ChooseBattle instructions are still on, battle starts with no houses selected
 ' √? If playing as Greyjoy, BattleReady is lit at start, even though no houses are qualified
 
 ' - End of game processing doesn't exist - highscore, etc. Throws error for DMDUpdate
+'   - rewrite HS routines to support FlexDMD
+'   - add Match function
+
+' - Import DMD code for non FlexDMD. Use JP's Deadpool charset for now
 
 
 
