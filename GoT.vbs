@@ -2487,7 +2487,7 @@ Class cHouse
             bBattleReady = e
             if (e) Then 
                 LockWall.collidable = True
-            ElseIf RealBallsInLock = 0 And bLockIsLit = False Then
+            ElseIf RealBallsInLock = 0 And bLockIsLit = False And PlayerMode <> -2 Then
                 LockWall.collidable = False
             End if
         End If
@@ -2553,10 +2553,9 @@ Class cHouse
     Public Sub SetShieldLights
         Dim i,j
         For i = 1 to 7
-            if bBWMultiballActive = False or i = Baratheon or i = Tyrell Then     ' Drop targets don't get jackpots
-                ModeLightState(i,0) = 1
-                ModeLightState(i,1) = 0
-            Elseif bBWMultiballActive And BWJackpotShots(i) > 0 Then
+            ModeLightState(i,0) = 1
+            ModeLightState(i,1) = 0
+            if bBWMultiballActive And BWJackpotShots(i) > 0 Then
                 ModeLightState(i,1) = green
                 ModeLightState(i,2) = 0
                 ModeLightState(i,0) = 2
@@ -2602,8 +2601,9 @@ Class cHouse
     End Sub
 
     Public Sub ScoreSJP
-        AddScore(BWJackpotValue*combo*BWJackpotLevel*6 + 10000000)
-        BlackwaterScore = BlackwaterScore + ((BWJackpotValue*combo*BWJackpotLevel*6+10000000)*PlayfieldMultiplierVal)
+        DMDBlackwaterSJPScene FormatScore(BWJackpotValue*BWJackpotLevel*6 + 10000000)
+        AddScore(BWJackpotValue*BWJackpotLevel*6 + 10000000)
+        BlackwaterScore = BlackwaterScore + ((BWJackpotValue*BWJackpotLevel*6+10000000)*PlayfieldMultiplierVal)
     End Sub
 
 
@@ -2661,14 +2661,14 @@ Class cHouse
 
                 If ComboLaneMap(h) Then combo = ComboMultiplier(ComboLaneMap(h))
 
-                line0 = "house " & HouseToString(h)
+                line0 = "HOUSE " & HouseToUCString(h)
                 if QualifyCount(h) = 3 Then
                     bQualified(h) = True
                     BattleReady = True
                     ResetLights
-                    line2 = "house is lit"
+                    line2 = "HOUSE IS LIT"
                 Else
-                    line2 = (3 - QualifyCount(h)) & " more to light"
+                    line2 = (3 - QualifyCount(h)) & " MORE TO LIGHT"
                 End If
                 line1 = FormatScore(QualifyValue*combo*PlayfieldMultiplierVal)
 
@@ -4941,6 +4941,10 @@ Sub KickerFloor_Hit
     End If
 End Sub
 
+Sub KickerUPF_Hit
+    KickerUPF.Kick 180,5
+End Sub
+
 ' TODO Iron Throne Kicker modes - Extra Ball, Mystery selection, IT mode
 Sub KickerIT_Hit
     vpmTimer.AddTimer 2000,"IronThroneKickout '"
@@ -6243,8 +6247,8 @@ Sub DMDBlackwaterSJPScene(score)
     If bUseFlexDMD Then
         Set BWSJPScene = NewSceneWithVideo("bwsjp","got-blackwatersjp")
         For i = 1 to 12
-            BWSJPScene.AddActor FlexDMD.NewImage("img"&i,"got-bwsjpletter"&i)
-            With BWSJPScene.GetLabel("img"&i)
+            BWSJPScene.AddActor FlexDMD.NewImage("img"&i,"got-bwsjpletter"&i&".png")
+            With BWSJPScene.GetImage("img"&i)
                 .SetAlignedPosition 64,16,FlexDMD_Align_Center
                 .Visible = 0
             End With
@@ -6253,8 +6257,16 @@ Sub DMDBlackwaterSJPScene(score)
         BWSJPScene.AddActor FlexDMD.NewLabel("score",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbBlack, 0),score)
         BWSJPScene.AddActor FlexDMD.NewImage("blank","got-blankwhite.png")
         BWSJPScene.AddActor FlexDMD.NewLabel("scoreinv",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbBlack, 0),score)
-        BWSJPScene.GetLabel("score").SetAlignedPosition 64,16,FlexDMD_Align_Center
-        BWSJPScene.GetLabel("scoreinv").SetAlignedPosition 64,16,FlexDMD_Align_Center
+        With BWSJPScene.GetLabel("score")
+            .SetAlignedPosition 64,16,FlexDMD_Align_Center
+            .Visible = 0
+        End With
+        With BWSJPScene.GetLabel("scoreinv")
+            .SetAlignedPosition 64,16,FlexDMD_Align_Center
+            .Visible = 0
+        End With
+        BWSJPScene.GetImage("blank").Visible = 0
+
         DMDEnqueueScene BWSJPScene,0,4100,2200,1500,""
     End If
 End Sub
@@ -6267,18 +6279,18 @@ Sub tmrSJPScene_Timer
     i = i + 1
     delay = 125
     If i = 1 Then   ' Turn on the first letter
-        BWSJPScene.GetLabel("img"&i).Visible = 1
+        BWSJPScene.GetImage("img"&i).Visible = 1
         PlaySoundVol "gotfx-choosebattle-right",VolDef
         LightSeqAttract.UpdateInterval = 20
         LightSeqAttract.Play SeqBlinking, 12, 62
         LightSeqGi.UpdateInterval = 20
         LightSeqGi.Play SeqBlinking, , 12, 62
     ElseIf i < 13 Then  ' turn on the next letter
-        BWSJPScene.GetLabel("img"&(i-1)).Visible = 0
-        BWSJPScene.GetLabel("img"&i).Visible = 1
+        BWSJPScene.GetImage("img"&(i-1)).Visible = 0
+        BWSJPScene.GetImage("img"&i).Visible = 1
         PlaySoundVol "gotfx-choosebattle-right",VolDef
     ElseIf i = 13 Then ' turn off the last letter and turn on the score
-        BWSJPScene.GetLabel("img"&(i-1)).Visible = 0
+        BWSJPScene.GetImage("img"&(i-1)).Visible = 0
         BWSJPScene.GetVideo("bwsjpvid").Visible = 0
         BWSJPScene.GetLabel("score").Visible = 1
         PlaySoundVol "say-super-jackpot"
@@ -6520,12 +6532,12 @@ Sub DMDChooseBattleScene(line0,line1,line2,tmr)
     If line0 = "" Then  ' Initial screen
         If bUseFlexDMD Then
             ' Create the instructions scene first
+            DMDFlush
             If Not bBattleInstructionsDone Then 
                 Set instscene = FlexDMD.NewGroup("choosebattleinstr")
                 instscene.AddActor FlexDMD.NewLabel("instructions",FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbWhite, 0), _ 
                         "CHOOSE YOUR BATTLE" & vbLf & "USE FLIPPERS TO" & vbLf & "CHANGE YOUR CHOICE" )
                 instscene.GetLabel("instructions").SetAlignedPosition 64,16,FlexDMD_Align_Center
-                DMDFlush
                 DMDEnqueueScene instscene,0,1500,1500,100,""
             End If
 
@@ -6949,10 +6961,8 @@ End Class
 
 ' *3rd ball locked ejected a 4th ball - needs more debugging
 
-' - release of 4th ball: check Ball Search
 ' √? Implement LoL outlanes - they should release new ball as soon as existing ball rolls over outlane, if ball saver not lit
 '   - need to modify Drain and CreateNewBall code to not think we’re in multiball mode
-' √? Implement post-ball bonus
 ' √ implement elevator logic
 ' - fix right ramp to upper PF
 ' - Implement upper PF switches
@@ -6960,11 +6970,6 @@ End Class
 '   
 ' - Implement Wall MB countdown. Wall MB comes later
 ' - Finish BWmultiball
-'   √? ball locked scene
-'   √? add wildfire and gold
-'   √? lighting effects for ball locked - all lights off, green wave bottom to top, two fade up/down of all green PF lights
-'   √? lighting effects for ball release
-'   √? implement jackpots
 '   √? scene, sound, and lighting effects for jackpots
 '   √? implement Super Jackpot at the battering ram
 '   √? implement SJP scene and lighting
@@ -6972,18 +6977,9 @@ End Class
 ' - dual battle mode scene is unfinished. No alignment is being done. HurryUp for Martell not set up. tmr3 is not set up
 ' -  hurryup disabled in scenemask for now.
 
-' √? after BW light sequence, light fade rate is not restored
-' √? on 3rd ball locked, Choose Battle scene doesn't show, but is there
-' - ball got released during ChooseBattle, with no balls locked
-' √? second, third, times doing ChooseBattle, scene wasn't displayed
-' √? Greyjoy shots don't register
-' - Jackpot lights didn't work, maybe was second time?
-' √? tyrell countdown starts way too high (600?) - needs more debugging
-' √? tyrell doesn't seem to recognize target hit. doWFTargetHit doesn't call registertargethit.
-' - tyrell may have required all 3 ramp shots. Check.
-'
-' - top floor kicker needs tuning
-'
+' - Stark battle mode didn't always register a shot
+' - combo multiplier, or score, doesn't update until ball is back in play
+''
 ' - gold targets need to be bouncier. 
 ' - battering ram needs to be less bouncy and more scattery
 
@@ -6994,18 +6990,9 @@ End Class
 '
 ' Mode things to fix
 ' √ need a ModePauseTimer that pauses the timers if no score for 2 seconds
-' √ need a mode timer for Tyrell. 30 seconds. targets add 5 seconds
-' √ missing all battlesigil gifs
 ' √? martell timer still needs moving a bit.
 ' √? If you hit magnasave while ChooseBattle instructions are still on, battle starts with no houses selected
 ' √? If playing as Greyjoy, BattleReady is lit at start, even though no houses are qualified
-' √? hitting tyrell shot did not advance State. Jackpot went up but by a tiny amount
-
-' √? completing LoL target bank doesn't light LoL outlanes
-
-' √? multiball end does not reset playfield lights
-
-' √? hitting start before inserting a credit throws an error - eblink undefined. 
 
 ' - End of game processing doesn't exist - highscore, etc. Throws error for DMDUpdate
 
