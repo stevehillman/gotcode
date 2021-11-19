@@ -280,11 +280,7 @@ Sub Table1_KeyDown(ByVal Keycode)
     If Keycode = AddCreditKey Then
         Credits = Credits + 1
         if bFreePlay = False Then DOF 125, DOFOn
-        If(Tilted = False)Then
-            DMDFlush
-            DMD "_", CL(1, "CREDITS " & Credits), "", eNone, eNone, eNone, 500, True, "fx_coin"
-            If NOT bGameInPlay Then ShowTableInfo
-        End If
+        If(Tilted = False)Then GameAddCredit
     End If
 
     If keycode = PlungerKey Then
@@ -1460,12 +1456,12 @@ Sub DMDDisplayScene(scene)
 		exit Sub
 	End If
     If Not IsEmpty(DisplayingScene) Then If DisplayingScene Is scene Then Exit Sub
-    FlexDMD.LockRenderThread
+    'FlexDMD.LockRenderThread
     FlexDMD.RenderMode = FlexDMD_RenderMode_DMD_GRAY_4
     FlexDMD.Stage.RemoveAll
     FlexDMD.Stage.AddActor scene
     FlexDMD.Show = True
-    FlexDMD.UnlockRenderThread
+    'FlexDMD.UnlockRenderThread
     Set DisplayingScene = scene
 End Sub
 
@@ -1545,6 +1541,17 @@ Sub BlinkActor(actor,interval,times)
     blink.Add af.Show(False)
     blink.Add af.Wait(interval)
     actor.AddAction af.Repeat(blink,times)
+End Sub
+
+' Add action to delay toggling the state of an actor
+' If on=true then delay then show, otherwise, delay then hide
+Sub DelayActor(actor,delay,on)
+    Dim af,blink
+    Set af = actor.ActionFactory
+    Set blink = af.Sequence()
+    blink.Add af.Wait(delay)
+    blink.Add af.Show(on)
+    actor.AddAction blink
 End Sub
 
 '*********
@@ -2294,7 +2301,7 @@ Dim TimerSubroutine     ' Names of subroutines to call when each timer's time ex
 Const MaxTimers = 10     ' Total number of defined timers. There MUST be a corresponding subroutine for each
 ' Timers 1 - 4 can't be frozen. if adding more unfreezable timers, put them next and adjust the number in tmrGame_Timer sub
 TimerSubroutine = Array("","UpdateChooseBattle","PreLaunchBattleMode","LaunchBattleMode","UpdateBattleMode","BattleModeTimer1","BattleModeTimer2", _ 
-                        "MartellBattleTimer","HurryUpTimer","ResetComboMultipliers","ModePauseTimer","BlackwaterSJPTimer")
+                        "MartellBattleTimer","HurryUpTimer","ResetComboMultipliers","ModePauseTimer","BlackwaterSJPTimer","WildfireModeTimer")
 Const tmrUpdateChooseBattle = 1 ' Update DMD timers during Choose Your Battle
 Const tmrChooseBattle = 2       ' Countdown timer for choosing your Battle
 Const tmrLaunchBattle = 3       ' After battle is chosen, countdown to launch while scenes play. Can be aborted with flippers
@@ -2306,6 +2313,7 @@ Const tmrHurryUp = 8            ' When HurryUp is active, update DMD 5 times/sec
 Const tmrComboMultplier = 9     ' Timeout timer for Combo multipliers
 Const tmrModePause = 10         ' "no activity" timer that will pause battle mode timers if it elapses
 Const tmrBlackwaterSJP = 11     ' SuperJackpot battering ram countdown timer
+Const tmrWildfireMode = 12      ' Wildfire Mini Mode timer
 
 'HurryUp Support
 Dim HurryUpValue
@@ -2466,7 +2474,6 @@ Class cHouse
             Set MyBattleState(i) = New cBattleState
             MyBattleState(i).SetHouse = i
 		Next
-        BWJackpotValue = 900000
         HouseSelected = 0
         QualifyValue = 100000
         bBattleReady = False
@@ -2496,6 +2503,8 @@ Class cHouse
     Public Property Get Qualified(h) : Qualified = bQualified(h) : End Property
     Public Property Get Completed(h) : Completed = bCompleted(h) : End Property
     Public Property Get BattleState(h) : Set BattleState = MyBattleState(h) : End Property
+    Public Property Get BWJackpot : BWJackpot = BWJackpotValue : End Property
+    Public Property Let BWJackpot : BWJackpotValue = BWJackpot : End Property
 
     ' Reset any state that starts over on a new ball
     Public Sub ResetForNewBall
@@ -2570,9 +2579,31 @@ Class cHouse
     Public Sub SetBWJackpots
         Dim i
         BWJackpotLevel = 1
+        BlackwaterScore = 0
         BWState = 1
         For i = 1 to 7
             If i <> Baratheon and i <> Tyrell Then BWJackpotShots(i) = 1
+        Next
+    End Sub
+
+    'From 1-5 WF, ~100,000 per WF. From 5-25, ~50K per WF, 25-45 ~45K per WF, 45-55, 30K per, and 55+, 10k per. Max is 3M
+    Public Sub AddWildfire(wf)
+        Dim i,j,k
+        k = 1000
+        For i = 1 to wf
+            CurrentWildfire = CurrentWildfire + 1
+            If CurrentWildfire < 5 Then
+                j=9500
+            Elseif CurrentWildfire < 25 Then
+                j = 4500
+            ElseIf CurrentWildfire < 45 Then
+                j = 4000
+            ElseIf CurrentWildfire < 55 Then
+                j = 2500
+            Else
+                j = 750:k=500
+            End If
+            BWJackpotValue = BWJackpotValue + 10*int(j+RndNbr(k)
         Next
     End Sub
 
@@ -2601,11 +2632,10 @@ Class cHouse
     End Sub
 
     Public Sub ScoreSJP
-        DMDBlackwaterSJPScene FormatScore(BWJackpotValue*BWJackpotLevel*6 + 10000000)
+        DMDBlackwaterSJPScene FormatScore((BWJackpotValue*BWJackpotLevel*6 + 10000000)*PlayfieldMultiplierVal)
         AddScore(BWJackpotValue*BWJackpotLevel*6 + 10000000)
         BlackwaterScore = BlackwaterScore + ((BWJackpotValue*BWJackpotLevel*6+10000000)*PlayfieldMultiplierVal)
     End Sub
-
 
     ' Main function that handles processing the 7 main shots in the game.
     ' These shots have 3 major modes of operation
@@ -3342,7 +3372,7 @@ Class cBattleState
         BattleScene.GetLabel("obj").SetAlignedPosition 40,3,FlexDMD_Align_Center
 
         If MyHouse = Martell Then
-            BattleScene.AddActor FlexDMD.NewLabel("tmr3",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0),"10")
+            BattleScene.AddActor FlexDMD.NewLabel("tmr3",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbWhite, 0),"10")
             BattleScene.GetLabel("tmr3").SetAlignedPosition 40,13,FlexDMD_Align_Center
             If CompletedShots = 0 Or State > 1 Then BattleScene.GetLabel("tmr3").Visible = 0
             BattleScene.AddActor FlexDMD.NewLabel("HurryUp",tinyfont,"20000000") 'Placeholder value to ensure text is centered
@@ -3374,6 +3404,17 @@ Class cBattleState
             Case Tyrell: line2="" ' TODO: What is Tyrell's line2 value during stacked house battle
             Case Martell: line2 = "SHOOT ORBITS"
         End Select
+
+        If MyHouse = Martell Then
+            BattleScene.AddActor FlexDMD.NewLabel("tmr3",FlexDMD.NewFont("udmd-f6by8.fnt", vbBlack,vbWhite, 1),"10")
+            BattleScene.GetLabel("tmr3").SetAlignedPosition 32,13,FlexDMD_Align_Center
+            If CompletedShots = 0 Or State > 1 Then BattleScene.GetLabel("tmr3").Visible = 0
+        End If
+        If MyHouse = Martell Or MyHouse = Targaryen Then
+            BattleScene.AddActor FlexDMD.NewLabel("HurryUp",FlexDMD.NewFont("udmd-f6by8.fnt", vbBlack,vbWhite, 1),"20000000") 'Placeholder value to ensure text is centered
+            BattleScene.GetLabel("HurryUp").SetAlignedPosition 32,13,FlexDMD_Align_Center
+            If State < 2 Then BattleScene.GetLabel("HurryUp").Visible = 0
+        End If
         
         BattleScene.AddActor FlexDMD.NewLabel("line3",tinyfont,line2) 
         BattleScene.GetLabel("line3").SetAlignedPosition 32,16,FlexDMD_Align_Center
@@ -3389,8 +3430,9 @@ Class cBattleState
     ' Timers and score are updated by main score subroutine. We just take care of battle-specific values
     Public Sub UpdateBattleScene
         Dim line3
+        if Not bUseFlexDMD Then Exit Sub
         If MyHouse = Martell Then
-            FlexDMD.LockRenderThread
+            'FlexDMD.LockRenderThread
             If State = 2 Then
                 MyBattleScene.GetLabel("tmr3").Visible = 0
                 With MyBattleScene.GetLabel("line3")
@@ -3407,7 +3449,7 @@ Class cBattleState
                     MyBattleScene.GetLabel("line3").SetAlignedPosition 30,21,FlexDMD_Align_Center
                 End if
             End if
-            FlexDMD.UnlockRenderThread
+            'FlexDMD.UnlockRenderThread
             Exit Sub
         Else
             Select Case MyHouse
@@ -3420,9 +3462,9 @@ Class cBattleState
                 Case Lannister,Greyjoy: line3 = "SHOTS = " & 5-CompletedShots
                 Case Else: Exit Sub
             End Select
-            FlexDMD.LockRenderThread
+            'FlexDMD.LockRenderThread
             MyBattleScene.GetLabel("line3").Text = line3
-            FlexDMD.UnlockRenderThread
+            'FlexDMD.UnlockRenderThread
         End If
     End Sub
 
@@ -4212,6 +4254,10 @@ End Sub
 ' Called when the last ball of multiball is lost
 Sub StopMBmodes
 ' TODO: Need to do anything here? E.g. reset lighting, restore pre-mb state?
+    if bBWMultiballActive Then
+        BWMultiballsCompleted = BWMultiballsCompleted + 1
+        DMDBlackwaterCompleteScene
+    End If
     bBWMultiballActive = False
     BlackwaterSJPTimer
     If PlayerMode = 0 Then TimerFlags(tmrUpdateBattleMode) = 0
@@ -4265,6 +4311,7 @@ Sub ResetComboMultipliers
     Dim i
     For i = 0 to 5: ComboMultiplier(i) = 1: Next
     SetComboLights
+    DMDLocalScore
 End Sub
 
 Sub SetMystery
@@ -5025,14 +5072,46 @@ End Sub
 ' Battering Ram
 Sub BatteringRam_Hit
     If Tilted Then Exit Sub
+    Dim scene
     PlaySoundVol "gotfx-battering-ram",Voldef
-    If bBlackwaterSJPMode Then
-        'Super Jackpot!!
-        'Play scene
-        PlaySoundVol "say-super-jackpot",VolDef
-        'Do light effects
-        House(CurrentPlayer).ScoreSJP
+    If bWildfire = 2 Then ' Mini-mode hit
+        House(CurrentPlayer).AddWildfire 10
+        If bUseFlexDMD And Not bBlackwaterSJPMode Then
+            ' Do Scene for Wildfire Mini Mode
+            Set scene = NewSceneWithVideo("wfmm","got-wildfiremode")
+            scene.AddActor FlexDMD.NewLabel("ttl",FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbBlack, 0), _
+                            CurrentWildfire&" TOTAL"&vbLf&"JACKPOT = "& House(CurrentPlayer).BWJackpot
+            scene.AddActor FlexDMD.NewLabel("obj",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbBlack, 0),"+10 WILDFIRE")
+            scene.GetLabel("obj").SetAlignedPosition 64,8,FlexDMD_Align_Center
+            DelayActor scene.GetLabel("obj"),1,True
+            scene.GetLabel("mode").SetAlignedPosition 64,22,FlexDMD_Align_Center
+            DelayActor scene.GetLabel("mode"),1,True
+            DMDEnqueueScene scene,1,1800,4000,1500,""
+        End If
+    ElseIf bWildfireLit = True Then
+        ' Start Wildfire Mini Mode
+        SetGameTimer tmrWildfireMode,200    ' 20 second mode timer
+        SetLightColor li126, darkgreen, 2
+        If bUseFlexDMD And Not bBlackwaterSJPMode Then
+            ' Do Scene for Wildfire Mini Mode
+            Set scene = NewSceneWithVideo("wfmm","got-wildfiremode")
+            scene.AddActor FlexDMD.NewLabel("mode",FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbBlack, 0),"WILDFIRE MINI-MODE")
+            scene.AddActor FlexDMD.NewLabel("obj",FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbBlack, 0),"HIT BATTERING RAM"&vbLf&"TO COLLECT WILDFIRE")
+            scene.GetLabel("mode").SetAlignedPosition 64,7,FlexDMD_Align_Center
+            scene.GetLabel("obj").SetAlignedPosition 64,20,FlexDMD_Align_Center
+            DelayActor scene.GetLabel("obj"),1,True
+            DelayActor scene.GetLabel("mode"),1,True
+            DMDEnqueueScene scene,1,1800,4000,1500,""
+        End If
+        bWildfireLit = 2
     End If
+    If bBlackwaterSJPMode Then House(CurrentPlayer).ScoreSJP    'Super Jackpot!!
+End Sub
+
+Sub WildfireModeTimer
+    bWildfireLit = False
+    SetLightColor li126, darkgreen, 0
+    TimerFlags(tmrWildfireMode) = 0
 End Sub
 
 Sub Spinner001_Spin
@@ -5172,7 +5251,7 @@ Sub doPictoPops(b)
         Case 1      ' Increase bonus multiplier
             IncreaseBonusMultiplier 1
         Case 2      ' Increase wildfire. TODO: Should play a scene
-            TotalWildfire = TotalWildfire + 5: CurrentWildfire = CurrentWildfire + 5
+            TotalWildfire = TotalWildfire + 5: House(CurrentPlayer).AddWildfire 5
         Case 3      ' Increase Gold
             If SelectedHouse = Lannister Then AddGold 250 Else AddGold 150
         Case 4      ' Light Swords. TODO: Play a scene
@@ -5274,8 +5353,8 @@ Sub LockBall
     If SelectedHouse = Lannister Then g = 250 Else g = 75
     TotalGold = TotalGold + g
     CurrentGold = CurrentGold + g
-    TotalWildfire = TotalWildfire + 5 'TODO Does this go up with BallInPlay?
-    CurrentWildfire = CurrentWildfire + 5
+    TotalWildfire = TotalWildfire + 5 
+    House(CurrentPlayer).AddWildfire 5 'TODO Does this go up with BallInPlay?
     i = RndNbr(3)
     if i > 1 Then i = ""
     PlaySoundVol "say-ball-" & BallsInLock & "-locked" & i, VolDef
@@ -5303,8 +5382,10 @@ Sub LockBall
             scene.AddActor FlexDMD.NewLabel("lbl2",FlexDMD.NewFont("udmd-f6by8.fnt",vbWhite, vbWhite, 0) ,"BALL "&BallsInLock&" LOCKED")
             scene.GetLabel("lbl2").SetAlignedPosition 2,10,FlexDMD_Align_TopLeft
             BlinkActor scene.GetLabel("lbl2"),100,7
-            scene.AddActor FlexDMD.NewLabel("wfgold", FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0) ,"+5 WILDFIRE"&vbLf&"+"&g&" GOLD")
-            scene.GetLabel("wfgold").SetAlignedPosition 2,31,FlexDMD_Align_BottomLeft
+            scene.AddActor FlexDMD.NewLabel("wf", FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0) ,"+5 WILDFIRE")
+            scene.GetLabel("wf").SetAlignedPosition 2,25,FlexDMD_Align_BottomLeft
+            scene.AddActor FlexDMD.NewLabel("gold", FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0) ,"+"&g&" GOLD")
+            scene.GetLabel("gold").SetAlignedPosition 2,31,FlexDMD_Align_BottomLeft
             DMDEnqueueScene scene,0,1000,1500,500,""
         End If
     End If
@@ -5312,7 +5393,7 @@ End Sub
 
 Sub StartBWMultiball
     bMultiBallMode = True
-    bWildfireLit = False: li126.State = 0
+    WildfireModeTimer   ' Stop Wildfire Minimode if it happened to be running
     BlackwaterScore = 0
     Dim scene
     If bUseFlexDMD Then
@@ -5924,13 +6005,25 @@ End Sub
 ' Game-specific Attract Mode
 '***************************
 
+Sub GameAddCredit
+    PlaySoundVol "fx_coin",VolDef
+    ' Jump the Attract Mode Scene to the "Credits" screen
+    if bAttractMode Then
+        DMDFlush
+        tmrAttractModeScene.UserValue = 5
+        tmrAttractModeScene.Enabled = False
+        tmrAttractModeScene.Interval = 10
+        tmrAttractModeScene.Enabled = True
+    End If
+End Sub
+
 Dim OathSeq
-OathSeq = Array("NIGHT GATHERS"&vbLf&"AND NOW"&vbLf&"MY WATCH BEGINGS"&vbLf&"IT SHALL"&vbLf&"NOT END"&vbLf&"UNTIL"&vbLf&"MY DEATH",_
+OathSeq = Array("NIGHT GATHERS"&vbLf&"AND NOW"&vbLf&"MY WATCH BEGINS"&vbLf&"IT SHALL"&vbLf&"NOT END"&vbLf&"UNTIL"&vbLf&"MY DEATH",_
             "I SHALL"&vbLf&"TAKE NO WIFE"&vbLf&"HOLD"&vbLf&"NO LANDS"&vbLf&"FATHER"&vbLf&"NO CHILDREN", _
             "I SHALL"&vbLf&"WEAR NO CROWNS"&vbLf&"AND WIN"&vbLf&"NO GLORY"&vbLf&"I SHALL"&vbLf&"LIVE AND DIE"&vbLf&"AT MY POST", _
             "I AM"&vbLf&"THE SWORD"&vbLf&"IN THE"&vbLf&"DARKNESS"&vbLf&"I AM"&vbLf&"THE WATCHER"&vbLf&"ON THE WALLS", _
             "I AM"&vbLf&"THE SHIELD"&vbLf&"THAT GUARDS"&vbLf&"THE REALMS"&vbLf&"OF MEN", _
-            "I PLEDGE"&vbLf&"MY LIFE"&vbLf&"AND HONOR"&vbLf&"TO THE"&vbLf&"NIGHT'S WATCH"&vbLf&"FOR THIS NIGHT"&vbLf&"AND ALL"&vbLf&"THE NIGHTS"&vbLf&"TO COME.")
+            "I PLEDGE"&vbLf&"MY LIFE"&vbLf&"AND HONOR"&vbLf&"TO THE"&vbLf&"NIGHT'S WATCH"&vbLf&"FOR THIS NIGHT"&vbLf&"AND ALL"&vbLf&"THE NIGHTS"&vbLf&"TO COME")
 Dim OathCnt
 OathCnt = 0
 
@@ -6044,18 +6137,9 @@ Sub tmrAttractModeScene_Timer
         End If
 
         Select Case format
-            Case 1,6
+            Case 1
                 scene.AddActor FlexDMD.NewLabel("line1",FlexDMD.NewFont(font,vbWhite,vbWhite,0),line1)
-                If format = 1 Then
-                    scene.GetLabel("line1").SetAlignedPosition 64,16,FlexDMD_Align_Center
-                Else
-                    scene.SetBounds 0,0-y,128,32+(2*y)  ' Create a large canvas for the text to scroll through
-                    scene.GetVideo("attract"&i&"vid").SetAlignedPosition 0,y,FlexDMD_Align_TopLeft ' move image to screen
-                    With scene.GetLabel("line1")
-                        .SetAlignedPosition 64,y+32,FlexDMD_Align_Top
-                        .AddAction scene.GetLabel("line1").ActionFactory().MoveTo(20,0,scrolltime)
-                    End With
-                End If
+                scene.GetLabel("line1").SetAlignedPosition 64,16,FlexDMD_Align_Center
             Case 3
                 scene.AddActor FlexDMD.NewLabel("line1",FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0),line1)
                 scene.AddActor FlexDMD.NewLabel("line2",FlexDMD.NewFont("skinny10x12.fnt",vbWhite,vbWhite,0),line2)
@@ -6063,6 +6147,16 @@ Sub tmrAttractModeScene_Timer
                 scene.GetLabel("line1").SetAlignedPosition 64,3,FlexDMD_Align_Center
                 scene.GetLabel("line2").SetAlignedPosition 64,15,FlexDMD_Align_Center
                 scene.GetLabel("line3").SetAlignedPosition 64,27,FlexDMD_Align_Center
+            Case 6
+                scene.AddActor FlexDMD.NewGroup("scroller")
+                scene.SetBounds 0,0-y,128,32+(2*y)  ' Create a large canvas for the text to scroll through
+                With scene.GetGroup("scroller")
+                    .SetBounds 0,y+32,128,y
+                    .AddAction scene.GetGroup("scroller").ActionFactory().MoveTo(0,0,scrolltime)
+                    .AddActor FlexDMD.NewLabel("line1",FlexDMD.NewFont(font,vbWhite,vbWhite,0),line1)
+                End With
+                scene.GetVideo("attract"&i&"vid").SetAlignedPosition 0,y,FlexDMD_Align_TopLeft ' move image to screen
+                scene.GetLabel("line1").SetAlignedPosition 64,0,FlexDMD_Align_Top        
             Case 7
                 scene.AddActor FlexDMD.NewLabel("line1",FlexDMD.NewFont(font,vbWhite,vbWhite,0),line1)
                 scene.AddActor FlexDMD.NewLabel("line2",FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0),line2)
@@ -6267,7 +6361,10 @@ Sub DMDBlackwaterSJPScene(score)
         End With
         BWSJPScene.GetImage("blank").Visible = 0
 
-        DMDEnqueueScene BWSJPScene,0,4100,2200,1500,""
+        DMDEnqueueScene BWSJPScene,0,2500,5000,1500,""
+    Else
+        DisplayDMDText "SUPER JACKPOT",score,2000
+        PlaySoundVol "say-super-jackpot",VolDef
     End If
 End Sub
 
@@ -6280,7 +6377,7 @@ Sub tmrSJPScene_Timer
     delay = 125
     If i = 1 Then   ' Turn on the first letter
         BWSJPScene.GetImage("img"&i).Visible = 1
-        PlaySoundVol "gotfx-choosebattle-right",VolDef
+        PlaySoundVol "gotfx-sjpdrum",VolDef
         LightSeqAttract.UpdateInterval = 20
         LightSeqAttract.Play SeqBlinking, ,12, 62
         LightSeqGi.UpdateInterval = 20
@@ -6288,7 +6385,7 @@ Sub tmrSJPScene_Timer
     ElseIf i < 13 Then  ' turn on the next letter
         BWSJPScene.GetImage("img"&(i-1)).Visible = 0
         BWSJPScene.GetImage("img"&i).Visible = 1
-        PlaySoundVol "gotfx-choosebattle-right",VolDef
+        PlaySoundVol "gotfx-sjpdrum",VolDef
     ElseIf i = 13 Then ' turn off the last letter and turn on the score
         BWSJPScene.GetImage("img"&(i-1)).Visible = 0
         BWSJPScene.GetVideo("bwsjpvid").Visible = 0
@@ -6303,7 +6400,7 @@ Sub tmrSJPScene_Timer
         Else
             BWSJPScene.GetLabel("scoreinv").Visible = 0
             BWSJPScene.GetImage("blank").Visible = 0
-            PlaySoundVol "gotfx-drum1",VolDef
+            PlayExistingSoundVol "gotfx-sjpdrum",VolDef,1
         End if
     Else
         Exit Sub
@@ -6311,6 +6408,25 @@ Sub tmrSJPScene_Timer
     Me.UserValue = i
     Me.Interval = delay
     Me.Enabled = True
+End Sub
+
+' Played at the end of Blackwater Multiball
+Sub DMDBlackwaterCompleteScene
+    Dim scene
+    If bUseFlexDMD Then
+        If BlackwaterScore > 0 Then
+            Set scene = NewSceneWithVideo("bwcomplete","got-blackwatertotal")
+            scene.AddActor FlexDMD.NewLabel("txt",FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbBlack, 1),"BLACKWATER TOTAL")
+            scene.GetLabel("txt").SetAlignedPosition 64,10,FlexDMD_Align_Center
+            scene.AddActor FlexDMD.NewLabel("score",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbBlack, 1),FormatScore(BlackwaterScore))
+            scene.GetLabel("score").SetAlignedPosition 64,20,FlexDMD_Align_Center
+            DMDEnqueueScene scene,0,5000,5000,2000,"gotfx-blackwatertotal"
+        End if
+    Else
+        DisplayDMDText "BLACKWATER TOTAL",FormatScore(BlackwaterScore),4000
+        PlaySoundVol "gotfx-blackwatertotal",VolDef
+    End If
+    If BlackwaterScore > 100000000 Then vpmTimer.addTimer 2500,"PlaySoundVol ""say-you-have-won"",VolDef '"
 End Sub
 
 Dim BaratheonSpinnerScene
@@ -6330,6 +6446,7 @@ Sub DMDBaratheonSpinnerScene(value)
         DMDEnqueueScene BaratheonSpinnerScene,0,1000,2000,1000,"gotfx-baratheonbattlespinner"
     Else
         DisplayDMDText "VALUE INCREASES",value,0
+        PlaySoundVol "gotfx-baratheonbattlespinner",VolDef
     End If
 End Sub
 
@@ -6408,16 +6525,8 @@ Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo,format)
         ' After delay, disable video/image and enable text
         ' TODO: Make the transition from video to text cool.
         If Not (scenevid Is Nothing) Then
-            Set af = scenevid.ActionFactory
-            Set blink = af.Sequence()
-            blink.Add af.Wait(delay)
-            blink.Add af.Show(False)
-            scenevid.AddAction blink
-            Set af = scene.GetGroup("hitscenetext").ActionFactory
-            Set blink = af.Sequence()
-            blink.Add af.Wait(delay)
-            blink.Add af.Show(True)
-            scene.GetGroup("hitscenetext").AddAction blink
+            DelayActor scenevid,delay,False
+            DelayActor scene.GetGroup("hitscenetext"),delay,True
         Else
             scene.GetGroup("hitscenetext").Visible = True
             delay = 0
@@ -6626,16 +6735,8 @@ Sub DMDHouseBattleScene(h)
             Case Else: delay=3
         End Select
         If Not (vid Is Nothing) Then
-            Set af = vid.ActionFactory
-            Set blink = af.Sequence()
-            blink.Add af.Wait(delay)
-            blink.Add af.Show(False)
-            vid.AddAction blink
-            Set af = scene.GetLabel("objective").ActionFactory
-            Set blink = af.Sequence()
-            blink.Add af.Wait(delay)
-            blink.Add af.Show(True)
-            scene.GetLabel("objective").AddAction blink
+            DelayActor vid,delay,False
+            DelayActor scene.GetGroup("objective"),delay,True
         Else
             scene.GetLabel("objective").Visible = True
         End If
@@ -6679,7 +6780,7 @@ Sub DMDPictoScene
             Next
         Else
             ' Existing scene. Update the text
-            FlexDMD.LockRenderThread
+            'FlexDMD.LockRenderThread
             For i = 0 to 2
                 Set poplabel = PictoScene.GetLabel("pop"&i)
                 With poplabel
@@ -6692,7 +6793,7 @@ Sub DMDPictoScene
                 ' If the bumpers all match, flash the text and keep scene on screen for a second
                 If matched Then BlinkActor poplabel,0.1,5:mintime=1000:pri=1
             Next
-            FlexDMD.UnlockRenderThread
+            'FlexDMD.UnlockRenderThread
         End If
 
         DMDEnqueueScene PictoScene,pri,mintime,1000,300,""
@@ -6745,7 +6846,7 @@ Sub DMDSpinnerScene(spinval)
             SpinScene.SetBounds 0,-8,128,40
         End If
         If Not IsEmpty(DisplayingScene) Then
-            If DisplayingScene Is SpinScene Then FlexDMD.LockRenderThread:locked=true
+            'If DisplayingScene Is SpinScene Then FlexDMD.LockRenderThread:locked=true
         End If
         If spinval=AccumulatedSpinnerValue Then ' First spin this scene: clear the scene
             SpinScene.RemoveAll
@@ -6773,7 +6874,7 @@ Sub DMDSpinnerScene(spinval)
             .AddAction SpinScene.GetLabel("s"&SpinNum).ActionFactory.MoveTo(x,0,0.4)
         End With
         SpinNum = SpinNum + 1
-        If locked Then FlexDMD.UnlockRenderThread:locked=False
+        'If locked Then FlexDMD.UnlockRenderThread:locked=False
         DMDEnqueueScene SpinScene,2,500,2000,1500,""
     Else
         DisplayDMDText FormatScore(AccumulatedSpinnerValue),spinval,100
@@ -6834,17 +6935,15 @@ Sub DMDCreateAlternateScoreScene(h1,h2)
         scene.AddActor scene1
         scene.AddActor scene2
         mask = 104  ' combos, tmr1, tmr2
-        'If h1 = Targaryen or h2 = Targaryen or h1 = Martell or h2 = Martell Then mask = mask Or 16 ' HurryUp
+        If h1 = Targaryen or h2 = Targaryen Then mask = mask Or 16 ' HurryUp
+        If h1 = Martell or h2 = Martell Then mask = mask Or 144 'HurryUp, tmr3
     Else
         Set scene1 = FlexDMD.NewGroup(HouseToString(h1))
         House(CurrentPlayer).BattleState(h1).CreateBattleProgressScene scene1
         scene1.SetAlignedPosition 0,0,FlexDMD_Align_TopLeft
         scene.AddActor scene1
         mask = 41   ' score, combos, tmr1
-        If h1 = Martell Then 
-            mask = 56
-            If (TimerFlags(tmrMartellBattle) And 1) = 1 Then mask = 184
-        End if
+        If h1 = Martell Then mask = 184
     End If
     SetGameTimer tmrUpdateBattleMode,5
     DMDSetAlternateScoreScene scene,mask
@@ -6973,12 +7072,13 @@ End Class
 '   √? scene, sound, and lighting effects for jackpots
 '   √? implement Super Jackpot at the battering ram
 '   √? implement SJP scene and lighting
+'   √? implement final post-multiball scene
 
-' - dual battle mode scene is unfinished. No alignment is being done. HurryUp for Martell not set up. tmr3 is not set up
-' -  hurryup disabled in scenemask for now.
+' √? dual battle mode scene is unfinished. No alignment is being done. HurryUp for Martell not set up. tmr3 is not set up
+' √?  hurryup disabled in scenemask for now.
 
 ' - Stark battle mode didn't always register a shot
-' - combo multiplier, or score, doesn't update until ball is back in play
+' √? combo multiplier, or score, doesn't update until ball is back in play
 ''
 ' - gold targets need to be bouncier. 
 ' - battering ram needs to be less bouncy and more scattery
