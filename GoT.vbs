@@ -1053,9 +1053,6 @@ Sub LoadFlexDMD
     'Set fso = CreateObject("Scripting.FileSystemObject")
     'curDir = fso.GetAbsolutePathName(".")
     'FlexPath = curDir & "\"&cGameName &".FlexDMD\"
-
-    ' Let's try this while we transition to FlexDMD
-    Set UltraDMD = FlexDMD.NewUltraDMD()
 End Sub
 
 Sub DMD_Clearforhighscore()
@@ -1065,7 +1062,9 @@ End Sub
 Sub DMDClearQueue				
 	if bUseFlexDMD Then
 		DMDqHead=0:DMDqTail=0
+        FlexDMD.LockRenderThread
         FlexDMD.Stage.RemoveAll
+        FlexDMD.UnlockRenderThread
         bDefaultScene = False
         DisplayingScene = Empty
 	End If
@@ -1074,7 +1073,7 @@ End Sub
 Sub PlayDMDScene(video, timeMs)
 	if bUseFlexDMD and UltraDMDVideos Then
 		' Note Video needs to not have sounds and must be more then 3 seconds (Export from iMovie, I chose 540p, high quality, Faster compression.
-		UltraDMD.DisplayScene00 video, "", 15, "", 15, UltraDMD_Animation_None, timeMs, UltraDMD_Animation_None
+		'UltraDMD.DisplayScene00 video, "", 15, "", 15, UltraDMD_Animation_None, timeMs, UltraDMD_Animation_None
 		'UltraDMD.DisplayScene00ExWithId video, False, video, "", 15, 15, "", 15, 15, 14, 4000, 14
 	End If
 End Sub
@@ -1082,7 +1081,7 @@ End Sub
 Sub DisplayDMDText(Line1, Line2, duration)
 	debug.print "OldDMDText " & Line1 & " " & Line2
 	if bUseFlexDMD Then
-		UltraDMD.DisplayScene00 "", Line1, 15, Line2, 15, 14, duration, 14
+		'UltraDMD.DisplayScene00 "", Line1, 15, Line2, 15, 14, duration, 14
 	Elseif bUsePUPDMD Then
 		If bPupStarted then 
 			if Line1 = "" or Line1 = "_" then 
@@ -1098,7 +1097,7 @@ End Sub
 
 Sub DisplayDMDText2(Line1, Line2, duration, pri, blink)
 	if bUseFlexDMD Then
-		UltraDMD.DisplayScene00 "", Line1, 15, Line2, 15, 14, duration, 14
+		'UltraDMD.DisplayScene00 "", Line1, 15, Line2, 15, 14, duration, 14
 	Elseif bUsePUPDMD Then
 		If bPupStarted then 
 			if Line1 = "" or Line1 = "_" then 
@@ -1114,7 +1113,7 @@ End Sub
 
 Sub DMDId(id, toptext, bottomtext, duration) 'used in the highscore entry routine
 	if bUseFlexDMD then 
-		UltraDMD.DisplayScene00ExwithID id, false, "", toptext, 15, 0, bottomtext, 15, 0, 14, duration, 14
+		'UltraDMD.DisplayScene00ExwithID id, false, "", toptext, 15, 0, bottomtext, 15, 0, 14, duration, 14
 	Elseif bUsePUPDMD Then
 		If bPupStarted then pupDMDDisplay "default", toptext & "^" & bottomtext, "" ,Duration/1000, 0, 10
 	End If 
@@ -1122,7 +1121,7 @@ End Sub
 
 Sub DMDMod(id, toptext, bottomtext, duration) 'used in the highscore entry routine
 	if bUseFlexDMD then 
-		UltraDMD.ModifyScene00Ex id, toptext, bottomtext, duration
+		'UltraDMD.ModifyScene00Ex id, toptext, bottomtext, duration
 	Elseif bUsePUPDMD Then
 		If bPupStarted then pupDMDDisplay "default", toptext & "^" & bottomtext, "" ,Duration/1000, 0, 10
 	End If 
@@ -1156,7 +1155,7 @@ Sub DMDScore()
 	Dim TimeStr
 
 	if bUseFlexDMD Then 
-		If Not UltraDMD.IsRendering Then
+		'If Not UltraDMD.IsRendering Then
             'TODO: This is where we'll display custom text when selecting house, battle, and mystery awards
 			' if PlayerMode = -1 Then
 			' 	If bSecondMode then
@@ -1178,7 +1177,7 @@ Sub DMDScore()
 			' 	TimeStr = "Time:" & ModeCountdownTimer.UserValue & "(" & ModePercent(PlayerMode) & ")"
 			' end If
 			DisplayDMDText RL(0,FormatScore(Score(CurrentPlayer))), "", 1000 
-		End If
+		'End If
 	End If
 End Sub
 
@@ -1456,12 +1455,12 @@ Sub DMDDisplayScene(scene)
 		exit Sub
 	End If
     If Not IsEmpty(DisplayingScene) Then If DisplayingScene Is scene Then Exit Sub
-    'FlexDMD.LockRenderThread
+    FlexDMD.LockRenderThread
     FlexDMD.RenderMode = FlexDMD_RenderMode_DMD_GRAY_4
     FlexDMD.Stage.RemoveAll
     FlexDMD.Stage.AddActor scene
     FlexDMD.Show = True
-    'FlexDMD.UnlockRenderThread
+    FlexDMD.UnlockRenderThread
     Set DisplayingScene = scene
 End Sub
 
@@ -2619,6 +2618,7 @@ Class cHouse
 
     Public Sub UpdateBWMBScene
         If ScoreScene.Name <> "bwmb" Then Exit Sub
+        FlexDMD.LockRenderThread
         If (BWState MOD 2) = 1 Then
             ScoreScene.GetLabel("obj").Text = "SHOOT GREEN JACKPOTS"
             ScoreScene.GetLabel("Score").SetAlignedPosition 127,0,FlexDMD_Align_TopRight
@@ -2629,6 +2629,7 @@ Class cHouse
             ScoreScene.GetLabel("tmr1").Visible = 1
         End If
         If BWState > 1 Then ScoreScene.GetLabel("line1").Text = "BLACKWATER"&vbLf&"PHASE 2"
+        FlexDMD.UnlockRenderThread
     End Sub
 
     Public Sub ScoreSJP
@@ -3432,7 +3433,7 @@ Class cBattleState
         Dim line3
         if Not bUseFlexDMD Then Exit Sub
         If MyHouse = Martell Then
-            'FlexDMD.LockRenderThread
+            FlexDMD.LockRenderThread
             If State = 2 Then
                 MyBattleScene.GetLabel("tmr3").Visible = 0
                 With MyBattleScene.GetLabel("line3")
@@ -3449,7 +3450,7 @@ Class cBattleState
                     MyBattleScene.GetLabel("line3").SetAlignedPosition 30,21,FlexDMD_Align_Center
                 End if
             End if
-            'FlexDMD.UnlockRenderThread
+            FlexDMD.UnlockRenderThread
             Exit Sub
         Else
             Select Case MyHouse
@@ -3462,9 +3463,9 @@ Class cBattleState
                 Case Lannister,Greyjoy: line3 = "SHOTS = " & 5-CompletedShots
                 Case Else: Exit Sub
             End Select
-            'FlexDMD.LockRenderThread
+            FlexDMD.LockRenderThread
             MyBattleScene.GetLabel("line3").Text = line3
-            'FlexDMD.UnlockRenderThread
+            FlexDMD.UnlockRenderThread
         End If
     End Sub
 
@@ -5549,7 +5550,11 @@ Sub HurryUpTimer
         If Not IsEmpty(HurryUpScene) Then
             If Not (HurryUpScene is Nothing) Then
                 Set lbl = HurryUpScene.GetLabel("HurryUp")
-                If Not lbl is Nothing Then lbl.Text = FormatScore(HurryUpValue)
+                If Not lbl is Nothing Then
+                    FlexDMD.LockRenderThread
+                    lbl.Text = FormatScore(HurryUpValue)
+                    FlexDMD.UnlockRenderThread
+                End If
             End if
         End If
     Else
@@ -5610,7 +5615,10 @@ Sub StopHurryUp
         If Not IsEmpty(HurryUpScene) Then
             If Not (HurryUpScene is Nothing) Then 
                 Set lbl = HurryUpScene.GetLabel("HurryUp")
-                If Not lbl is Nothing Then lbl.Visible = False
+                If Not lbl is Nothing Then
+                    FlexDMD.LockRenderThread
+                    lbl.Visible = False
+                    FlexDMD.UnlockRenderThread
             End If
         End if
     Else
@@ -6375,6 +6383,7 @@ Sub tmrSJPScene_Timer
     i = Me.UserValue
     i = i + 1
     delay = 125
+    FlexDMD.LockRenderThread
     If i = 1 Then   ' Turn on the first letter
         BWSJPScene.GetImage("img"&i).Visible = 1
         PlaySoundVol "gotfx-sjpdrum",VolDef
@@ -6403,8 +6412,10 @@ Sub tmrSJPScene_Timer
             PlayExistingSoundVol "gotfx-sjpdrum",VolDef,1
         End if
     Else
+        FlexDMD.UnlockRenderThread
         Exit Sub
     End If
+    FlexDMD.UnlockRenderThread
     Me.UserValue = i
     Me.Interval = delay
     Me.Enabled = True
@@ -6440,7 +6451,9 @@ Sub DMDBaratheonSpinnerScene(value)
             BaratheonSpinnerScene.GetLabel("bartop").SetAlignedPosition 2,2,FlexDMD_Align_TopLeft
             BaratheonSpinnerScene.GetLabel("barmid").SetAlignedPosition 2,11,FlexDMD_Align_TopLeft
         Else
+            FlexDMD.LockRenderThread
             BaratheonSpinnerScene.GetLabel("barval").Text = FormatScore(value)
+            FlexDMD.UnlockRenderThread
         End If
         BaratheonSpinnerScene.GetLabel("barval").SetAlignedPosition 2,30,FlexDMD_Align_BottomLeft
         DMDEnqueueScene BaratheonSpinnerScene,0,1000,2000,1000,"gotfx-baratheonbattlespinner"
@@ -6613,6 +6626,7 @@ Sub DMDChooseScene1(line0,line1,line2,sigil)    ' sigil is an image name
             Set DefaultScene = ChooseHouseScene
             DMDFlush
         Else
+            FlexDMD.LockRenderThread
 			Set sigilimage = ChooseHouseScene.GetImage("sigil")
             If Not sigilimage Is Nothing Then ChooseHouseScene.RemoveActor(sigilimage)
             Set sigilimage = FlexDMD.NewImage("sigil",sigil)
@@ -6622,6 +6636,7 @@ Sub DMDChooseScene1(line0,line1,line2,sigil)    ' sigil is an image name
             ChooseHouseScene.GetLabel("house").SetAlignedPosition 72,16,FlexDMD_Align_Center
             ChooseHouseScene.GetLabel("action").SetAlignedPosition 72,27,FlexDMD_Align_Center
             Set DefaultScene = ChooseHouseScene
+            FlexDMD.UnlockRenderThread
         End If
     Else
         DisplayDMDText line0, line1, 0
@@ -6681,6 +6696,7 @@ Sub DMDChooseBattleScene(line0,line1,line2,tmr)
         End If
     Else ' Update existing screen
         If bUseFlexDMD Then
+            FlexDMD.LockRenderThread
             CBScene.GetLabel("house1").Text = line1
             If line2 = "" Then
                 CBScene.GetLabel("house1").SetAlignedPosition 64,20,FlexDMD_Align_Center
@@ -6699,6 +6715,7 @@ Sub DMDChooseBattleScene(line0,line1,line2,tmr)
             CBScene.GetLabel("tmrl").SetAlignedPosition 3,28,FlexDMD_Align_BottomLeft
             CBScene.GetLabel("tmrr").Text = CStr(abs(tmr))
             CBScene.GetLabel("tmrr").SetAlignedPosition 123,28,FlexDMD_Align_BottomRight
+            FlexDMD.UnlockRenderThread
         Else
             If line2="" Then
                 DisplayDMDText line0, line1, 0
@@ -6780,7 +6797,7 @@ Sub DMDPictoScene
             Next
         Else
             ' Existing scene. Update the text
-            'FlexDMD.LockRenderThread
+            FlexDMD.LockRenderThread
             For i = 0 to 2
                 Set poplabel = PictoScene.GetLabel("pop"&i)
                 With poplabel
@@ -6793,7 +6810,7 @@ Sub DMDPictoScene
                 ' If the bumpers all match, flash the text and keep scene on screen for a second
                 If matched Then BlinkActor poplabel,0.1,5:mintime=1000:pri=1
             Next
-            'FlexDMD.UnlockRenderThread
+            FlexDMD.UnlockRenderThread
         End If
 
         DMDEnqueueScene PictoScene,pri,mintime,1000,300,""
@@ -6846,7 +6863,7 @@ Sub DMDSpinnerScene(spinval)
             SpinScene.SetBounds 0,-8,128,40
         End If
         If Not IsEmpty(DisplayingScene) Then
-            'If DisplayingScene Is SpinScene Then FlexDMD.LockRenderThread:locked=true
+            If DisplayingScene Is SpinScene Then FlexDMD.LockRenderThread:locked=true
         End If
         If spinval=AccumulatedSpinnerValue Then ' First spin this scene: clear the scene
             SpinScene.RemoveAll
@@ -6874,7 +6891,7 @@ Sub DMDSpinnerScene(spinval)
             .AddAction SpinScene.GetLabel("s"&SpinNum).ActionFactory.MoveTo(x,0,0.4)
         End With
         SpinNum = SpinNum + 1
-        'If locked Then FlexDMD.UnlockRenderThread:locked=False
+        If locked Then FlexDMD.UnlockRenderThread:locked=False
         DMDEnqueueScene SpinScene,2,500,2000,1500,""
     Else
         DisplayDMDText FormatScore(AccumulatedSpinnerValue),spinval,100
@@ -7007,7 +7024,7 @@ Sub DMDLocalScore
                 ScoreScene.AddActor FlexDMD.NewLabel("combo"&i, ComboFont, "0")
             Next
         End If
-        'FlexDMD.LockRenderThread
+        FlexDMD.LockRenderThread
         ' Update fields
         If bAlternateScoreScene = False or (AlternateScoreSceneMask And 1) = 1 Then ScoreScene.GetLabel("Score").Text = FormatScore(Score(CurrentPlayer))
         If bAlternateScoreScene = False or (AlternateScoreSceneMask And 2) = 2 Then ScoreScene.GetLabel("Ball").Text = "BALL " & CStr(BallsPerGame - BallsRemaining(CurrentPlayer) + 1)
@@ -7037,7 +7054,7 @@ Sub DMDLocalScore
             If (AlternateScoreSceneMask And 128)=128 Then ScoreScene.GetLabel("tmr3").Text = Int((TimerTimestamp(tmrMartellBattle) - GameTimeStamp)/10)
             If (AlternateScoreSceneMask And 256)=256 Then ScoreScene.GetLabel("tmr1").Text = Int((TimerTimestamp(tmrBlackwaterSJP) - GameTimeStamp)/10)
         End If
-        'FlexDMD.UnlockRenderThread
+        FlexDMD.UnlockRenderThread
         Set DefaultScene = ScoreScene
     Else
         DisplayDMDText "",FormatScore(Score(CurrentPlayer)),0
