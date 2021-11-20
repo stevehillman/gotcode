@@ -5076,7 +5076,7 @@ Sub BatteringRam_Hit
     If Tilted Then Exit Sub
     Dim scene
     PlaySoundVol "gotfx-battering-ram",Voldef
-    If bWildfire = 2 Then ' Mini-mode hit
+    If bWildfireLit = 2 Then ' Mini-mode hit
         House(CurrentPlayer).AddWildfire 10
         If bUseFlexDMD And Not bBlackwaterSJPMode Then
             ' Do Scene for Wildfire Mini Mode
@@ -5086,13 +5086,14 @@ Sub BatteringRam_Hit
             scene.AddActor FlexDMD.NewLabel("obj",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbBlack, 0),"+10 WILDFIRE")
             scene.GetLabel("obj").SetAlignedPosition 64,8,FlexDMD_Align_Center
             DelayActor scene.GetLabel("obj"),1,True
-            scene.GetLabel("mode").SetAlignedPosition 64,22,FlexDMD_Align_Center
-            DelayActor scene.GetLabel("mode"),1,True
+            scene.GetLabel("ttl").SetAlignedPosition 64,22,FlexDMD_Align_Center
+            DelayActor scene.GetLabel("ttl"),1,True
             DMDEnqueueScene scene,1,1800,4000,1500,""
         End If
     ElseIf bWildfireLit = True Then
         ' Start Wildfire Mini Mode
         SetGameTimer tmrWildfireMode,200    ' 20 second mode timer
+        li126.BlinkInterval = 100
         SetLightColor li126, darkgreen, 2
         If bUseFlexDMD And Not bBlackwaterSJPMode Then
             ' Do Scene for Wildfire Mini Mode
@@ -5620,6 +5621,7 @@ Sub StopHurryUp
                     FlexDMD.LockRenderThread
                     lbl.Visible = False
                     FlexDMD.UnlockRenderThread
+                End if
             End If
         End if
     Else
@@ -7091,23 +7093,30 @@ End Class
 '   √? implement SJP scene and lighting
 '   √? implement final post-multiball scene
 
+' - jackpot scenes need to be higher priority
+' - Baratheon didn't light as qualified until LOL targets had been completed 4 times
+' - need to reset drop targets for Baratheon mode
+' - wildfire mini mode never ends
+' - wildfire gif is wrong - stops at wall half open
+' - wildfire needs to stop jackpot at 3M
+' - jackpot lights don't light immediately because setmodelights was done too soon
+' - need a sound for wildfire mini mode "hit"
+' - final post-multiball scene score is being converted to scientific notation
+' - in dual battle mode, when one battle ends, it keeps showing, with timer counting negative
+' - in Targaryen battle mode, number is way off to the left
+' - In dual battle mode with lannister, there's a '0' in the top left corner
+' - don't use black outline font  anywhere - makes the chars too wide
+' - when coin is inserted, still doesn't jump to credits scene
+' - need more things awarding bonus
+
 ' √? dual battle mode scene is unfinished. No alignment is being done. HurryUp for Martell not set up. tmr3 is not set up
 ' √?  hurryup disabled in scenemask for now.
 
-' - Stark battle mode didn't always register a shot
 ' √? combo multiplier, or score, doesn't update until ball is back in play
 ''
 ' - gold targets need to be bouncier. 
 ' - battering ram needs to be less bouncy and more scattery
 
-' Mode alternate scene notes
-'  - during Martell, when one shot has been made, alternate scene switches to just Martell with a large 10 second countdown
-'  - In Martell, value is awarded when 3rd orbit shot is made. That value then becomes the HurryUp value for shooting a ramp. 
-'    First two shots say "Jackpot builds". First value is ~12-13M, second is 13-14M, final value was ~17M.
-'
-' Mode things to fix
-' √? martell timer still needs moving a bit.
-' √? If you hit magnasave while ChooseBattle instructions are still on, battle starts with no houses selected
 ' √? If playing as Greyjoy, BattleReady is lit at start, even though no houses are qualified
 
 ' - End of game processing doesn't exist - highscore, etc. Throws error for DMDUpdate
