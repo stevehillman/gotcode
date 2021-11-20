@@ -1544,12 +1544,12 @@ End Sub
 
 ' Add action to delay toggling the state of an actor
 ' If on=true then delay then show, otherwise, delay then hide
-Sub DelayActor(actor,delay,on)
+Sub DelayActor(actor,delay,bOn)
     Dim af,blink
     Set af = actor.ActionFactory
     Set blink = af.Sequence()
     blink.Add af.Wait(delay)
-    blink.Add af.Show(on)
+    blink.Add af.Show(bOn)
     actor.AddAction blink
 End Sub
 
@@ -2503,7 +2503,7 @@ Class cHouse
     Public Property Get Completed(h) : Completed = bCompleted(h) : End Property
     Public Property Get BattleState(h) : Set BattleState = MyBattleState(h) : End Property
     Public Property Get BWJackpot : BWJackpot = BWJackpotValue : End Property
-    Public Property Let BWJackpot : BWJackpotValue = BWJackpot : End Property
+    Public Property Let BWJackpot(v) : BWJackpotValue = v : End Property
 
     ' Reset any state that starts over on a new ball
     Public Sub ResetForNewBall
@@ -2602,7 +2602,7 @@ Class cHouse
             Else
                 j = 750:k=500
             End If
-            BWJackpotValue = BWJackpotValue + 10*int(j+RndNbr(k)
+            BWJackpotValue = BWJackpotValue + 10*int(j+RndNbr(k))
         Next
     End Sub
 
@@ -5000,6 +5000,7 @@ End Sub
 
 Sub IronThroneKickout
     PlaySoundAt "fx_kicker",KickerIT
+    KickerIT.Kick 180,3
 End Sub
 
 '******************
@@ -5081,7 +5082,7 @@ Sub BatteringRam_Hit
             ' Do Scene for Wildfire Mini Mode
             Set scene = NewSceneWithVideo("wfmm","got-wildfiremode")
             scene.AddActor FlexDMD.NewLabel("ttl",FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbBlack, 0), _
-                            CurrentWildfire&" TOTAL"&vbLf&"JACKPOT = "& House(CurrentPlayer).BWJackpot
+                            CurrentWildfire&" TOTAL"&vbLf&"JACKPOT = "& House(CurrentPlayer).BWJackpot)
             scene.AddActor FlexDMD.NewLabel("obj",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbBlack, 0),"+10 WILDFIRE")
             scene.GetLabel("obj").SetAlignedPosition 64,8,FlexDMD_Align_Center
             DelayActor scene.GetLabel("obj"),1,True
@@ -6026,7 +6027,7 @@ Sub GameAddCredit
 End Sub
 
 Dim OathSeq
-OathSeq = Array("NIGHT GATHERS"&vbLf&"AND NOW"&vbLf&"MY WATCH BEGINS"&vbLf&"IT SHALL"&vbLf&"NOT END"&vbLf&"UNTIL"&vbLf&"MY DEATH",_
+OathSeq = Array("NIGHT GATHERS"&vbLf&"AND NOW"&vbLf&"MY WATCH"&vbLf&"BEGINS"&vbLf&"IT SHALL"&vbLf&"NOT END"&vbLf&"UNTIL"&vbLf&"MY DEATH",_
             "I SHALL"&vbLf&"TAKE NO WIFE"&vbLf&"HOLD"&vbLf&"NO LANDS"&vbLf&"FATHER"&vbLf&"NO CHILDREN", _
             "I SHALL"&vbLf&"WEAR NO CROWNS"&vbLf&"AND WIN"&vbLf&"NO GLORY"&vbLf&"I SHALL"&vbLf&"LIVE AND DIE"&vbLf&"AT MY POST", _
             "I AM"&vbLf&"THE SWORD"&vbLf&"IN THE"&vbLf&"DARKNESS"&vbLf&"I AM"&vbLf&"THE WATCHER"&vbLf&"ON THE WALLS", _
@@ -6309,7 +6310,7 @@ Sub tmrAttractModeLighting_Timer
             c = int((tmrAttractModeLighting.UserValue - Int(tmrAttractModeLighting.UserValue))*10)
             if c = 5 then Me.UserValue = 8:i = 0 Else i = 0.1
             PlayfieldSlowFade AttractPFcolors(c),0.1
-            LightSeqAttract.UpdateInterval = 20
+            LightSeqAttract.UpdateInterval = 7
             LightSeqAttract.Play SeqClockLeftOn, 25, 1
             seqtime = 2500
         Case 8
@@ -6324,7 +6325,6 @@ Sub tmrAttractModeLighting_Timer
             ' Loop back to first effect
 			tmrAttractModeLighting.UserValue = 0:i=0:seqtime=10
     End Select
-debug.print tmrAttractModeLighting.UserValue
     tmrAttractModeLighting.UserValue = tmrAttractModeLighting.UserValue + i
     tmrAttractModeLighting.Interval = seqtime
     tmrAttractModeLighting.Enabled = True
@@ -6753,7 +6753,7 @@ Sub DMDHouseBattleScene(h)
         End Select
         If Not (vid Is Nothing) Then
             DelayActor vid,delay,False
-            DelayActor scene.GetGroup("objective"),delay,True
+            DelayActor scene.GetLabel("objective"),delay,True
         Else
             scene.GetLabel("objective").Visible = True
         End If
