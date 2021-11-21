@@ -2297,7 +2297,6 @@ Dim bGameTimersEnabled  ' Flag for whether any timers are enabled
 Dim TimerFlags(30)      ' Flags for each timer's state
 Dim TimerTimestamp(30)  ' Each timer's end timestamp
 Dim TimerSubroutine     ' Names of subroutines to call when each timer's time expires
-Const MaxTimers = 10     ' Total number of defined timers. There MUST be a corresponding subroutine for each
 ' Timers 1 - 4 can't be frozen. if adding more unfreezable timers, put them next and adjust the number in tmrGame_Timer sub
 TimerSubroutine = Array("","UpdateChooseBattle","PreLaunchBattleMode","LaunchBattleMode","UpdateBattleMode","BattleModeTimer1","BattleModeTimer2", _ 
                         "MartellBattleTimer","HurryUpTimer","ResetComboMultipliers","ModePauseTimer","BlackwaterSJPTimer","WildfireModeTimer")
@@ -2313,6 +2312,7 @@ Const tmrComboMultplier = 9     ' Timeout timer for Combo multipliers
 Const tmrModePause = 10         ' "no activity" timer that will pause battle mode timers if it elapses
 Const tmrBlackwaterSJP = 11     ' SuperJackpot battering ram countdown timer
 Const tmrWildfireMode = 12      ' Wildfire Mini Mode timer
+Const MaxTimers = 12     ' Total number of defined timers. There MUST be a corresponding subroutine for each
 
 'HurryUp Support
 Dim HurryUpValue
@@ -3484,7 +3484,7 @@ Class cBattleState
 
     Public Sub DoBattleCompleteScene
         DoMyBattleCompleteScene
-        If OtherHouse <> 0 Then House(CurrentPlayer).BattleState(OtherHouse).DoMyBattleCompleteScene
+        If OtherHouseBattle <> 0 Then House(CurrentPlayer).BattleState(OtherHouseBattle).DoMyBattleCompleteScene
     End Sub
 
     Public Sub DoMyBattleCompleteScene
@@ -4946,7 +4946,7 @@ End Sub
 Sub LOrbitSW30_Hit
     If Tilted then Exit Sub
     AddScore 1000
-    If LastSwitchHit <> "ROrbitsw31" Then House(CurrentPlayer).RegisterHit(Greyjoy)
+    If LastSwitchHit = "sw30a" Then House(CurrentPlayer).RegisterHit(Greyjoy)
     'House(CurrentPlayer).RegisterHit(Greyjoy)
     LastSwitchHit = "LOrbitSW30"
 End Sub
@@ -4955,6 +4955,9 @@ Sub sw30a_Hit
     LastSwitchHit = "sw30a"
 End Sub
 
+Sub sw30b_Hit
+    LastSwitchHit = "sw30b"
+End Sub
 ' Left ramp switch
 Sub sw39_Hit
     If Tilted then Exit Sub 'TODO need to release locked ball if there is one
@@ -5129,6 +5132,7 @@ Sub BatteringRam_Hit
     ElseIf bWildfireLit = True Then
         ' Start Wildfire Mini Mode
         SetGameTimer tmrWildfireMode,200    ' 20 second mode timer
+        debug.print "starting wildfire minimode"
         li126.BlinkInterval = 100
         SetLightColor li126, darkgreen, 2
         If bUseFlexDMD And Not bBlackwaterSJPMode Then
@@ -5151,6 +5155,7 @@ Sub WildfireModeTimer
     bWildfireLit = False
     SetLightColor li126, darkgreen, 0
     TimerFlags(tmrWildfireMode) = 0
+    debug.print "Ending Wildfire Minimode"
 End Sub
 
 Sub Spinner001_Spin
@@ -7137,19 +7142,16 @@ End Class
 ' √? jackpot scenes need to be higher priority
 ' √? Baratheon didn't light as qualified until LOL targets had been completed 4 times
 ' √? need to reset drop targets for Baratheon mode
-' - wildfire mini mode never ends
-' √ wildfire gif is wrong - stops at wall half open
-' √ wildfire needs to stop jackpot at 3M
 ' √? jackpot lights don't light immediately because setmodelights was done too soon
-' √ need a sound for wildfire mini mode "hit"
+' - need a second sound for wildfire mini mode "hit"
 ' - final post-multiball scene score is being converted to scientific notation
-' √? in dual battle mode, when one battle ends, it keeps showing, with timer counting negative
 ' - in Targaryen battle mode, number is way off to the left
 ' - In dual battle mode , there's a '0' in the top left corner of the right-hand battle
-' √? Martell's 10second timer is blank in dual battle mode
-' √? don't use black outline font  anywhere - makes the chars too wide
-' √? when coin is inserted, still doesn't jump to credits scene
 ' - need more things awarding bonus
+' - When Martell HurryUp ends, goes back to Battle mode with timer negative
+' - if we lose the ball during battle mode, scene doesn't reset. Need to call EndbattleMode
+' - Martell battle mode has "shoot orbits" and score (or hurryUp?) on top of each other
+' - Martell mode wasn't marked as done when 3 shots were completed.
 
 ' √? dual battle mode scene is unfinished. No alignment is being done. HurryUp for Martell not set up. tmr3 is not set up
 ' √?  hurryup disabled in scenemask for now.
