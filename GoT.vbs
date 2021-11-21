@@ -2583,12 +2583,14 @@ Class cHouse
         For i = 1 to 7
             If i <> Baratheon and i <> Tyrell Then BWJackpotShots(i) = 1
         Next
+        SetModeLights
     End Sub
 
     'From 1-5 WF, ~100,000 per WF. From 5-25, ~50K per WF, 25-45 ~45K per WF, 45-55, 30K per, and 55+, 10k per. Max is 3M
     Public Sub AddWildfire(wf)
         Dim i,j,k
         k = 1000
+        If BWJackpotValue >= 3000000 Then CurrentWildfire = CurrentWildfire + wf: Exit Sub
         For i = 1 to wf
             CurrentWildfire = CurrentWildfire + 1
             If CurrentWildfire < 5 Then
@@ -2603,6 +2605,7 @@ Class cHouse
                 j = 750:k=500
             End If
             BWJackpotValue = BWJackpotValue + 10*int(j+RndNbr(k))
+            If BWJackpotValue > 3000000 Then BWJackpotValue = 3000000
         Next
     End Sub
 
@@ -2665,7 +2668,7 @@ Class cHouse
                 BlackwaterScore = BlackwaterScore + (BWJackpotValue*combo*BWJackpotLevel*PlayfieldMultiplierVal)
                 DMDPlayHitScene "got-bwexplosion"&i-1,"gotfx-bwexplosion",BWExplosionTimes(i-1), _
                                 BWJackpotLevel&"X BLACKWATER JACKPOT",BWJackpotValue*combo*BWJackpotLevel,"",combo,3
-                'TODO: Jackpot lighting effect
+                LightEffect 3
                 SetModeLights   ' Update shield light colors
 
                 'Check to see if all jackpot shots have been made the required number of times
@@ -2689,6 +2692,7 @@ Class cHouse
             
             if QualifyCount(h) < 3 Then
                 QualifyCount(h) = QualifyCount(h) + 1
+                If h <> Baratheon and h <> Tyrell Then AddBonus 100000
 
                 If ComboLaneMap(h) Then combo = ComboMultiplier(ComboLaneMap(h))
 
@@ -2776,7 +2780,7 @@ Class cHouse
                     ' Probably need to play a sound here
                     If HouseSelected = Lannister Then AddGold 450 Else AddGold 250
                     For i = 0 to 4: bGoldTargets(i) = False: Next
-                    SetMystery
+                    bMysteryLit = True : SetMystery
                     ' tell the gold target lights to turn off in 1 second. There's a timer on the first light
                     GoldTargetLights(0).TimerInterval = 1000: GoldTargetLights(0).TimerEnabled = True
                 End If
@@ -2822,6 +2826,7 @@ Class cBattleState
     Dim HouseValue              ' Most houses build value as the battle progresses. Stored here
     Dim HouseValueIncrement     ' Amount house value builds by, per shot, if machine-generated
     Dim MyHurryUps(3)           ' Holds the index values of any running HurryUps. Only Targaryen has more than one concurrently 
+    Dim OtherHouseBattle        ' Store the other house battle, if two are stacked. Used for doing Battle Total at the end
 
     
     Private Sub Class_Initialize(  )
@@ -2847,6 +2852,7 @@ Class cBattleState
         End Select
     End Property
 	Public Property Get GetHouse : GetHouse = MyHouse : End Property
+    Public Property Let OtherHouse(h) : OtherHouseBattle = h : End Property
 
     Public Sub SetBattleLights
         Dim mask,i
@@ -2906,6 +2912,7 @@ Class cBattleState
     ' Called to initialize battle mode for this house. Only certain houses need setup done
     Public Sub StartBattleMode
         Dim tmr: tmr=400    ' 10ths of a second
+        OtherHouseBattle = 0
         Select Case MyHouse
             Case Stark
                 State = 1
@@ -2913,7 +2920,7 @@ Class cBattleState
                 ' TODO Stark shot increase value may depend on how quickly you make the shots
                 If HouseValueIncrement = 0 Then HouseValueIncrement = 3000000 + RndNbr(15) * 125000 
                 If CompletedShots > 0 Then CompletedShots = 2
-            Case Baratheon: State = 1 : OpenTopGates : HouseValue = 1250000 : HouseValueIncrement = 900000
+            Case Baratheon: State = 1 : OpenTopGates : HouseValue = 1250000 : HouseValueIncrement = 900000 : ResetDropTargets
             Case Lannister: State=1
             Case Greyjoy: OpenTopGates : tmr = 150
             Case Martell: HouseValue = 0: tmr = 300 : State = 1 : CompletedShots = 0 : OpenTopGates
@@ -3227,7 +3234,7 @@ Class cBattleState
         sound = "gotfx-"&HouseToString(MyHouse)&"battlecomplete"
         delay = CompletionAnimationTimes(MyHouse)
         DMDPlayHitScene name,sound,delay,BattleObjectivesShort(MyHouse),line2,"COMPLETE",comboval,1
-        
+        If HouseBattle1 = 0 And HouseBattle2 = 0 Then DoBattleCompleteScene
     End Sub
 
     ' Return to normal play. TODO: Anything else to do?
@@ -3238,11 +3245,14 @@ Class cBattleState
         If MyHouse = HouseBattle1 Then 
             TimerFlags(tmrBattleMode1) = 0
             HouseBattle1 = 0 
-            'TODO: Need to move HouseBattle2 over to 1 so that altscene works properly
-            ' if housebattle2 <> 0 then housebattle1=housebattle2, housebattle2=0, 
-            '     timertimestamp(tmrbattlemode1) = timertimestamp(tmrbattlemode2)
-            '     timerflags(tmrbattlemode2) = timerflags(tmrbattlemode2) and 254
-        Else 
+            If HouseBattle2 <> 0 Then ' Move Stacked battle to the primary position
+                House(CurrentPlayer).BattleState(HouseBattle2).OtherHouse = MyHouse
+                HouseBattle1=HouseBattle2 : HouseBattle2=0 
+                TimerFlags(tmrBattleMode2) = TimerFlags(tmrBattleMode2) and 254
+                timerTimestamp(tmrBattleMode1) = timerTimestamp(tmrBattleMode2)
+            End If
+        Else
+            House(CurrentPlayer).BattleState(HouseBattle1).OtherHouse = MyHouse
             TimerFlags(tmrBattleMode2) = 0
             HouseBattle2 = 0
         End If
@@ -3263,10 +3273,13 @@ Class cBattleState
                 TimerFlags(tmrUpdateBattleMode) = 0     ' Disable the timer that updates the Battle Alternate Scene
                 DMDResetScoreScene
             End If
+
+            If Not bComplete Then DoBattleCompleteScene
+        ElseIf Not bMultiBallMode Then ' Another house battle is still active and no MB, so regenerate battle scene
+            DMDCreateAlternateScoreScene HouseBattle1,0
         End If
         PlayModeSong
         SetPlayfieldLights
-        ' TODO: Maybe need to modify Scene to remove one or both battle scenes
     End Sub
 
     ' Called by the timer when the mode timer has expired
@@ -3394,7 +3407,7 @@ Class cBattleState
     Public Function CreateSmallBattleProgressScene(ByRef BattleScene, n)
         Dim tinyfont,ScoreFont,line2,x3,x4,y4,i
         'Set ScoreFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0)
-        Set tinyfont = FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbBlack, 1)
+        Set tinyfont = FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbBlack, 0)
         BattleScene.AddActor FlexDMD.NewLabel("obj",tinyfont,HouseToUCString(MyHouse))
         BattleScene.AddActor FlexDMD.NewLabel("tmr"&n,tinyfont,Int((TimerTimestamp(tmrBattleMode1)-GameTimeStamp)/10))
         
@@ -3407,12 +3420,12 @@ Class cBattleState
         End Select
 
         If MyHouse = Martell Then
-            BattleScene.AddActor FlexDMD.NewLabel("tmr3",FlexDMD.NewFont("udmd-f6by8.fnt", vbBlack,vbWhite, 1),"10")
+            BattleScene.AddActor FlexDMD.NewLabel("tmr3",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite,vbWhite, 0),"10")
             BattleScene.GetLabel("tmr3").SetAlignedPosition 32,13,FlexDMD_Align_Center
             If CompletedShots = 0 Or State > 1 Then BattleScene.GetLabel("tmr3").Visible = 0
         End If
         If MyHouse = Martell Or MyHouse = Targaryen Then
-            BattleScene.AddActor FlexDMD.NewLabel("HurryUp",FlexDMD.NewFont("udmd-f6by8.fnt", vbBlack,vbWhite, 1),"20000000") 'Placeholder value to ensure text is centered
+            BattleScene.AddActor FlexDMD.NewLabel("HurryUp",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite,vbWhite, 0),"20000000") 'Placeholder value to ensure text is centered
             BattleScene.GetLabel("HurryUp").SetAlignedPosition 32,13,FlexDMD_Align_Center
             If State < 2 Then BattleScene.GetLabel("HurryUp").Visible = 0
         End If
@@ -3422,7 +3435,7 @@ Class cBattleState
         BattleScene.GetLabel("tmr"&n).SetAlignedPosition 62,1,FlexDMD_Align_TopRight
         BattleScene.GetLabel("obj").SetAlignedPosition 1,1,FlexDMD_Align_TopLeft
         For i = 1 to 5
-            BattleScene.AddActor FlexDMD.NewLabel("combo"&i, FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 1), "0")
+            BattleScene.AddActor FlexDMD.NewLabel("combo"&i, FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 0), "0")
         Next
         Set MyBattleScene = BattleScene
         bSmallBattleScene = True
@@ -3467,6 +3480,22 @@ Class cBattleState
             MyBattleScene.GetLabel("line3").Text = line3
             FlexDMD.UnlockRenderThread
         End If
+    End Sub
+
+    Public Sub DoBattleCompleteScene
+        DoMyBattleCompleteScene
+        If OtherHouse <> 0 Then House(CurrentPlayer).BattleState(OtherHouse).DoMyBattleCompleteScene
+    End Sub
+
+    Public Sub DoMyBattleCompleteScene
+        'TODO Display a scene with this house name, sigil, and earned total points
+        Dim scene
+        Set scene = NewSceneWithVideo("btotal","got-"&HouseToString(MyHouse)&"sigil")
+        scene.AddActor FlexDMD.NewLabel("ttl",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0),HouseToUCString(MyHouse)&" TOTAL")
+        scene.AddActor FlexDMD.NewLabel("bscore",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbBlack, 0),FormatScore(TotalScore))
+        scene.GetLabel("ttl").SetAlignedPosition 40,10,FlexDMD_Align_Center
+        scene.GetLabel("bscore").SetAlignedPosition 40,20,FlexDMD_Align_Center
+        DMDEnqueueScene scene,0,3000,3000,4000,"gotfx-battletotal"
     End Sub
 
 End Class
@@ -4281,6 +4310,7 @@ End Sub
 
 Sub OpenTopGates: topgatel.open = True: topgater.open = True: End Sub
 Sub CloseTopGates
+    If HouseBattle1 = Baratheon or HouseBattle2 = Baratheon or HouseBattle1 = Martell or HouseBattle2 = Martell then Exit Sub
     topgater.open = False
     If bEBisLit or bMysteryLit or bElevatorShotUsed = False Then Exit Sub
     topgatel.open = False
@@ -4316,10 +4346,11 @@ Sub ResetComboMultipliers
 End Sub
 
 Sub SetMystery
-    bMysteryLit = True              ' Does this get saved across balls?
-    SetLightColor li153, white, 2  ' Turn on Mystery light
-    MoveDiverter 1
-    topgatel.open = True
+    If bMysteryLit = True And Not bMultiBallMode Then
+        SetLightColor li153, white, 2  ' Turn on Mystery light
+        MoveDiverter 1
+        topgatel.open = True
+    End If
 End Sub
 
 Sub GameGiOn
@@ -4580,7 +4611,7 @@ Sub AddGold(g)
         scene.AddActor FlexDMD.NewLabel("addgold",FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbBlack, 0),"+"&g&" GOLD")
         scene.GetLabel("addgold").SetAlignedPosition 2,0,FlexDMD_Align_TopLeft
         BlinkActor scene.GetLabel("addgold"),150,4
-        scene.AddActor FlexDMD.NewLabel("gold",FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 1),"TOTAL GOLD: "&CurrentGold)
+        scene.AddActor FlexDMD.NewLabel("gold",FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 0),"TOTAL GOLD: "&CurrentGold)
         scene.GetLabel("gold").SetAlignedPosition 2,27,FlexDMD_Align_BottomLeft
         DMDEnqueueScene scene,2,1200,2000,2000,""
     End If
@@ -4720,7 +4751,8 @@ Sub DoTargetsDropped
     End If
     If DroppedTargets = 3 Then
         ' Target bank completed
-        LoLTargetsCompleted = LoLTargetsCompleted + 1
+        AddBonus 100000
+        If PlayerMode = 0 Then LoLTargetsCompleted = LoLTargetsCompleted + 1
         ResetDropTargets
         If bLoLLit = False and bLoLUsed = False Then bLoLLit = True : SetOutlaneLights 'TODO: Is there a sound to play with LoL lights?
         For i = 0 to 2
@@ -4762,6 +4794,7 @@ Sub doWFTargetHit(t)
     If (BWMultiballsCompleted = 0 or bWildfireTargets(t1)) And Not bMultiBallMode Then LightLock 'TODO: Should we be able to light lock during a mode?
     if bWildfireTargets(t1) Then
         'Target bank completed
+        AddBonus 100000
         'Light both lights for 1 second, then shut them off
         debug.print "wf targets completed"
         FlashForMs li80,1000,1000,0
@@ -4773,6 +4806,7 @@ Sub doWFTargetHit(t)
         If PlayerMode <> 1 Then House(CurrentPlayer).RegisterHit(Tyrell)
         bWildfireLit = True: SetLightColor li126, darkgreen, 1
     Else
+        AddBonus 10000
         Select Case t
             Case 0
                 SetLightColor li80,green,1
@@ -5075,6 +5109,8 @@ End Sub
 Sub BatteringRam_Hit
     If Tilted Then Exit Sub
     Dim scene
+    AddScore 1130
+    AddBonus 5000
     PlaySoundVol "gotfx-battering-ram",Voldef
     If bWildfireLit = 2 Then ' Mini-mode hit
         House(CurrentPlayer).AddWildfire 10
@@ -5088,7 +5124,7 @@ Sub BatteringRam_Hit
             DelayActor scene.GetLabel("obj"),1,True
             scene.GetLabel("ttl").SetAlignedPosition 64,22,FlexDMD_Align_Center
             DelayActor scene.GetLabel("ttl"),1,True
-            DMDEnqueueScene scene,1,1800,4000,1500,""
+            DMDEnqueueScene scene,1,1800,4000,1500,"gotfx-wildfiremini"
         End If
     ElseIf bWildfireLit = True Then
         ' Start Wildfire Mini Mode
@@ -5294,7 +5330,7 @@ Sub doPictoPops(b)
             bLoLLit = True:SetOutlaneLights
             'TODO: Play sound or animation?
         Case 15
-            SetMystery
+            bMysteryLit = True : SetMystery
         Case 16
             ' TODO: This has a scene
             bWildfireLit = True: SetLightColor li126, darkgreen, 1
@@ -5899,7 +5935,7 @@ Sub SetSwordLight
 End Sub
 
 Sub SetMysteryLight
-    if bMysteryLit Then
+    if bMysteryLit And Not bMultiBallMode Then
         li153.BlinkInterval = 250
         SetLightColor li153,white,2
     Else
@@ -6049,6 +6085,7 @@ ChampionNames = Array("STARK","BARATHEON","LANNISTER","GREYJOY","TYRELL","MARTEL
 
 Sub GameStartAttractMode
     tmrDMDUpdate.Enabled = False
+    bAttractMode = True
     tmrAttractModeScene.UserValue = 0
     tmrAttractModeScene.Interval = 10
     tmrAttractModeScene.Enabled = True
@@ -6066,6 +6103,7 @@ Sub GameStopAttractMode
     RestorePlayfieldLightState True
     DMDClearQueue
     tmrDMDUpdate.Enabled = True
+    bAttractMode = False
 End Sub
 
 ' To launch attract mode, disable DMDUpdateTimer and enble tmrAttractModeScene
@@ -6429,9 +6467,9 @@ Sub DMDBlackwaterCompleteScene
     If bUseFlexDMD Then
         If BlackwaterScore > 0 Then
             Set scene = NewSceneWithVideo("bwcomplete","got-blackwatertotal")
-            scene.AddActor FlexDMD.NewLabel("txt",FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbBlack, 1),"BLACKWATER TOTAL")
+            scene.AddActor FlexDMD.NewLabel("txt",FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbBlack, 0),"BLACKWATER TOTAL")
             scene.GetLabel("txt").SetAlignedPosition 64,10,FlexDMD_Align_Center
-            scene.AddActor FlexDMD.NewLabel("score",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbBlack, 1),FormatScore(BlackwaterScore))
+            scene.AddActor FlexDMD.NewLabel("score",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbBlack, 0),FormatScore(BlackwaterScore))
             scene.GetLabel("score").SetAlignedPosition 64,20,FlexDMD_Align_Center
             DMDEnqueueScene scene,0,5000,5000,2000,"gotfx-blackwatertotal"
         End if
@@ -6447,9 +6485,9 @@ Sub DMDBaratheonSpinnerScene(value)
     If bUseFlexDMD Then
         If AccumulatedSpinnerValue = 0 or IsEmpty(BaratheonSpinnerScene) Then ' Spinner has gone a little while without spinning. Start new scene
             Set BaratheonSpinnerScene = NewSceneWithVideo("barspin","got-baratheonbattlespinner")
-            BaratheonSpinnerScene.AddActor FlexDMD.NewLabel("bartop",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbBlack, 1),"BARATHEON")
-            BaratheonSpinnerScene.AddActor FlexDMD.NewLabel("barmid",FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbBlack, 1),"VALUE"&vbLf&"INCREASES")
-            BaratheonSpinnerScene.AddActor FlexDMD.NewLabel("barval",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbBlack, 1),FormatScore(value))
+            BaratheonSpinnerScene.AddActor FlexDMD.NewLabel("bartop",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbBlack, 0),"BARATHEON")
+            BaratheonSpinnerScene.AddActor FlexDMD.NewLabel("barmid",FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbBlack, 0),"VALUE"&vbLf&"INCREASES")
+            BaratheonSpinnerScene.AddActor FlexDMD.NewLabel("barval",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbBlack, 0),FormatScore(value))
             BaratheonSpinnerScene.GetLabel("bartop").SetAlignedPosition 2,2,FlexDMD_Align_TopLeft
             BaratheonSpinnerScene.GetLabel("barmid").SetAlignedPosition 2,11,FlexDMD_Align_TopLeft
         Else
@@ -6477,7 +6515,7 @@ End Sub
 '           2 - 3 lines of 3x7 font, used for lannister battle gold hits
 '           3 - 2 lines of text. Top line 3x7, main line 6x8 score. Used for jackpots and Targaryen hurry-up hits
 Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo,format)
-    Dim scene,scenevid,font1,font2,font3,x,y1,y2,y3,combotxt,blink,af
+    Dim scene,scenevid,font1,font2,font3,x,y1,y2,y3,combotxt,pri
     If bUseFlexDMD Then
         Set scene = NewSceneWithVideo("hitscene",vid)
         Set scenevid = scene.GetVideo("hitscenevid")
@@ -6546,7 +6584,10 @@ Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo,format)
             scene.GetGroup("hitscenetext").Visible = True
             delay = 0
         End If
-        DMDEnqueueScene scene,1,delay*1000+1000,delay*1000+2000,3000,sound
+        'Special case - make Jackpot hit scenes priority 0
+        If sound = "gotfx-bwexplosion" Then pri=0 Else pri=1
+
+        DMDEnqueueScene scene,pri,delay*1000+1000,delay*1000+2000,3000,sound
     Else
         DisplayDMDText line1,line2,2000
         PlaySoundVol sound,VolDef
@@ -6885,7 +6926,7 @@ Sub DMDSpinnerScene(spinval)
         End With
         suffix="K":spinval = int(spinval/1000)
         If spinval >= 1000000 Then suffix="M":spinval = int(spinval/1000)
-        SpinScene.AddActor FlexDMD.NewLabel("s"&SpinNum,FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 1),spinval&suffix)
+        SpinScene.AddActor FlexDMD.NewLabel("s"&SpinNum,FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbBlack, 1),spinval&suffix)
         x = RndNbr(100)+13
         y = RndNbr(20) + 16
         With SpinScene.GetLabel("s"&SpinNum)
@@ -7093,20 +7134,21 @@ End Class
 '   √? implement SJP scene and lighting
 '   √? implement final post-multiball scene
 
-' - jackpot scenes need to be higher priority
-' - Baratheon didn't light as qualified until LOL targets had been completed 4 times
-' - need to reset drop targets for Baratheon mode
+' √? jackpot scenes need to be higher priority
+' √? Baratheon didn't light as qualified until LOL targets had been completed 4 times
+' √? need to reset drop targets for Baratheon mode
 ' - wildfire mini mode never ends
-' - wildfire gif is wrong - stops at wall half open
-' - wildfire needs to stop jackpot at 3M
-' - jackpot lights don't light immediately because setmodelights was done too soon
-' - need a sound for wildfire mini mode "hit"
+' √ wildfire gif is wrong - stops at wall half open
+' √ wildfire needs to stop jackpot at 3M
+' √? jackpot lights don't light immediately because setmodelights was done too soon
+' √ need a sound for wildfire mini mode "hit"
 ' - final post-multiball scene score is being converted to scientific notation
-' - in dual battle mode, when one battle ends, it keeps showing, with timer counting negative
+' √? in dual battle mode, when one battle ends, it keeps showing, with timer counting negative
 ' - in Targaryen battle mode, number is way off to the left
-' - In dual battle mode with lannister, there's a '0' in the top left corner
-' - don't use black outline font  anywhere - makes the chars too wide
-' - when coin is inserted, still doesn't jump to credits scene
+' - In dual battle mode , there's a '0' in the top left corner of the right-hand battle
+' √? Martell's 10second timer is blank in dual battle mode
+' √? don't use black outline font  anywhere - makes the chars too wide
+' √? when coin is inserted, still doesn't jump to credits scene
 ' - need more things awarding bonus
 
 ' √? dual battle mode scene is unfinished. No alignment is being done. HurryUp for Martell not set up. tmr3 is not set up
