@@ -307,7 +307,7 @@ Sub Table1_KeyDown(ByVal Keycode)
             RotateLaneLights 1
             If InstantInfoTimer.UserValue = 0 Then 
                 InstantInfoTimer.UserValue = keycode ' Record which key triggered the InstantInfo
-            ElseIf InstantInfoTimer.UserValue <> keycode Then
+            ElseIf InstantInfoTimer.UserValue <> keycode And bInstantInfo Then
                 InfoPage = InfoPage + 1:InstantInfo
             End If
         ElseIf keycode = RightFlipperKey Then 
@@ -316,7 +316,7 @@ Sub Table1_KeyDown(ByVal Keycode)
             RotateLaneLights 0
             If InstantInfoTimer.UserValue = 0 Then 
                 InstantInfoTimer.UserValue = keycode ' Record which key triggered the InstantInfo
-            ElseIf InstantInfoTimer.UserValue <> keycode Then
+            ElseIf InstantInfoTimer.UserValue <> keycode And bInstantInfo Then
                 InfoPage = InfoPage + 1:InstantInfo
             End if
         End If
@@ -413,7 +413,6 @@ Sub Table1_KeyUp(ByVal keycode)
                     bInstantInfo = False
                 End If
             End If
-        End If
         ElseIf keycode = RightFlipperKey Then
             SolRFlipper 0
             If InstantInfoTimer.UserValue = keycode Then
@@ -5055,7 +5054,7 @@ Sub ROrbitsw31_Hit
     If Tilted then Exit Sub
     If LastSwitchHit <> "swPlungerRest" Then 
         AddScore 1000
-        If LastSwitchHit <> "LOrbitSW30" Then House(CurrentPlayer).RegisterHit(Martell)
+        If LastSwitchHit <> "sw30b" Then House(CurrentPlayer).RegisterHit(Martell)
         'House(CurrentPlayer).RegisterHit(Martell)
     End If
     LastSwitchHit = "ROrbitsw31"
@@ -6142,8 +6141,9 @@ End Sub
 ' 10: 1 line of text with outline
 ' 11: 3 lines of text (small, medium, medium)
 Sub InstantInfo
-    Dim scene,format,font,skipifnoflex,y
-    Dim line1,line2,line3
+    Dim scene,format,font,skipifnoflex,y,img
+    Dim line1,line2,line3,font1
+    InstantInfoTimer.Enabled = False
     font = "udmd-f7by10.fnt" ' Most common font
     Select Case InfoPage
         Case 0: format=1:line1="INSTANT INFO"
@@ -6156,10 +6156,10 @@ Sub InstantInfo
             Else
                 Line2 = "CREDITS "&Credits
             End if
-            line3 = "PLAYER "&CurrentPlayer+1&" IS UP"
+            line3 = "PLAYER "&CurrentPlayer&" IS UP"
         Case 2,3,4,5 ' current scores
-            If PlayersPlayingGame < InfoPage Then InfoPage = 6 : InstantInfo : Exit Sub 
-            format=2:line1="PLAYER "&InfoPage:line2=FormatScore(Score(InfoPage-1)):skipifnoflex=False
+            If PlayersPlayingGame < InfoPage-1 Then InfoPage = 6 : InstantInfo : Exit Sub 
+            format=2:line1="PLAYER "&InfoPage-1:line2=FormatScore(Score(InfoPage-1)):skipifnoflex=False
         Case 6 ' current player's gold
             format=1:line1=CurrentGold&" GOLD"
         Case 7 ' LoL status
@@ -6206,15 +6206,15 @@ Sub InstantInfo
             line1 = ChampionNames(i-35)&" CHAMPION"
             line2 = HighScoreName(i-30):line3 = HighScore(i-30)
     End Select
-    If InfoPage >= 46 Then InfoPage = 0 Else InfoPage = InfoPage + 1
-    If bUseFlexDMD=False And skipifnoflex=True Then InfoPage:Exit Sub
+    If InfoPage >= 46 Then InfoPage = 0:InstantInfo:Exit Sub
+    If bUseFlexDMD=False And skipifnoflex=True Then InfoPage=InfoPage+1:InstantInfo:Exit Sub
 
     ' Create the scene
     if bUseFlexDMD Then
         If format=4 or Format=5 or Format=6 or Format=9 Then
-            Set scene = NewSceneWithVideo("attract"&i,img)
+            Set scene = NewSceneWithVideo("attract"&InfoPage,img)
         Else
-            Set scene = FlexDMD.NewGroup("attract"&i)
+            Set scene = FlexDMD.NewGroup("attract"&InfoPage)
         End If
 
         ' Most of these modes aren't used for InstantInfo but we could probably combine the code with AttractMode to make it DRY
@@ -6650,7 +6650,7 @@ Sub tmrSJPScene_Timer
     Me.Enabled = False
     i = Me.UserValue
     i = i + 1
-    delay = 125
+    delay = 175
     FlexDMD.LockRenderThread
     If i = 1 Then   ' Turn on the first letter
         BWSJPScene.GetImage("img"&i).Visible = 1
@@ -6667,10 +6667,10 @@ Sub tmrSJPScene_Timer
         BWSJPScene.GetImage("img"&(i-1)).Visible = 0
         BWSJPScene.GetVideo("bwsjpvid").Visible = 0
         BWSJPScene.GetLabel("score").Visible = 1
-        PlaySoundVol "say-super-jackpot"
+        PlaySoundVol "say-super-jackpot",VolDef
         delay = 33
     ElseIf i < 73 Then  ' toggle inverted score with white background on and off
-        delay = 33
+        delay = 50
         If (i MOD 2) = 0 Then
             BWSJPScene.GetLabel("scoreinv").Visible = 1
             BWSJPScene.GetImage("blank").Visible = 1
@@ -7392,7 +7392,6 @@ End Class
 '   
 ' - Implement Wall MB countdown. Wall MB comes later
 ' - Finish BWmultiball
-'   √? scene, sound, and lighting effects for jackpots
 '   √? implement Super Jackpot at the battering ram
 '   √? implement SJP scene and lighting
 '   √? implement final post-multiball scene
@@ -7400,19 +7399,22 @@ End Class
 ' √? jackpot scenes need to be higher priority
 ' √? Baratheon didn't light as qualified until LOL targets had been completed 4 times
 ' √? need to reset drop targets for Baratheon mode
-' √? jackpot lights don't light immediately because setmodelights was done too soon
 ' - need a second sound for wildfire mini mode "hit"
 ' - final post-multiball scene score is being converted to scientific notation
+'   - worked when score was 9 digits with a non-zero second last digit
 ' - in Targaryen battle mode, number is way off to the left
 ' - In dual battle mode , there's a '0' in the top left corner of the right-hand battle
 ' - need more things awarding bonus
 ' - When Martell HurryUp ends, goes back to Battle mode with timer negative
-' √? if we lose the ball during battle mode, scene doesn't reset. Need to call EndbattleMode
 ' - Martell battle mode has "shoot orbits" and score (or hurryUp?) on top of each other
 ' √? Martell mode wasn't marked as done when 3 shots were completed.
-
-' √? dual battle mode scene is unfinished. No alignment is being done. HurryUp for Martell not set up. tmr3 is not set up
-' √?  hurryup disabled in scenemask for now.
+' - "Shoot orbits" still overlaps timer
+' - top right gate doesn't close. top left does
+' - in high score enter initials, display stays blank (but entering works)
+' - during match, "MATCH" never changes to number
+' - After match sequence, game doesn't change to "GAME OVER" and show attract sequence
+' - DMD sometimes plays scenes twice, producing an echo of sound too
+' - InstantInfo shows blank screen for scores. All others work
 
 ' √? combo multiplier, or score, doesn't update until ball is back in play
 ''
