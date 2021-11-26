@@ -933,9 +933,9 @@ Sub HighScoreEntryInit()
         HSScene.GetLabel("name").SetAlignedPosition 2,2,FlexDMD_Align_TopLeft
         HSscene.AddActor FlexDMD.NewLabel("initials",FlexDMD.NewFont("skinny10x12.fnt", vbWhite, vbWhite, 0),">     <")
         HSScene.GetLabel("initials").SetAlignedPosition 64,16,FlexDMD_Align_CENTER
+        DMDFlush()
         DMDDisplayScene HSscene
     End If
-    DMDFlush()
     HighScoreDisplayNameNow()
 
     HighScoreFlashTimer.Interval = 250
@@ -1501,8 +1501,8 @@ Sub tmrDMDUpdate_Timer
                 ' Play the scene, and a sound if there's one to accompany it
                 bDefaultScene = False
                 debug.print "Displaying scene at " &j
-                DMDDisplayScene DMDSceneQueue(j,0)
                 DMDSceneQueue(j,6) = DMDtimestamp
+                DMDDisplayScene DMDSceneQueue(j,0)
                 If DMDSceneQueue(j,5) <> ""  Then 
                     PlaySoundVol DMDSceneQueue(j,5),VolDef
                 ' Note, code below is game-specific - triggers the SuperJackpot scene update timer as soon as the scene plays
@@ -2369,7 +2369,8 @@ Dim TimerTimestamp(30)  ' Each timer's end timestamp
 Dim TimerSubroutine     ' Names of subroutines to call when each timer's time expires
 ' Timers 1 - 4 can't be frozen. if adding more unfreezable timers, put them next and adjust the number in tmrGame_Timer sub
 TimerSubroutine = Array("","UpdateChooseBattle","PreLaunchBattleMode","LaunchBattleMode","UpdateBattleMode","BattleModeTimer1","BattleModeTimer2", _ 
-                        "MartellBattleTimer","HurryUpTimer","ResetComboMultipliers","ModePauseTimer","BlackwaterSJPTimer","WildfireModeTimer")
+                        "MartellBattleTimer","HurryUpTimer","ResetComboMultipliers","ModePauseTimer","BlackwaterSJPTimer","WildfireModeTimer", _
+                        "UPFMultiplierTimer")
 Const tmrUpdateChooseBattle = 1 ' Update DMD timers during Choose Your Battle
 Const tmrChooseBattle = 2       ' Countdown timer for choosing your Battle
 Const tmrLaunchBattle = 3       ' After battle is chosen, countdown to launch while scenes play. Can be aborted with flippers
@@ -2382,7 +2383,8 @@ Const tmrComboMultplier = 9     ' Timeout timer for Combo multipliers
 Const tmrModePause = 10         ' "no activity" timer that will pause battle mode timers if it elapses
 Const tmrBlackwaterSJP = 11     ' SuperJackpot battering ram countdown timer
 Const tmrWildfireMode = 12      ' Wildfire Mini Mode timer
-Const MaxTimers = 12     ' Total number of defined timers. There MUST be a corresponding subroutine for each
+Const tmrUPFMultiplier = 13
+Const MaxTimers = 13     ' Total number of defined timers. There MUST be a corresponding subroutine for each
 
 'HurryUp Support
 Dim HurryUpValue
@@ -2411,14 +2413,15 @@ Dim bPlayfieldValidated
 Dim bMysteryLit
 Dim bSwordLit           ' TODO: Saved across balls?
 Dim bElevatorShotUsed   ' Whether a shot to the upper playfield via the right orbit has been made this ball yet or not
+Dim bCastleShotAvailable ' Whether the ball has just been plunged to the upper PF
 Dim HouseBattle1        ' When in battle, the primary (top) House
 Dim HouseBattle2        ' When in two-way battle, the second House
 
 HouseColor = Array(white,white,yellow,red,purple,green,amber,blue)
 ' Assignment of centre playfield shields
 HouseSigil = Array(li38,li38,li41,li44,li47,li50,li53,li32)
-' Assignment of "shot" shields
-HouseShield = Array(li141,li141,li26,li114,li86,li77,li156,li98)
+' Assignment of "shot" shields. Last 3 are Upper PF target lights
+HouseShield = Array(li141,li141,li26,li114,li86,li77,li156,li98,li189,li192,li195)
 ' House Ability strings, used during House Selection
 HouseAbility = Array("","increase winter is coming","advance wall multiball","collect more gold","plunder rival abilities","increase hand of the king","action button = add a ball","")
 
@@ -2450,6 +2453,9 @@ ComboLights = Array(li89,li89,li101,li117,li144,li159)
 
 pfmuxlights = Array(li56,li59,li62,li65)
 
+' Upper PF lights
+Dim UPFLights
+UPFLights = Array(li186,li186,li189,li180,li192,li183,li195,li198,li210,li207,li204,li201,i213,li216)
 
 
 
@@ -2532,6 +2538,11 @@ Class cHouse
     Dim BWSJPBaseValue
     Dim BWJackpotValue
     Dim BWState
+    Dim UPFState            ' Upper PF State
+    Dim UPFLevel            ' Progress towards Castle Multiball
+    Dim UPFShotMask         ' Lit shots on the Upper PF
+    Dim UPFCastleShotMask   ' Saved shot mask state for standard mode
+    Dim UPFMultiplier
 
     Private Sub Class_Initialize(  )
 		dim i
@@ -2547,6 +2558,9 @@ Class cHouse
         QualifyValue = 100000
         bBattleReady = False
         LockWall.collidable = False
+        UPFState = 0
+        UPFLevel = 1
+        UPFShotMask = 42    ' Shots 1, 3 and 5
 	End Sub
 
     Public Property Let MyHouse(h) 
@@ -2583,6 +2597,8 @@ Class cHouse
             If bQualified(i) and Not bCompleted(i) then t = True
         Next
         BattleReady = t
+        UPFState = 0
+        UPFMultiplier = 1
     End Sub
 
     ' Say the house name. Include "house " if not said before
@@ -2643,13 +2659,16 @@ Class cHouse
 
         If HouseBattle1 > 0 Then MyBattleState(HouseBattle1).SetBattleLights
         If HouseBattle2 > 0 Then MyBattleState(HouseBattle2).SetBattleLights
+        SetUPFLights
     End Sub
+
 
     Public Sub SetBWJackpots
         Dim i
         BWJackpotLevel = 1
         BlackwaterScore = 0
         BWState = 1
+        SetUPFState
         For i = 1 to 7
             If i <> Baratheon and i <> Tyrell Then BWJackpotShots(i) = 1
         Next
@@ -2705,10 +2724,11 @@ Class cHouse
         FlexDMD.UnlockRenderThread
     End Sub
 
-    Public Sub ScoreSJP
-        DMDBlackwaterSJPScene FormatScore((BWJackpotValue*BWJackpotLevel*6 + 10000000)*PlayfieldMultiplierVal)
-        AddScore(BWJackpotValue*BWJackpotLevel*6 + 10000000)
-        BlackwaterScore = BlackwaterScore + ((BWJackpotValue*BWJackpotLevel*6+10000000)*PlayfieldMultiplierVal)
+    ' m = UPF multiplier. 0 if not a UPF shot
+    Public Sub ScoreSJP(m)
+        DMDBlackwaterSJPScene FormatScore((BWJackpotValue*BWJackpotLevel*6 + 10000000)*(PlayfieldMultiplierVal+m))
+        Score(CurrentPlayer) = Score(CurrentPlayer) + points * (PlayfieldMultiplierVal+m)
+        BlackwaterScore = BlackwaterScore + ((BWJackpotValue*BWJackpotLevel*6+10000000)*(PlayfieldMultiplierVal+m))
     End Sub
 
     ' Main function that handles processing the 7 main shots in the game.
@@ -2866,6 +2886,232 @@ Class cHouse
         bCompleted(h) = True
         bQualified(h) = False
         ' TODO Add support for Greyjoy gaining other houses' abilities
+    End Sub
+
+    '***************************
+    ' Upper Playfield Processing
+    '***************************
+
+    ' UPF lights
+    ' 1 - li186 - Castle
+    ' 2 - li189 - Left target
+    ' 3 - li180 - Left outlane
+    ' 4 - li192 - Center target
+    ' 5 - li183 - Right outlane
+    ' 6 - li195 - Right target
+    ' 7 - li198 - shield
+    ' 11 - li201 - Castle MB
+    ' 10 - li204 - Breach
+    ' 9 - li207 - Charge
+    ' 8 - li210 - Arrows
+    ' 12 - li213 - 2X
+    ' 13 - li216 - 3X
+    
+    Public Sub SetUPFLights
+        Dim clr,i
+        If UPFState = 2 Then 'Blackwater MB
+            clr = green
+        ElseIf UPFState = 1 Then
+            clr = HouseColor(HouseBattle1)
+        Else clr = ice
+        For i = 1 to 13 : UPFLights(i).State = 0 : UPFLights(i).BlinkInterval = 100 : Next
+        SetLightColor UPFLights(1),amber,1  ' Castle is lit amber unless it's not
+
+        ' top lights
+        If UPFState <> 1 Or HouseBattle2 = 0 Then ' normal single flashing colour
+            For i = 1 to 8
+                If (UPFShotMask And 2^(i-1)) > 0 Then SetLightColor UPFLights(i),clr,2
+            Next
+            For i = 8 to 10 : HouseShield(i).TimerEnabled = False : Next
+        Else ' Stacked battle mode, use timers to cycle through colours
+            For i = 8 to 10
+                If (i=8 and (UPFShotMask And 2) > 0) Or (i=9 And (UPFShotMask And 8) > 0 ) Or (i=10 And (UPFShotMask And 32) > 0) Then
+                    ModeLightState(i,0) = 3
+                    ModeLightState(i,1) = 0
+                    ModeLightState(i,2) = clr
+                    ModeLightState(i,3) = HouseColor(HouseBattle2)
+                    HouseShield(i).TimerInterval = 100
+                    HouseShield(i).TimerEnabled = True
+                Else
+                    HouseShield(i).TimerEnabled = False
+                End If
+            Next
+        End If
+
+        ' Shield
+        If UPFState > 0 Then SetLightColor li198,clr,2
+        ' Levels
+        If UPFState = 0 Then
+            For i = 1 to 4
+                If UPFLevel = i Then 
+                    SetLightColor UPFLights(i+7),clr,2
+                ElseIf UPFLevel > i Then
+                    SetLightColor UPFLights(i+7),clr,1
+                End If
+            Next
+        End If
+        
+        ' UPF playfield mult
+        If UPFMultiplier = 2 Then 
+            SetLightColor li213,amber,2
+        ElseIf UPFMultiplier = 3 Then
+            SetLightColor li213,amber,1
+            SetLightColor li216,amber,2
+        End If
+    End Sub
+
+    ' Set up the UpperPF state.
+    ' If reset=true, reset to initial state for the mode its entering
+    Public Sub SetUPFState(reset)
+        Dim i
+        If PlayerMode = 1 Then
+            UPFState = 1
+            If reset then UPFShotMask = 42
+        ElseIf bBWMultiballActive Then
+            UPFState = 2
+            If reset then UPFShotMask = 42
+        Else ' PlayerMode 0
+            UPFState = 0
+            If reset then UPFShotMask = 42 Else UPFShotMask = UPFCastleShotMask
+        End If
+    End Sub
+
+    Public Sub ResetUPFMultiplier : UPFMultiplier = 1 : li213.State=0 : li216.State=0 : End Sub
+
+
+    ' Process a hit on a UPF switch. Numbering:
+    '  1 - Castle loop
+    '  2 - left target
+    '  3 - left outlane
+    '  4 - center target
+    '  5 - right outlane
+    '  6 - right target
+    '  7 - left inlane
+    '  8 - right inlane
+    Public Sub RegisterUPFHit(sw)
+
+        Select Case sw
+            Case 1 ' Castle loop shot
+                'TODO need sound effect for Castle loop shot
+                If UPFMultiplier < 3 Then ' Increase UPF multiplier
+                    UPFMultiplier = UPFMultiplier + 1
+                    SetGameTimer tmrUPFMultiplier,30000
+                    SetUPFLights
+                End If
+                If (UPFShotMask And 1) > 0 Then     ' Castle was lit
+                    Select Case UPFState
+                        Case 0: IncreaseUPFLevel
+                        Case 1 ' Battlemode hit
+                            ' Award a castle for each battle mode that's active
+                            ' 1st castle is 25M, 2nd is 50M, etc plus 7.5M Bonus per
+                            ' If 2 castles are scored at once, only second is displayed
+                        Case 2 ' BWMB state - does nothing?
+                    End Select
+                    SetUPFLights
+                ElseIf UPFState = 1 Then
+                    ' Castle wasn't lit but we're in battle mode
+                    House(CurrentPlayer).BattleState(HouseBattle1).RegisterCastleHit
+                    If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).RegisterCastleHit
+                End If
+            Case 2,4,6  ' Standup target
+                If (UPFShotMask And (2^(sw-1))) > 0 Then ' Target was lit
+                    Select Case UPFState
+                        Case 0 ' Castle MB mode
+                            AddScore 250000*UPFMultiplier
+                            AddBonus 50000
+                            UPFShotMask = UPFShotMask Xor (2^(sw-1))
+                            If UPFShotMask = 0 Then UPFShotMask = 20 ' Light outlanes
+                            UPFCastleShotMask = UPFShotMask
+                            PlaySoundVol "gotfx-ramphit1",VolDef
+                        Case 1 ' Battle mode
+                            House(CurrentPlayer).BattleState(HouseBattle1).AddTime 5
+                            If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).AddTime 5
+                            ' In Battle mode, hit sequence goes:
+                            '  - hit any target to light two other targets
+                            '  - hit either outside target to light center target
+                            '  - hit center target to light Castle
+                            Select Case UPFShotMask
+                                Case 42: UPFShotMask = 34 ' light outside targets
+                                Case 34: UPFSHotMask = 8  ' light center target
+                                Case 8: UPFShotMask = 1   ' light Castle loop
+                            End Select
+                            PlaySoundVol "gotfx-ramphit1",VolDef
+                        Case 2 ' BW Multiball mode
+                            If UPFSJP Then
+                                Dim jpscore
+                                UPFSJP = False
+                                UPFShotMask = 42
+                                If UPFMultiplier > 1 Then ScoreSJP UPFMultiplier Else ScoreSJP 0
+                            Else
+                                UPFShotMask = UPFShotMask Xor (2^(sw-1))
+                                If UPFMultiplier = 1 Then
+                                    jpscore = BWJackpotValue*BWJackpotLevel*PlayfieldMultiplierVal
+                                Else
+                                    jpscore = BWJackpotValue*BWJackpotLevel*(PlayfieldMultiplierVal+UPFM)
+                                End If
+                                ' Do Jackpot scene
+                                Score(CurrentPlayer) = Score(CurrentPlayer) + jpscore
+                                BlackwaterScore = BlackwaterScore + jpscore
+                                DMDPlayHitScene "got-bwexplosion5","gotfx-bwexplosion",BWExplosionTimes(5), _
+                                        BWJackpotLevel&"X BLACKWATER JACKPOT",BWJackpotValue*UPFMultiplier*BWJackpotLevel,"",UPFMultiplier,3
+                                LightEffect 3
+                                If UPFShotMask = 0 Then UPFShotMask = 8 : UPFSJP = True
+                            End If
+                    End Select
+                    SetUPFLights
+                Else
+                    ' Not lit. Just give a few points
+                    AddScore 560*UPFMultiplier
+                End If
+            Case 3,5    ' Outlanes
+                If (UPFShotMask And (2^(sw-1))) > 0 Then  ' outlane was lit
+                    Select Case UPFState
+                        Case 0: IncreaseUPFLevel ' Castle MB mode
+                        Case 1 ' Battle mode - are these used at all?
+                            AddScore 560*UPFMultiplier
+                            ' TODO: If the Castle doesn't finish the mode, then outlane shots do advance the mode. 
+                        Case 2 ' BWMB mode - are these used?
+                            AddScore 560*UPFMultiplier
+                    End Select
+                    SetUPFLights
+                End If
+            Case 7: AddScore 560*UPFMultiplier ' Left inlane
+            Case 8      ' Right Inlane
+                AddScore 560*UPFMultiplier
+                If bCastleShotAvailable Then
+                    UPFShotMask = UPFShotMask Or 1
+                    bCastleShotAvailable = False
+                    SetUPFLights
+                End If
+        End Select
+
+    End Sub
+
+    ' Advance the UPF level, either thru Castle hit or outlane
+    ' Play the animation, add points. If it's the 4th hit, start Castle Multiball
+    Sub IncreaseUPFLevel
+        Dim delay,line1,line2,score,combo,format
+        ' Score a level towards Castle MB
+        score = (2500000 + 2500000*UPFLevel)*UPFMultiplier
+        AddScore score
+        line2 = FormatScore(score)
+        format=3:combo=UPFMultiplier
+        Select Case UPFLevel
+            Case 1: line1 = "ARCHERS!"
+            Case 2: line1 = "CHARGE!"
+            Case 3: line1 = "BREACH!"
+            Case 4: line1 = "CASTLE":line2="MULTIBALL":format=4:combo=0
+        End Select
+        ' TODO: Do a "hit" scene for Castle MB advance
+        If UPFLevel = 4 Then delay = 2.5 Else delay = 1.5
+        DMDPlayHitScene "got-castlemblevel"&UPFLevel,"gotfx-castlemblevel"&UPFLevel,delay,line1,line2,"",combo,format
+        UPFLevel = UPFLevel + 1
+        If UPFLevel = 5 Then 
+            'TODO: Castle MULTIBALL!!
+        Else
+            PlaySoundAt SoundFXDOF("fx_resetdrop", 119, DOFPulse, DOFcontactors), Target90
+            Target90.IsDropped=0
+        End If
     End Sub
 
 End Class
@@ -3369,10 +3615,67 @@ Class cBattleState
         End if
     End Sub
 
+    ' Add time to a mode
+    Public Sub AddTime(t)
+        If MyHouse = Targaryen Or (MyHouse = Martell And State = 2) Then ' Add value to HurryUp
+            HurryUpValue = HurryUpValue + (HurryUpChange * 5 * t)
+        Else    ' timer
+            If MyHouse = HouseBattle2 Then 
+                TimerTimestamp(tmrBattleMode2) = TimerTimestamp(tmrBattleMode2)+(t*10)
+            Else 
+                TimerTimestamp(tmrBattleMode1) = TimerTimestamp(tmrBattleMode1)+(t*10)
+            End If
+        End If
+        ' TODO - play the "Add Time" scene
+    End Sub
+
+    ' Upper Playfield Castle loop. 
+    ' When not lit, contributes to mode completion
+    Public Sub RegisterCastleHit
+        Dim i
+        Select Case MyHouse
+            Case Stark: Me.RegisterHit Stark : Me.AddTime 5
+            Case Baratheon: RegisterSpinnerHit : Me.AddTime 5
+            Case Lannister
+                If ShotMask = 0 Then
+                    ' Register hit against first lit gold target
+                    For i = 0 to 4
+                        If (GoldShotMask And 2^i) > 0 then RegisterGoldHit i : Exit For
+                    Next
+                Else
+                    ' Register hit against first shot
+                    For i = 1 to 7
+                        If (ShotMask And 2^i) > 0 Then RegisterHit i : Exit For
+                    Next
+                End If
+                Me.AddTime 5
+            Case Greyjoy
+                ' Register hit against first shot
+                For i = 1 to 7
+                    If (ShotMask And 2^i) > 0 Then RegisterHit i : Exit For
+                Next
+            Case Tyrell: If (State MOD 2) = 0 Then Me.RegisterHit Tyrell Else Me.RegisterHit Stark
+            Case Martell: If (State = 1) Then Me.RegisterHit Greyjoy Else Me.AddTime 5
+            Case Targaryen: Me.AddTime 5
+        End Select
+    End Sub
+
+    ' Upper Playfield Castle Loop completes this Mode when lit
+    ' But no score awarded, other than what they get from the castle itself
+    ' TODO: If we are Targaryen, there are special rules
+    Public Sub RegisterCastleComplete
+        bComplete = True
+        House(CurrentPlayer).HouseCompleted MyHouse
+
+        EndBattleMode
+
+        SetLightColor HouseSigil(MyHouse),HouseColor(SelectedHouse),1
+    End Sub
+
     ' Some battles involve the spinner
     Public Sub RegisterSpinnerHit
         If MyHouse <> Baratheon Then Exit Sub
-        ShotMask = ShotMask And 239 ' turn off bit 4
+        ' ShotMask = ShotMask And 239 ' turn off bit 4
         HouseValue = HouseValue + HouseValueIncrement
         If HouseValue > 150000000 Then HouseValue = 150000000
         DMDBaratheonSpinnerScene HouseValue
@@ -3449,7 +3752,7 @@ Class cBattleState
             Case Stark,Baratheon: line3 = "VALUE = "&FormatScore(HouseValue) : x3 = 40: x4 = 40: y4 = 22
             Case Lannister,Greyjoy: line3 = "SHOTS = " & 5-CompletedShots : x3 = 20: x4 = 56
             Case Tyrell: x4 = 40
-            Case Martell: line3 = "SHOOT ORBITS":x3=36:x4 = 56
+            Case Martell: line3 = "SHOOT ORBITS":x3=28:x4 = 56
         End Select
 
         
@@ -3514,9 +3817,7 @@ Class cBattleState
         BattleScene.GetLabel("line3").SetAlignedPosition 32,16,FlexDMD_Align_Center
         BattleScene.GetLabel("tmr"&n).SetAlignedPosition 62,1,FlexDMD_Align_TopRight
         BattleScene.GetLabel("obj").SetAlignedPosition 1,1,FlexDMD_Align_TopLeft
-        For i = 1 to 5
-            BattleScene.AddActor FlexDMD.NewLabel("combo"&i, FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 0), "0")
-        Next
+        
         Set MyBattleScene = BattleScene
         bSmallBattleScene = True
     End Function
@@ -3733,8 +4034,13 @@ Sub ResetForNewPlayerBall()
     bMysteryLit = False     ' TODO: Are these carried over across balls?
     bSwordLit = False
     bElevatorShotUsed = False
+    bCastleShotAvailable = False
     topgatel.open = True
     MoveDiverter 1
+
+    ' Drop the right ramp target
+    PlaySoundAt "fx_droptarget", Target90
+    Target90.IsDropped = 1
 
     HouseBattle1 = 0 : HouseBattle2 = 0
 
@@ -4266,9 +4572,11 @@ Sub EndOfGame()
 	' Drop the lock walls just in case the ball is behind it (just in Case)
 	SwordWall.collidable = False
     LockWall.collidable = False
-	vpmtimer.addtimer 1000, "LockWallReset'"
+	vpmtimer.addtimer 1000, "LockWallReset '"
 
-    ' terminate all modes - eject locked balls
+    ' TODO: Add an end-of-game pithy quote
+    DMD "_", "GAME OVER", "",eNone,eNone,eNone,6000,true,""
+
     ' most of the modes/timers terminate at the end of the ball
 
 	'PlaySong "m_end"
@@ -4280,6 +4588,8 @@ Sub EndOfGame()
 	'bFlash2Enabled = True
 	'bFlash3Enabled = True
 	'bFlash4Enabled = True
+
+    StartAttractMode
 
 ' you may wish to light any Game Over Light you may have
 End Sub
@@ -4471,7 +4781,7 @@ End Sub
 ' 1st element of array is number of states for this light
 ' This Sub sets the jackpot light. The SetModeLights in the BattleState class
 ' handles all of the battle-related colours
-Dim ModeLightState(7,10)
+Dim ModeLightState(10,10)
 Sub SetModeLights
     Dim i
 
@@ -4480,7 +4790,7 @@ Sub SetModeLights
     ' Set up timers on the Shield lights that have more than one state defined
     ' Turn off the lights of those that don't
     For i = 1 to 7
-        If ModeLightState(i,0) < 2 Then 
+        If ModeLightState(i,0) < 2 Then
             HouseShield(i).TimerEnabled = False 
             HouseShield(i).State = 0
         Else 
@@ -4570,6 +4880,38 @@ Sub li98_Timer
     Me.TimerEnabled = True
 End Sub
 
+Sub li189_Timer
+    Dim uv
+    uv = Me.UserValue
+    Me.TimerEnabled = False
+    If ModeLightState(8,uv) > 0 Then SetLightColor Me,ModeLightState(8,uv),1 Else Me.state=0
+    uv = uv + 1
+    If uv > ModeLightState(8,0) Then uv = 1
+    Me.UserValue = uv
+    Me.TimerEnabled = True
+End Sub
+
+Sub li192_Timer
+    Dim uv
+    uv = Me.UserValue
+    Me.TimerEnabled = False
+    If ModeLightState(9,uv) > 0 Then SetLightColor Me,ModeLightState(9,uv),1 Else Me.state=0
+    uv = uv + 1
+    If uv > ModeLightState(9,0) Then uv = 1
+    Me.UserValue = uv
+    Me.TimerEnabled = True
+End Sub
+
+Sub li195_Timer
+    Dim uv
+    uv = Me.UserValue
+    Me.TimerEnabled = False
+    If ModeLightState(10,uv) > 0 Then SetLightColor Me,ModeLightState(10,uv),1 Else Me.state=0
+    uv = uv + 1
+    If uv > ModeLightState(10,0) Then uv = 1
+    Me.UserValue = uv
+    Me.TimerEnabled = True
+End Sub
 
 '*******************************************************
 ' Combo multiplier light timer
@@ -5060,6 +5402,13 @@ Sub ROrbitsw31_Hit
     LastSwitchHit = "ROrbitsw31"
 End Sub
 
+' Right ramp drop target
+Sub Target90_Dropped
+    PlaySoundAt "fx_droptarget", Target90
+    If Tilted Then Exit Sub
+    AddScore 30
+End Sub
+
 '******************
 ' CastleWall Kicker
 '******************
@@ -5086,17 +5435,28 @@ Sub KickerFloor_Hit
     PlaySoundAt "fx_kicker",KickerFloor
     ' TODO Add logic for any other modes that kick the ball to the Iron Throne
     If bMysteryLit or bEBisLit Then
-        KickerTopFloor.CreateBall
-        KickerTopFloor.Kick 90,3
+        vpmTimer.AddTimer 500,"ElevatorKick 2 '"
+        If Not bMultiBallMode Then FreezeAllGameTimers
     Else
         bElevatorShotUsed = True
-        KickerUPF.CreateBall
-        KickerUPF.Kick 180,5
+        bCastleShotAvailable = True
+        vpmTimer.AddTimer 500,"ElevatorKick 1 '"
     End If
      ' TODO: need logic for when the top gate should be left open
     If bElevatorShotUsed And HouseBattle1 <> Greyjoy And HouseBattle2 <> Greyjoy And HouseBattle1 <> Martell And HouseBattle2 <> Martell Then
         topgatel.open = False
     End If
+End Sub
+
+Sub ElevatorKick(f)
+    Select Case f
+        Case 1
+            KickerUPF.CreateBall
+            KickerUPF.Kick 180,5
+        Case 2
+            KickerTopFloor.CreateBall
+            KickerTopFloor.Kick 90,3
+    End Select
 End Sub
 
 Sub KickerUPF_Hit
@@ -5139,6 +5499,73 @@ Sub sw48_Hit
     End If
     LastSwitchHit = "sw48"    
 End Sub
+
+
+'*************************
+' Upper Playfield Switches
+'*************************
+
+'Castle loop
+Sub sw79_Hit
+    If Tilted then Exit Sub
+    House(CurrentPlayer).RegisterUPFHit 1
+End Sub
+
+' Left target
+Sub sw80_Hit
+    If Tilted then Exit Sub
+    House(CurrentPlayer).RegisterUPFHit 2
+End Sub
+
+'Left outlane
+Sub sw77_Hit
+    If Tilted then Exit Sub
+    House(CurrentPlayer).RegisterUPFHit 3
+End Sub
+
+'Center target
+Sub sw81_Hit
+    If Tilted then Exit Sub
+    House(CurrentPlayer).RegisterUPFHit 4
+End Sub
+
+' Right outlane
+Sub sw78_Hit
+    If Tilted then Exit Sub
+    House(CurrentPlayer).RegisterUPFHit 5
+End Sub
+
+' Right target
+Sub sw82_Hit
+    If Tilted then Exit Sub
+    House(CurrentPlayer).RegisterUPFHit 6
+End Sub
+
+' Left inlane
+Sub sw83_Hit
+    If Tilted then Exit Sub
+    House(CurrentPlayer).RegisterUPFHit 7
+End Sub
+
+' Right inlane
+Sub sw84_Hit
+    If Tilted then Exit Sub
+    House(CurrentPlayer).RegisterUPFHit 8
+End Sub
+
+' Left sling
+' TODO: Add a sound?
+Sub sw85_Hit
+    If Tilted then Exit Sub
+    AddScore 110
+End Sub
+
+' Right sling
+Sub sw85_Hit
+    If Tilted then Exit Sub
+    AddScore 110
+End Sub
+
 
 '*****************
 ' Gold targets hit
@@ -5221,7 +5648,7 @@ Sub BatteringRam_Hit
         End If
         bWildfireLit = 2
     End If
-    If bBlackwaterSJPMode Then House(CurrentPlayer).ScoreSJP    'Super Jackpot!!
+    If bBlackwaterSJPMode Then House(CurrentPlayer).ScoreSJP 0    'Super Jackpot!!
 End Sub
 
 Sub WildfireModeTimer
@@ -5653,6 +6080,10 @@ Sub BlackwaterSJPTimer
     If bBWMultiballActive Then House(CurrentPlayer).IncreaseBWJackpotLevel
 End Sub
 
+Sub UPFMultiplierTimer
+    House(CurrentPlayer).ResetUPFMultiplier
+End Sub
+
 '*********************
 ' HurryUp Support
 '*********************
@@ -5925,6 +6356,8 @@ End Sub
 ' Handle releasing or locking the ball after choosing battle
 Sub LaunchBattleMode
     TimerFlags(tmrLaunchBattle) = 0
+    PlaySoundAt "fx_droptarget", Target90
+    Target90.IsDropped = 1
     If PlayerMode = -2.1 Then PlayerMode = 1
     If bBattleCreateBall Then   'LockBall has already run. Create the new ball now
         bBattleCreateBall = False
@@ -6222,6 +6655,12 @@ Sub InstantInfo
             Case 1
                 scene.AddActor FlexDMD.NewLabel("line1",FlexDMD.NewFont(font,vbWhite,vbWhite,0),line1)
                 scene.GetLabel("line1").SetAlignedPosition 64,16,FlexDMD_Align_Center
+            Case 2
+                Set font1 = FlexDMD.NewFont(font,vbWhite,vbWhite,0)
+                scene.AddActor FlexDMD.NewLabel("line1",font1,line1)
+                scene.AddActor FlexDMD.NewLabel("line2",font1,line2)
+                scene.GetLabel("line1").SetAlignedPosition 64,9,FlexDMD_Align_Center
+                scene.GetLabel("line2").SetAlignedPosition 64,22,FlexDMD_Align_Center
             Case 3
                 scene.AddActor FlexDMD.NewLabel("line1",FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0),line1)
                 scene.AddActor FlexDMD.NewLabel("line2",FlexDMD.NewFont("skinny10x12.fnt",vbWhite,vbWhite,0),line2)
@@ -6694,6 +7133,7 @@ Sub DMDBlackwaterCompleteScene
     Dim scene
     If bUseFlexDMD Then
         If BlackwaterScore > 0 Then
+            If (BlackwaterScore Mod 100) = 0 Then BlackwaterScore = BlackwaterScore + 10
             Set scene = NewSceneWithVideo("bwcomplete","got-blackwatertotal")
             scene.AddActor FlexDMD.NewLabel("txt",FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbBlack, 0),"BLACKWATER TOTAL")
             scene.GetLabel("txt").SetAlignedPosition 64,10,FlexDMD_Align_Center
@@ -6741,7 +7181,8 @@ End Sub
 '           0 - top line 3x7, middle line 7x12 skinny, bottom line 3x5. This is used for all Qualfying hits
 '           1 - top line 5x7, middle line 7x12 skinny, bottom line 7x5. Used for most battle scenes
 '           2 - 3 lines of 3x7 font, used for lannister battle gold hits
-'           3 - 2 lines of text. Top line 3x7, main line 6x8 score. Used for jackpots and Targaryen hurry-up hits
+'           3 - 2 lines of text. Top line 3x7, main line 6x8 score. Used for jackpots, Castle MB levels, and Targaryen hurry-up hits
+'           4 - 2 lines of Skinny font. Used for Castle Multiball start
 Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo,format)
     Dim scene,scenevid,font1,font2,font3,x,y1,y2,y3,combotxt,pri
     If bUseFlexDMD Then
@@ -6765,6 +7206,10 @@ Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo,format)
             Case 3
                 Set font1 = FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbWhite, 0)
                 Set font2 = FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbWhite, 0)
+                Set font3 = font1
+            Case 4
+                Set font1 = FlexDMD.NewFont("skinny10x12.fnt", vbWhite, vbWhite, 0)
+                Set font2 = font1
                 Set font3 = font1
         End Select
 
@@ -6799,9 +7244,9 @@ Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo,format)
         End With
 
         ' If line2 is a score, flash it
-        If format <> 2 Then BlinkActor scene.GetGroup("hitscenetext").GetLabel("line2"),100,10        
+        If format <> 2 and format <> 4 Then BlinkActor scene.GetGroup("hitscenetext").GetLabel("line2"),100,10        
 
-        If format = 3 Then scene.GetGroup("hitscenetext").GetLabel("line3").Visible = False
+        If format > 2 Then scene.GetGroup("hitscenetext").GetLabel("line3").Visible = False
 
         ' After delay, disable video/image and enable text
         ' TODO: Make the transition from video to text cool.
@@ -7222,6 +7667,9 @@ Sub DMDCreateAlternateScoreScene(h1,h2)
         scene2.SetAlignedPosition 64,0,FlexDMD_Align_TopLeft
         scene.AddActor scene1
         scene.AddActor scene2
+        For i = 1 to 5
+            scene.AddActor FlexDMD.NewLabel("combo"&i, FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 1), "1X")
+        Next
         mask = 104  ' combos, tmr1, tmr2
         If h1 = Targaryen or h2 = Targaryen Then mask = mask Or 16 ' HurryUp
         If h1 = Martell or h2 = Martell Then mask = mask Or 144 'HurryUp, tmr3
@@ -7340,13 +7788,14 @@ Sub DMDDoMatchScene(m)
         scene.AddActor FlexDMD.NewImage("bkgr","got-blankgrey.png")
         scene.AddActor FlexDMD.NewLabel("match1",FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbBlack, 1),"MATCH")
         scene.GetLabel("match1").SetAlignedPosition 84,16,FlexDMD_Align_CENTER
+        If m = 0 Then m = "00"
         scene.AddActor FlexDMD.NewLabel("match2",FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", vbWhite, vbBlack, 1),m)
         With scene.GetLabel("match2")
             .SetAlignedPosition 84,16,FlexDMD_Align_CENTER
             .Visible = 0
         End With
-        DelayActor scene.GetLabel("match1"),3300,False
-        DelayActor scene.GetLabel("match2"),3300,True
+        DelayActor scene.GetLabel("match1"),3.3,False
+        DelayActor scene.GetLabel("match2"),3.3,True
         scene.AddActor FlexDMD.NewLabel("Score1", FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0),Score(0))
         scene.GetLabel("Score1").SetAlignedPosition 1,1,FlexDMD_Align_TopLeft
         If PlayersPlayingGame > 1 Then 
@@ -7387,7 +7836,7 @@ End Class
 '   - need to modify Drain and CreateNewBall code to not think we’re in multiball mode
 ' √ implement elevator logic
 ' - fix right ramp to upper PF
-' - Implement upper PF switches
+' √ Implement upper PF switches
 ' - Implement playfield lighting effects
 '   
 ' - Implement Wall MB countdown. Wall MB comes later
@@ -7403,18 +7852,18 @@ End Class
 ' - final post-multiball scene score is being converted to scientific notation
 '   - worked when score was 9 digits with a non-zero second last digit
 ' - in Targaryen battle mode, number is way off to the left
-' - In dual battle mode , there's a '0' in the top left corner of the right-hand battle
+' √? In dual battle mode , there's a '0' in the top left corner of the right-hand battle
 ' - need more things awarding bonus
 ' - When Martell HurryUp ends, goes back to Battle mode with timer negative
 ' - Martell battle mode has "shoot orbits" and score (or hurryUp?) on top of each other
 ' √? Martell mode wasn't marked as done when 3 shots were completed.
-' - "Shoot orbits" still overlaps timer
+' √? "Shoot orbits" still overlaps timer
 ' - top right gate doesn't close. top left does
-' - in high score enter initials, display stays blank (but entering works)
-' - during match, "MATCH" never changes to number
-' - After match sequence, game doesn't change to "GAME OVER" and show attract sequence
+' √? in high score enter initials, display stays blank (but entering works)
+' √? during match, "MATCH" never changes to number
+' √? After match sequence, game doesn't change to "GAME OVER" and show attract sequence
 ' - DMD sometimes plays scenes twice, producing an echo of sound too
-' - InstantInfo shows blank screen for scores. All others work
+' √? InstantInfo shows blank screen for scores. All others work
 
 ' √? combo multiplier, or score, doesn't update until ball is back in play
 ''
@@ -7435,4 +7884,3 @@ End Class
 ' Nice-To-Haves
 ' - Change the timer for selecting which house mode to play. It will start at three seconds. Each button press will add eight seconds. The timer will max out at 20 seconds.
 '    - Also, only display the instructions once per player.
-
