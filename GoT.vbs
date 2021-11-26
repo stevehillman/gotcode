@@ -1389,7 +1389,7 @@ Sub DMDEnqueueScene(scene,pri,mint,maxt,waitt,sound)
         debug.print "DMDSceneQueue too big! Discarding new queued items"
         DMDqTail = 64
     End if
-    debug.print "Enqueued scene at "&i
+    debug.print "Enqueued scene at "&i& " name: "&scene.Name
 End Sub
 
 ' Check the queue to see whether a scene willing to wait 'waitt' time would play
@@ -1500,7 +1500,7 @@ Sub tmrDMDUpdate_Timer
 
                 ' Play the scene, and a sound if there's one to accompany it
                 bDefaultScene = False
-                debug.print "Displaying scene at " &j
+                debug.print "Displaying scene at " &j & " name: "&DMDSceneQueue(j,0).Name
                 DMDSceneQueue(j,6) = DMDtimestamp
                 DMDDisplayScene DMDSceneQueue(j,0)
                 If DMDSceneQueue(j,5) <> ""  Then 
@@ -1703,6 +1703,7 @@ End Sub
 ' in this table this colors are use to keep track of the progress during the modes
 
 'colors
+Const cyan = 13
 Const midblue = 12
 Const ice = 11
 Const red = 10
@@ -1726,6 +1727,9 @@ Const teal = 0
 
 Sub SetLightColor(n, col, stat) 'stat 0 = off, 1 = on, 2 = blink, -1= no change
     Select Case col
+        Case cyan
+            n.color = RGB(0,18,18)
+            n.colorfull = RGB(0, 224, 240)
         Case midblue
             n.color = RGB(0,0,18)
             n.colorfull = RGB(0,0,255)
@@ -1752,7 +1756,7 @@ Sub SetLightColor(n, col, stat) 'stat 0 = off, 1 = on, 2 = blink, -1= no change
             n.colorfull = RGB(0, 192, 0)
         Case blue
             n.color = RGB(0, 18, 18)
-            n.colorfull = RGB(0, 255, 255)
+            n.colorfull = RGB(0, 160, 255)
         Case darkblue
             n.color = RGB(0, 8, 8)
             n.colorfull = RGB(0, 64, 64)
@@ -2455,7 +2459,7 @@ pfmuxlights = Array(li56,li59,li62,li65)
 
 ' Upper PF lights
 Dim UPFLights
-UPFLights = Array(li186,li186,li189,li180,li192,li183,li195,li198,li210,li207,li204,li201,i213,li216)
+UPFLights = Array(li186,li186,li189,li180,li192,li183,li195,li198,li210,li207,li204,li201,li213,li216)
 
 
 
@@ -2668,7 +2672,7 @@ Class cHouse
         BWJackpotLevel = 1
         BlackwaterScore = 0
         BWState = 1
-        SetUPFState
+        SetUPFState True
         For i = 1 to 7
             If i <> Baratheon and i <> Tyrell Then BWJackpotShots(i) = 1
         Next
@@ -2913,7 +2917,8 @@ Class cHouse
             clr = green
         ElseIf UPFState = 1 Then
             clr = HouseColor(HouseBattle1)
-        Else clr = ice
+        Else clr = cyan
+        End If
         For i = 1 to 13 : UPFLights(i).State = 0 : UPFLights(i).BlinkInterval = 100 : Next
         SetLightColor UPFLights(1),amber,1  ' Castle is lit amber unless it's not
 
@@ -3000,8 +3005,9 @@ Class cHouse
                 End If
                 If (UPFShotMask And 1) > 0 Then     ' Castle was lit
                     Select Case UPFState
-                        Case 0: IncreaseUPFLevel
+                        Case 0: IncreaseUPFLevel : UPFShotMask = 42 : UPFCastleShotMask = 42
                         Case 1 ' Battlemode hit
+                            UPFShotMask = 42
                             ' Award a castle for each battle mode that's active
                             ' 1st castle is 25M, 2nd is 50M, etc plus 7.5M Bonus per
                             ' If 2 castles are scored at once, only second is displayed
@@ -3066,7 +3072,7 @@ Class cHouse
             Case 3,5    ' Outlanes
                 If (UPFShotMask And (2^(sw-1))) > 0 Then  ' outlane was lit
                     Select Case UPFState
-                        Case 0: IncreaseUPFLevel ' Castle MB mode
+                        Case 0: IncreaseUPFLevel : UPFShotMas = 42 : UPFCastleShotMask = 42 ' Castle MB mode
                         Case 1 ' Battle mode - are these used at all?
                             AddScore 560*UPFMultiplier
                             ' TODO: If the Castle doesn't finish the mode, then outlane shots do advance the mode. 
@@ -3588,6 +3594,7 @@ Class cBattleState
             If Not bMultiBallMode Then
                 TimerFlags(tmrUpdateBattleMode) = 0     ' Disable the timer that updates the Battle Alternate Scene
                 DMDResetScoreScene
+                House(CurrentPlayer).SetUPFState False
             End If
 
             If Not bComplete Then DoBattleCompleteScene
@@ -4684,6 +4691,7 @@ Sub StopMBmodes
     Else
         DMDResetScoreScene
     End If
+    House(CurrentPlayer).SetUPFState False
     SetPlayfieldLights
 End Sub
 
@@ -5512,7 +5520,7 @@ Sub sw79_Hit
 End Sub
 
 ' Left target
-Sub sw80_Hit
+Sub Target80_Hit
     If Tilted then Exit Sub
     House(CurrentPlayer).RegisterUPFHit 2
 End Sub
@@ -5524,7 +5532,7 @@ Sub sw77_Hit
 End Sub
 
 'Center target
-Sub sw81_Hit
+Sub Target81_Hit
     If Tilted then Exit Sub
     House(CurrentPlayer).RegisterUPFHit 4
 End Sub
@@ -5536,7 +5544,7 @@ Sub sw78_Hit
 End Sub
 
 ' Right target
-Sub sw82_Hit
+Sub Target82_Hit
     If Tilted then Exit Sub
     House(CurrentPlayer).RegisterUPFHit 6
 End Sub
@@ -5555,13 +5563,13 @@ End Sub
 
 ' Left sling
 ' TODO: Add a sound?
-Sub sw85_Hit
+Sub rlbandsw85_Hit
     If Tilted then Exit Sub
     AddScore 110
 End Sub
 
 ' Right sling
-Sub sw85_Hit
+Sub rlbandsw86_Hit
     If Tilted then Exit Sub
     AddScore 110
 End Sub
@@ -6359,6 +6367,7 @@ Sub LaunchBattleMode
     PlaySoundAt "fx_droptarget", Target90
     Target90.IsDropped = 1
     If PlayerMode = -2.1 Then PlayerMode = 1
+    House(CurrentPlayer).SetUPFState True
     If bBattleCreateBall Then   'LockBall has already run. Create the new ball now
         bBattleCreateBall = False
         If RealBallsInLock > BallsInLock Then
@@ -7641,7 +7650,7 @@ End Sub
 ' Set up an alternate score scene for battle mode. If two houses are stacked
 ' for battle, create a split screen scene
 Sub DMDCreateAlternateScoreScene(h1,h2)
-    Dim scene,scene1,scene2,vid,mask
+    Dim scene,scene1,scene2,vid,mask,i
     if Not bUseFlexDMD Then Exit Sub 
     If h2 <> 0 Then 
         Set scene = NewSceneWithVideo("battle","got-"&HouseToString(h2)&"battlesigil")
@@ -7856,14 +7865,17 @@ End Class
 ' - need more things awarding bonus
 ' - When Martell HurryUp ends, goes back to Battle mode with timer negative
 ' - Martell battle mode has "shoot orbits" and score (or hurryUp?) on top of each other
-' √? Martell mode wasn't marked as done when 3 shots were completed.
 ' √? "Shoot orbits" still overlaps timer
 ' - top right gate doesn't close. top left does
-' √? in high score enter initials, display stays blank (but entering works)
+' - in high score enter initials, letters overlap top row, and don't stay in one place. Use left instead of center
 ' √? during match, "MATCH" never changes to number
 ' √? After match sequence, game doesn't change to "GAME OVER" and show attract sequence
 ' - DMD sometimes plays scenes twice, producing an echo of sound too
 ' √? InstantInfo shows blank screen for scores. All others work
+' - UPF can't handle multiball and battle at the same time
+' - Match scene doesn't display at all. Gets enqueued but not played
+' - UPF targets don't score enough points
+' - UFP targets got reset, maybe by "pass for now"?
 
 ' √? combo multiplier, or score, doesn't update until ball is back in play
 ''
