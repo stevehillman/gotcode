@@ -932,7 +932,7 @@ Sub HighScoreEntryInit()
         HSscene.AddActor FlexDMD.NewLabel("name",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbWhite, 0),"YOUR NAME:")
         HSScene.GetLabel("name").SetAlignedPosition 2,2,FlexDMD_Align_TopLeft
         HSscene.AddActor FlexDMD.NewLabel("initials",FlexDMD.NewFont("skinny10x12.fnt", vbWhite, vbWhite, 0),">     <")
-        HSScene.GetLabel("initials").SetAlignedPosition 64,16,FlexDMD_Align_CENTER
+        HSScene.GetLabel("initials").SetAlignedPosition 40,20,FlexDMD_Align_TopLeft
         DMDFlush()
         DMDDisplayScene HSscene
     End If
@@ -1439,6 +1439,7 @@ End Function
 Dim bDefaultScene,DefaultScene
 Sub tmrDMDUpdate_Timer
     Dim i,j,bHigher,bEqual
+    tmrDMDUpdate.Enabled = False
     DMDtimestamp = DMDtimestamp + 100   ' Set this to whatever frequency the timer uses
     If DMDqTail = 0 Then ' Queue is empty - show default scene
         ' Exit fast if defaultscene is already showing
@@ -1485,10 +1486,12 @@ Sub tmrDMDUpdate_Timer
                 If DMDqHead > 64 Then       ' Ran past the end of the queue!
                     debug.print "DMDSceneQueue too big! Resetting"
                     DMDqHead = 0:DMDqTail = 0
+                    tmrDMDUpdate.Enabled = True
                     Exit Sub
                 End If
                 If DMDqHead = DMDqTail Then ' queue is empty
                     DMDqHead = 0:DMDqTail = 0
+                    tmrDMDUpdate.Enabled = True
                     Exit Sub
                 End If
 
@@ -1514,6 +1517,7 @@ Sub tmrDMDUpdate_Timer
             End If
         End If
     End If
+    tmrDMDUpdate.Enabled = True
 End Sub
     
 Dim DisplayingScene     ' Currently displaying scene
@@ -2564,6 +2568,7 @@ Class cHouse
         LockWall.collidable = False
         UPFState = 0
         UPFLevel = 1
+        UPFMultiplier = 1
         UPFShotMask = 42    ' Shots 1, 3 and 5
 	End Sub
 
@@ -2969,7 +2974,7 @@ Class cHouse
     ' If reset=true, reset to initial state for the mode its entering
     Public Sub SetUPFState(reset)
         Dim i
-        If PlayerMode = 1 Then
+        If PlayerMode = 1 Or PlayerMode = -2.1 Then
             UPFState = 1
             If reset then UPFShotMask = 42
         ElseIf bBWMultiballActive Then
@@ -2994,7 +2999,8 @@ Class cHouse
     '  7 - left inlane
     '  8 - right inlane
     Public Sub RegisterUPFHit(sw)
-
+        Dim i
+        i = RndNbr(3)
         Select Case sw
             Case 1 ' Castle loop shot
                 'TODO need sound effect for Castle loop shot
@@ -3005,7 +3011,7 @@ Class cHouse
                 End If
                 If (UPFShotMask And 1) > 0 Then     ' Castle was lit
                     Select Case UPFState
-                        Case 0: IncreaseUPFLevel : UPFShotMask = 42 : UPFCastleShotMask = 42
+                        Case 0: IncreaseUPFLevel : UPFShotMask = 42 : UPFCastleShotMask = 42 : PlaySoundVol "gotfx-wildfiremini",VolDef
                         Case 1 ' Battlemode hit
                             UPFShotMask = 42
                             ' Award a castle for each battle mode that's active
@@ -3023,12 +3029,19 @@ Class cHouse
                 If (UPFShotMask And (2^(sw-1))) > 0 Then ' Target was lit
                     Select Case UPFState
                         Case 0 ' Castle MB mode
-                            AddScore 250000*UPFMultiplier
+                            PlaySoundVol "gotfx-dragonroar"&i,VolDef
+                            PlaySoundVol "gotfx-elevatorupf",VolDef
                             AddBonus 50000
                             UPFShotMask = UPFShotMask Xor (2^(sw-1))
-                            If UPFShotMask = 0 Then UPFShotMask = 20 ' Light outlanes
+                            If (UPFShotMask And 254) = 0 Then
+                                UPFShotMask = UPFShotMask Or 20 ' Light outlanes
+                                PlaySoundVol "gotfx-upfdone",VolDef
+                                DMDPlayHitScene "gotfx-upfbackground","",0,"CASTLE AWARD",3000000*UPFMultiplier,"",UPFMultiplier,5
+                            Else
+                                PlaySoundVol "gotfx-upfhit",VolDef
+                                AddScore 250000*UPFMultiplier
+                            End If
                             UPFCastleShotMask = UPFShotMask
-                            PlaySoundVol "gotfx-ramphit1",VolDef
                         Case 1 ' Battle mode
                             House(CurrentPlayer).BattleState(HouseBattle1).AddTime 5
                             If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).AddTime 5
@@ -3072,7 +3085,7 @@ Class cHouse
             Case 3,5    ' Outlanes
                 If (UPFShotMask And (2^(sw-1))) > 0 Then  ' outlane was lit
                     Select Case UPFState
-                        Case 0: IncreaseUPFLevel : UPFShotMas = 42 : UPFCastleShotMask = 42 ' Castle MB mode
+                        Case 0: IncreaseUPFLevel : UPFShotMask = (UPFShotMask And 1) Or 42 : UPFCastleShotMask = UPFShotMask ' Castle MB mode
                         Case 1 ' Battle mode - are these used at all?
                             AddScore 560*UPFMultiplier
                             ' TODO: If the Castle doesn't finish the mode, then outlane shots do advance the mode. 
@@ -3081,8 +3094,9 @@ Class cHouse
                     End Select
                     SetUPFLights
                 End If
-            Case 7: AddScore 560*UPFMultiplier ' Left inlane
+            Case 7: AddScore 560*UPFMultiplier : PlaySoundVol "gotfx-ramphit1",VolDef/4 ' Left inlane
             Case 8      ' Right Inlane
+                PlaySoundVol "gotfx-ramphit1",VolDef/4
                 AddScore 560*UPFMultiplier
                 If bCastleShotAvailable Then
                     UPFShotMask = UPFShotMask Or 1
@@ -3096,10 +3110,11 @@ Class cHouse
     ' Advance the UPF level, either thru Castle hit or outlane
     ' Play the animation, add points. If it's the 4th hit, start Castle Multiball
     Sub IncreaseUPFLevel
-        Dim delay,line1,line2,score,combo,format
+        Dim delay,line1,line2,score,combo,format,i
         ' Score a level towards Castle MB
         score = (2500000 + 2500000*UPFLevel)*UPFMultiplier
         AddScore score
+        i = RndNbr(3)
         line2 = FormatScore(score)
         format=3:combo=UPFMultiplier
         Select Case UPFLevel
@@ -3108,7 +3123,10 @@ Class cHouse
             Case 3: line1 = "BREACH!"
             Case 4: line1 = "CASTLE":line2="MULTIBALL":format=4:combo=0
         End Select
-        ' TODO: Do a "hit" scene for Castle MB advance
+        
+        PlaySoundVol "gotfx-dragonroar"&i,VolDef
+        PlaySoundVol "gotfx-elevatorupf",VolDef
+
         If UPFLevel = 4 Then delay = 2.5 Else delay = 1.5
         DMDPlayHitScene "got-castlemblevel"&UPFLevel,"gotfx-castlemblevel"&UPFLevel,delay,line1,line2,"",combo,format
         UPFLevel = UPFLevel + 1
@@ -5330,6 +5348,7 @@ Sub Outlane_Hit
     If Tilted then Exit Sub
     AddScore 25000
     AddBonus 25000
+    PlaySoundVol "gotfx-outlanelost",VolDef
     LastSwitchHit = "OutlaneSW"
     If bMultiBallMode Then Exit Sub
     If bBallSaverActive Then
@@ -5440,7 +5459,6 @@ End Sub
 Sub KickerFloor_Hit
     Me.DestroyBall
     MoveDiverter(0)
-    PlaySoundAt "fx_kicker",KickerFloor
     ' TODO Add logic for any other modes that kick the ball to the Iron Throne
     If bMysteryLit or bEBisLit Then
         vpmTimer.AddTimer 500,"ElevatorKick 2 '"
@@ -5457,10 +5475,12 @@ Sub KickerFloor_Hit
 End Sub
 
 Sub ElevatorKick(f)
+    PlaySoundAt "fx_kicker",KickerFloor
     Select Case f
         Case 1
             KickerUPF.CreateBall
             KickerUPF.Kick 180,5
+            PlaySoundVol "gotfx-elevatorupf",VolDef
         Case 2
             KickerTopFloor.CreateBall
             KickerTopFloor.Kick 90,3
@@ -5652,7 +5672,7 @@ Sub BatteringRam_Hit
             scene.GetLabel("obj").SetAlignedPosition 64,20,FlexDMD_Align_Center
             DelayActor scene.GetLabel("obj"),1,True
             DelayActor scene.GetLabel("mode"),1,True
-            DMDEnqueueScene scene,1,1800,4000,1500,""
+            DMDEnqueueScene scene,1,1800,4000,1500,"gotfx-wildfireministart"
         End If
         bWildfireLit = 2
     End If
@@ -6352,6 +6372,7 @@ Sub PreLaunchBattleMode
 
     House(CurrentPlayer).BattleState(HouseBattle1).StartBattleMode
     If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).StartBattleMode
+    House(CurrentPlayer).SetUPFState True
     SetPlayfieldLights
 
     PlayModeSong
@@ -6367,7 +6388,6 @@ Sub LaunchBattleMode
     PlaySoundAt "fx_droptarget", Target90
     Target90.IsDropped = 1
     If PlayerMode = -2.1 Then PlayerMode = 1
-    House(CurrentPlayer).SetUPFState True
     If bBattleCreateBall Then   'LockBall has already run. Create the new ball now
         bBattleCreateBall = False
         If RealBallsInLock > BallsInLock Then
@@ -7192,6 +7212,7 @@ End Sub
 '           2 - 3 lines of 3x7 font, used for lannister battle gold hits
 '           3 - 2 lines of text. Top line 3x7, main line 6x8 score. Used for jackpots, Castle MB levels, and Targaryen hurry-up hits
 '           4 - 2 lines of Skinny font. Used for Castle Multiball start
+'           5 - 2 lines of text, same as 3, but no video, just a framed text scene and combo text. Used for UPF awards
 Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo,format)
     Dim scene,scenevid,font1,font2,font3,x,y1,y2,y3,combotxt,pri
     If bUseFlexDMD Then
@@ -7212,7 +7233,7 @@ Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo,format)
                 Set font1 = FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbWhite, 0)
                 Set font2 = font1
                 Set font3 = font1
-            Case 3
+            Case 3,5
                 Set font1 = FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbWhite, 0)
                 Set font2 = FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbWhite, 0)
                 Set font3 = font1
@@ -7220,6 +7241,7 @@ Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo,format)
                 Set font1 = FlexDMD.NewFont("skinny10x12.fnt", vbWhite, vbWhite, 0)
                 Set font2 = font1
                 Set font3 = font1
+                y1 = 8: y2 = 23
         End Select
 
         scene.AddActor FlexDMD.NewGroup("hitscenetext")
@@ -7238,6 +7260,7 @@ Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo,format)
                 Case (combo > 1 and PlayfieldMultiplierVal = 1) : combotxt = "COMBO"
                 Case (combo = 1 and PlayfieldMultiplierVal > 1) : combotxt = "PLAYFIELD"
                 Case (combo > 1 and PlayfieldMultiplierVal > 1) : combotxt = "MIXED"
+                Case (format = 5 and combo > 1 and PlayfieldMultiplierVal = 1) : combotxt = "UPPER"
             End Select
             With scene.GetGroup("hitscenetext")
                 .AddActor FlexDMD.NewLabel("combo",FlexDMD.NewFont("FlexDMD.Resources.udmd-f12by24.fnt", vbWhite, vbWhite, 0),combo&"X")
@@ -7259,7 +7282,7 @@ Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo,format)
 
         ' After delay, disable video/image and enable text
         ' TODO: Make the transition from video to text cool.
-        If Not (scenevid Is Nothing) Then
+        If delay > 0 And Not (scenevid Is Nothing) Then
             DelayActor scenevid,delay,False
             DelayActor scene.GetGroup("hitscenetext"),delay,True
         Else
@@ -7821,7 +7844,8 @@ Sub DMDDoMatchScene(m)
         End If
 
         scene.AddActor NewSceneFromImageSequence("img1","match",280,30,0,0)
-        DMDEnqueueScene scene,1,9000,9000,4000,"gotfx-match"
+        DMDFlush
+        DMDEnqueueScene scene,0,9000,9000,4000,"gotfx-match"
     Else
         DisplayDMDText "","MATCH "&m,8000
     End If
@@ -7867,15 +7891,19 @@ End Class
 ' - Martell battle mode has "shoot orbits" and score (or hurryUp?) on top of each other
 ' √? "Shoot orbits" still overlaps timer
 ' - top right gate doesn't close. top left does
-' - in high score enter initials, letters overlap top row, and don't stay in one place. Use left instead of center
+' √? in high score enter initials, letters overlap top row, and don't stay in one place. Use left instead of center
+' - Need the "> <" characters in the Skinny10x12 font
 ' √? during match, "MATCH" never changes to number
 ' √? After match sequence, game doesn't change to "GAME OVER" and show attract sequence
-' - DMD sometimes plays scenes twice, producing an echo of sound too
+' √? DMD sometimes plays scenes twice, producing an echo of sound too
 ' √? InstantInfo shows blank screen for scores. All others work
 ' - UPF can't handle multiball and battle at the same time
-' - Match scene doesn't display at all. Gets enqueued but not played
-' - UPF targets don't score enough points
-' - UFP targets got reset, maybe by "pass for now"?
+' √? Match scene doesn't display at all. Gets enqueued but not played
+' √? UPF targets don't score enough points
+' √? UFP targets got reset, maybe by "pass for now"?
+' √? start of battle mode set UPF lights, but late
+' √? end of battle mode turned off all UPF lights except castle
+' √? UPF outlane lights never light
 
 ' √? combo multiplier, or score, doesn't update until ball is back in play
 ''
