@@ -1443,7 +1443,7 @@ Sub tmrDMDUpdate_Timer
     DMDtimestamp = DMDtimestamp + 100   ' Set this to whatever frequency the timer uses
     If DMDqTail = 0 Then ' Queue is empty - show default scene
         ' Exit fast if defaultscene is already showing
-        if bDefaultScene or IsEmpty(DefaultScene) then Exit Sub
+        if bDefaultScene or IsEmpty(DefaultScene) then tmrDMDUpdate.Enabled = True : Exit Sub
         bDefaultScene = True
         If TypeName(DefaultScene) = "Object" Then
             DMDDisplayScene DefaultScene
@@ -3001,6 +3001,7 @@ Class cHouse
     Public Sub RegisterUPFHit(sw)
         Dim i
         i = RndNbr(3)
+        debug.print "register UPF hit. Sw: "&sw&" State: "&UPFState&" UPFShotMask: "&UPFShotMask
         Select Case sw
             Case 1 ' Castle loop shot
                 'TODO need sound effect for Castle loop shot
@@ -7893,17 +7894,12 @@ End Class
 ' - top right gate doesn't close. top left does
 ' √? in high score enter initials, letters overlap top row, and don't stay in one place. Use left instead of center
 ' - Need the "> <" characters in the Skinny10x12 font
-' √? during match, "MATCH" never changes to number
-' √? After match sequence, game doesn't change to "GAME OVER" and show attract sequence
+' - After match sequence, game doesn't change to "GAME OVER" but goes straight to show attract sequence
+'   - would need to change attract sequence to leave "game over" on screen while light sequences play
+' - Match changes to number too quickly (or scene plays too slowly)
 ' √? DMD sometimes plays scenes twice, producing an echo of sound too
-' √? InstantInfo shows blank screen for scores. All others work
 ' - UPF can't handle multiball and battle at the same time
-' √? Match scene doesn't display at all. Gets enqueued but not played
-' √? UPF targets don't score enough points
 ' √? UFP targets got reset, maybe by "pass for now"?
-' √? start of battle mode set UPF lights, but late
-' √? end of battle mode turned off all UPF lights except castle
-' √? UPF outlane lights never light
 
 ' √? combo multiplier, or score, doesn't update until ball is back in play
 ''
@@ -7911,10 +7907,6 @@ End Class
 ' - battering ram needs to be less bouncy and more scattery
 
 ' √? If playing as Greyjoy, BattleReady is lit at start, even though no houses are qualified
-
-' √ End of game processing doesn't exist - highscore, etc. Throws error for DMDUpdate
-'   √ rewrite HS routines to support FlexDMD
-'   √ add Match function
 
 ' - Import DMD code for non FlexDMD. Use JP's Deadpool charset for now
 
