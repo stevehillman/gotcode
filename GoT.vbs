@@ -1455,7 +1455,7 @@ Sub tmrDMDUpdate_Timer
         ' Check to see if queue is idle (default scene on). If so, immediately play first item
         If bDefaultScene or (IsEmpty(DisplayingScene) And DMDqHead = 0) Then
             bDefaultScene = False
-            debug.print "Displaying scene at " & DMDqHead
+            debug.print "Idle: Displaying scene at " & DMDqHead & " Tail: "&DMDqTail
             DMDDisplayScene DMDSceneQueue(DMDqHead,0)
             DMDSceneQueue(DMDqHead,6) = DMDtimestamp
             If DMDSceneQueue(DMDqHead,5) <> ""  Then 
@@ -1503,7 +1503,7 @@ Sub tmrDMDUpdate_Timer
 
                 ' Play the scene, and a sound if there's one to accompany it
                 bDefaultScene = False
-                debug.print "Displaying scene at " &j & " name: "&DMDSceneQueue(j,0).Name
+                debug.print "Displaying scene at " &j & " name: "&DMDSceneQueue(j,0).Name & " Head: "&DMDqHead & " Tail: "&DMDqTail
                 DMDSceneQueue(j,6) = DMDtimestamp
                 DMDDisplayScene DMDSceneQueue(j,0)
                 If DMDSceneQueue(j,5) <> ""  Then 
@@ -3007,7 +3007,7 @@ Class cHouse
                 'TODO need sound effect for Castle loop shot
                 If UPFMultiplier < 3 Then ' Increase UPF multiplier
                     UPFMultiplier = UPFMultiplier + 1
-                    SetGameTimer tmrUPFMultiplier,30000
+                    SetGameTimer tmrUPFMultiplier,300
                     SetUPFLights
                 End If
                 If (UPFShotMask And 1) > 0 Then     ' Castle was lit
@@ -3462,13 +3462,13 @@ Class cBattleState
 
             ' Targaryen: 3 LEVELS, each with 3 states except last which has 2? - 8 states total
             ' All shots involve HurryUps. Mode ends if HurryUp runs down
-                ' Level 1 Start: light 2 ramps for HurryUp
+                ' Level 1 Start: light 2 ramps for HurryUp. 8M
                 ' State 1: Shoot 1 of the lit ramps to advance to State 2
-                ' State 2: Light 2 loops. Shoot one to advance to dragon
-                ' State 3: Start hurry-up on Dragon. 
+                ' State 2: Light 2 loops. Shoot one to advance to dragon. 10M
+                ' State 3: Start hurry-up on Dragon. 12M
                 ' Level 2: Repeat Level 1, but require all 4 shots in State 1 & 2
                 ' Level 3: Light 3 random shots as hurry-ups (mode ends if hurry-ups timeout?)
-                ' State 1: Shoot all 3 hurry-ups. Shooting Dragon spots a hurry-up
+                ' State 1: Shoot all 3 hurry-ups. Shooting Dragon spots a hurry-up. Do we need to hit all 3 shots within the same HurryUp?
                 ' State 2: Shoot Dragon hurry-up
                 ' Timer on Level 3: If you take too long, you are attacked with “DRAGON FIRE”, and wave restarts with new randomly chosen shots (State 1, but same Wave)
                 ' Greyjoy players have a Hurry-Up to hit any target to start State 1 on each Level
@@ -7827,8 +7827,8 @@ Sub DMDDoMatchScene(m)
             .SetAlignedPosition 84,16,FlexDMD_Align_CENTER
             .Visible = 0
         End With
-        DelayActor scene.GetLabel("match1"),3.3,False
-        DelayActor scene.GetLabel("match2"),3.3,True
+        DelayActor scene.GetLabel("match1"),4.2,False
+        DelayActor scene.GetLabel("match2"),4.2,True
         scene.AddActor FlexDMD.NewLabel("Score1", FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0),Score(0))
         scene.GetLabel("Score1").SetAlignedPosition 1,1,FlexDMD_Align_TopLeft
         If PlayersPlayingGame > 1 Then 
@@ -7895,9 +7895,9 @@ End Class
 ' √? in high score enter initials, letters overlap top row, and don't stay in one place. Use left instead of center
 ' - Need the "> <" characters in the Skinny10x12 font
 ' - After match sequence, game doesn't change to "GAME OVER" but goes straight to show attract sequence
-'   - would need to change attract sequence to leave "game over" on screen while light sequences play
-' - Match changes to number too quickly (or scene plays too slowly)
-' √? DMD sometimes plays scenes twice, producing an echo of sound too
+'     - would need to change attract sequence to leave "game over" on screen while light sequences play
+' √ Match changes to number too quickly (or scene plays too slowly)
+' - DMD sometimes plays scenes twice, producing an echo of sound too
 ' - UPF can't handle multiball and battle at the same time
 ' √? UFP targets got reset, maybe by "pass for now"?
 
