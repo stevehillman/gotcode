@@ -2368,6 +2368,7 @@ Dim SwordsCollected
 Dim CastlesCollected
 Dim BlackwaterScore
 Dim bGoldTargets(5)
+Dim bTargaryenInProgress
 
 ' Support for game timers
 Dim GameTimeStamp       ' Game time in 1/10's of a second, since game start
@@ -2401,6 +2402,12 @@ Dim HurryUpCounter
 Dim HurryUpGrace
 Dim HurryUpScene
 Dim HurryUpChange
+Dim TGHurryUpValue
+Dim bTGHurryUpActive
+Dim TGHurryUpCounter
+Dim TGHurryUpGrace
+Dim TGHurryUpScene
+Dim TGHurryUpChange
 
 ' Player state data
 Dim House(4)  ' Current state of each house - some house modes aren't saved, while others are. May need a Class to save detailed state
@@ -2484,6 +2491,7 @@ Class cPState
     Dim mySwordsCollected
     Dim myCastlesCollected
     Dim myCurrentWildfire
+    Dim myTargaryenInProgress
 
     Public Sub Save
         Dim i
@@ -2501,6 +2509,7 @@ Class cPState
         myCurrentWildfire = CurrentWildfire
         mySwordsCollected = SwordsCollected
         myCastlesCollected = CastlesCollected
+        myTargaryenInProgress = bTargaryenInProgress
         For i = 0 to 5:myGoldTargets(i) = bGoldTargets(i):Next
     End Sub
 
@@ -2518,6 +2527,7 @@ Class cPState
         TotalGold = myTotalGold
         TotalWildfire = myTotalWildfire
         CurrentWildfire = myCurrentWildfire
+        bTargaryenInProgress = myTargaryenInProgress
 
         CurrentGold = myCurrentGold
         CastlesCollected = myCastlesCollected
@@ -2576,7 +2586,10 @@ Class cHouse
         HouseSelected = h
         bQualified(h) = True
         QualifyCount(h) = 3
-        if (h = Greyjoy or h = Targaryen) Then bCompleted(h) = True Else BattleReady = True
+        If h = Greyjoy Then bCompleted(h) = True Else BattleReady = True
+        ' For testing, let us test Targaryen battle mode by choosing Targ to start
+        'If (h = Greyjoy or h = Targaryen) Then bCompleted(h) = True Else BattleReady = True
+
         'TODO: Set all house-specific settings when House is Set. E.g. Persistent and Action functions
     End Property
 	Public Property Get MyHouse : MyHouse = HouseSelected : End Property
@@ -2601,7 +2614,7 @@ Class cHouse
     ' Reset any state that starts over on a new ball
     Public Sub ResetForNewBall
         Dim i,t
-        t = False
+        t = bTargaryenInProgress
         For i = 1 to 7
             If bQualified(i) and Not bCompleted(i) then t = True
         Next
@@ -3168,6 +3181,8 @@ Class cBattleState
     Dim HouseValueIncrement     ' Amount house value builds by, per shot, if machine-generated
     Dim MyHurryUps(3)           ' Holds the index values of any running HurryUps. Only Targaryen has more than one concurrently 
     Dim OtherHouseBattle        ' Store the other house battle, if two are stacked. Used for doing Battle Total at the end
+    Dim DrogonHits              ' Track health of Drogon, for Targaryen battle
+    Dim TGShotCount
 
     
     Private Sub Class_Initialize(  )
@@ -3181,6 +3196,7 @@ Class cBattleState
         bComplete = False
         TotalScore = 0
         HouseValueIncrement = 0
+        DrogonHits = 0
     End Sub
 
     Public Property Let SetHouse(h) 
@@ -3253,6 +3269,7 @@ Class cBattleState
     ' Called to initialize battle mode for this house. Only certain houses need setup done
     Public Sub StartBattleMode
         Dim tmr: tmr=400    ' 10ths of a second
+        Dim i,j
         OtherHouseBattle = 0
         Select Case MyHouse
             Case Stark
@@ -3267,7 +3284,20 @@ Class cBattleState
             Case Martell: HouseValue = 0: tmr = 300 : State = 1 : CompletedShots = 0 : OpenTopGates
             Case Targaryen
                 tmr = 0
-                ' TODO in States 3,6,8 start a Hurry-Up
+                bTargaryenInProgress = True
+                Select Case State
+                    Case 1: ShotMask = 10
+                    Case 7
+                        ' Generate 3 randomly lit shots
+                        If TGShotCount = 0 Then
+                            For i = 1 to 3
+                                Do
+                                    j = RndNbr(6)
+                                Loop While (ShotMask And 2^j) > 0
+                                ShotMask = ShotMask Or 2^j
+                            Next
+                        End If
+                End Select
         End Select
         If tmr > 0 Then 
             If MyHouse = HouseBattle2 Then SetGameTimer tmrBattleMode2,tmr Else SetGameTimer tmrBattleMode1,tmr
@@ -3468,21 +3498,21 @@ Class cBattleState
                 ' State 3: Start hurry-up on Dragon. 12M
                 ' Level 2: Repeat Level 1, but require all 4 shots in State 1 & 2
                 ' Level 3: Light 3 random shots as hurry-ups (mode ends if hurry-ups timeout?)
-                ' State 1: Shoot all 3 hurry-ups. Shooting Dragon spots a hurry-up. Do we need to hit all 3 shots within the same HurryUp?
+                ' State 1: Shoot all 3 hurry-ups. Shooting Dragon spots a hurry-up.
                 ' State 2: Shoot Dragon hurry-up
+                ' States 1 & 2 repeat until Drogon health is used up - 15 shots total, then clear the current Wave (State 1 & 2) to end the mode
                 ' Timer on Level 3: If you take too long, you are attacked with “DRAGON FIRE”, and wave restarts with new randomly chosen shots (State 1, but same Wave)
-                ' Greyjoy players have a Hurry-Up to hit any target to start State 1 on each Level
-            Case Targaryen 'TODO. Needs modifying to use HurryUps for all shots?
+                ' TODO: Greyjoy players have a Hurry-Up to hit any target to start State 1 on each Level
+            Case Targaryen
                 hit = False:done=False
                 Select Case State
                     Case 1
-                        If h = Stark or h = Lannister Then hit=true:done=True
+                        If h = Stark or h = Lannister or h = Targaryen Then hit=true:done=True:ShotMask = 80
                     Case 2
-                        If h = Greyjoy or h = Martell Then hit=true:done=True
+                        If h = Greyjoy or h = Martell or h = Targaryen Then hit=true:done=True:ShotMask = 128
                     Case 3,6
                         If h = Targaryen Then
                             hit=true:done=true
-                            huvalue = HurryUpValue
                             ShotMask = 10
                         End If
                     Case 4
@@ -3491,32 +3521,55 @@ Class cBattleState
                             ShotMask = ShotMask And (2^h Xor 255)
                             If ShotMask = 0 Then done=true:ShotMask=80
                         End If
+                        If h = Targaryen Then
+                            hit = true
+                            If ShotMask = 8 or Shotmask = 2 Then done = true:ShotMask=80 Else ShotMask = 8
+                        End If
                     Case 5
-                        If h = Greyjoy or h = Martell Then
+                        If (ShotMask And 2^h) > 0 Then
                             hit=true
                             ShotMask = ShotMask And (2^h Xor 255)
-                            If ShotMask = 0 Then done=true:ShotMask=80
+                            If ShotMask = 0 Then done=true:ShotMask=128
+                        ElseIf h = Targaryen Then
+                            hit = true
+                            If ShotMask = 16 or Shotmask = 64 Then done = true:ShotMask=128 Else ShotMask = 16
                         End If
-                    Case 7  'TODO: Shoot all 3 hurry-ups. Shooting Dragon spots a hurry-up
+                    Case 7
+                        If (ShotMask And 2^h) > 0 Then
+                            hit=true
+                            ShotMask = ShotMask And (2^h Xor 255)
+                            TGShotCount = TGShotCount + 1
+                            DrogonHits = DrogonHits + 1
+                            If ShotMask = 0 Then done=true:ShotMask=128
+                        ElseIf h = Targaryen Then
+                            hit = true
+                            For i = 1 to 6
+                                If (ShotMask And 2^i) > 0 Then
+                                    ShotMask = ShotMask And (2^i Xor 255)
+                                    Exit For
+                                End If
+                            Next
+                            TGShotCount = TGShotCount + 1
+                            DrogonHits = DrogonHits + 1
+                            If ShotMask = 0 Then done=true:ShotMask=128
+                        End If
                     Case 8
                         If h = Targaryen Then
                             hit=true:done=true
-                            huvalue = HurryUpValue
+                            DrogonHits = DrogonHits + 1
                         End If
                 End Select
                 If hit Then
-                    ' Do some scoring, animation
+                    ScoredValue = TGHurryUpValue
+                    hitscene = "hit"&(Int((State-1)/3)+1)
+                    If (State=4 Or State=5 Or State=7) And Not done then TGStartHurryUp 
                 End If
                 If done Then
                     State = State + 1
                     Select Case State
-                        Case 3,6
-                            ' Start Dragon HurryUp
-                        Case 7
-                            ' Start 3 random Hurry Ups from a choice of 6 shots (Dragon can't be one of them)
-                        Case 8
-                            ' Start Drogon HurryUp
-                        Case 9: DoCompleteMode 0
+                        Case 4,7: EndBattleMode
+                        Case 9: If DrogonHits < 15 Then TGShotCount = 0 : State = 7 : TGStartHurryUp Else DoCompleteMode Targaryen
+                        Case Else: TGStartHurryUp
                     End Select
                     SetModeLights
                 End If  
@@ -3544,7 +3597,11 @@ Class cBattleState
             Else 
                 sound = "gotfx-"&HouseToString(MyHouse)&"battle"&hitscene
             End if
-            DMDPlayHitScene name,sound,1.5,BattleObjectivesShort(MyHouse),line2,line3,combo,1
+            If MyHouse = Targaryen Then
+                DMDPlayHitScene name,sound,1.5,"HOUSE TARGARYEN",line2,"",combo,3
+            Else
+                DMDPlayHitScene name,sound,1.5,BattleObjectivesShort(MyHouse),line2,line3,combo,1
+            End If
             UpdateBattleScene
         End If
 
@@ -3554,6 +3611,7 @@ Class cBattleState
     Public Sub DoCompleteMode(shot)
         Dim comboval,line2,name,sound,delay
 
+        If MyHouse = Targaryen Then bTargaryenInProgress = False
         bComplete = True
         House(CurrentPlayer).HouseCompleted MyHouse
 
@@ -3578,7 +3636,7 @@ Class cBattleState
         If HouseBattle1 = 0 And HouseBattle2 = 0 Then DoBattleCompleteScene
     End Sub
 
-    ' Return to normal play. TODO: Anything else to do?
+    ' Return to normal play after battle mode
     Public Sub EndBattleMode
         Dim br,i
         CloseTopGates
@@ -3604,10 +3662,12 @@ Class cBattleState
             ' Also light BattleReady if two balls are locked and at least one house is qualified
             Dim br1:br1=False
             br = True
-            For i = 1 to 7
-                If House(CurrentPlayer).Qualified(i) = False And House(CurrentPlayer).Completed(i) = False  Then br = False
-                If BallsInLock = 2 and House(CurrentPlayer).Qualified(i) = True And House(CurrentPlayer).Completed(i) = False Then br1=True
-            Next
+            if Not bTargaryenInProgress Then
+                For i = 1 to 7
+                    If House(CurrentPlayer).Qualified(i) = False And House(CurrentPlayer).Completed(i) = False  Then br = False
+                    If BallsInLock = 2 and bLockIsLit And House(CurrentPlayer).Qualified(i) = True And House(CurrentPlayer).Completed(i) = False Then br1=True
+                Next
+            End If
             If br or br1 Then House(CurrentPlayer).BattleReady = True
             'TODO: Anything else needed to end battle mode?
             If Not bMultiBallMode Then
@@ -3636,7 +3696,14 @@ Class cBattleState
     Public Sub BEndHurryUp
         If MyHouse = Martell And State = 2 Then 
             DoCompleteMode 0
-        Else 
+        Else
+            If MyHouse = Targaryen And State = 8 Then
+                'Dragon Fire!!
+                DMDPlayHitScene "got-targaryenbattlehit7","gotfx-targaryenbattlehit7",3.5,"DRAGON","FIRE","",0,4
+                State = 7
+                TGShotCount = 0
+                DrogonHits = DrogonHits - 1
+            End If
             EndBattleMode
         End if
     End Sub
@@ -3690,10 +3757,15 @@ Class cBattleState
     ' But no score awarded, other than what they get from the castle itself
     ' TODO: If we are Targaryen, there are special rules
     Public Sub RegisterCastleComplete
-        bComplete = True
-        House(CurrentPlayer).HouseCompleted MyHouse
+        If MyHouse <> Targaryen Then
+            bComplete = True
+            House(CurrentPlayer).HouseCompleted MyHouse
 
-        EndBattleMode
+            EndBattleMode
+        Else
+            'TODO Targaryen Upper PF battle complete rules
+
+        End If
 
         SetLightColor HouseSigil(MyHouse),HouseColor(SelectedHouse),1
     End Sub
@@ -3755,6 +3827,28 @@ Class cBattleState
     ' Called when the 10 second timer runs down
     Public Sub MartellTimer: CompletedShots = 0: UpdateBattleScene: End Sub
 
+    Public Sub TGStartHurryUp
+        If MyHouse <> Targaryen Then Exit Sub
+        Select Case State
+            Case 1,2,3: HouseValue = 6000000 + 2000000*State ' verified
+            Case 4,5,6: HouseValue = 3000000*State ' verified
+            Case 7: HouseValue = 9000000+3000000*TGShotCount ' real vals: 9M, 12M, 15M, 
+            Case 8: HouseValue = 12000000
+        End Select
+        StartTGHurryUp HouseValue,MyBattleScene,5
+    End Sub
+
+    Public Function TGLevel
+        If MyHouse <> Targaryen Then TGLevel = 0:Exit Sub
+        If State < 4 Then 
+            TGLevel = 0
+        Elseif State < 7 Then 
+            TGLevel = 1
+        Else 
+            TGLevel = 2
+        End If
+    End Function
+
 '  bit   data (Label name)
 '   0    Score
 '   1    Ball
@@ -3781,30 +3875,46 @@ Class cBattleState
             Case Martell: line3 = "SHOOT ORBITS":x3=28:x4 = 56
         End Select
 
-        
-        If MyHouse <> Tyrell Then
-            BattleScene.AddActor FlexDMD.NewLabel("line3",tinyfont,line3) 
-            BattleScene.GetLabel("line3").SetAlignedPosition x3,16,FlexDMD_Align_Center
-        End If
-        BattleScene.GetLabel("tmr1").SetAlignedPosition x4,y4,FlexDMD_Align_Center
-        BattleScene.GetLabel("obj").SetAlignedPosition 40,3,FlexDMD_Align_Center
-
-        If MyHouse = Martell Then
-            BattleScene.AddActor FlexDMD.NewLabel("tmr3",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbWhite, 0),"10")
-            BattleScene.GetLabel("tmr3").SetAlignedPosition 40,13,FlexDMD_Align_Center
-            If CompletedShots = 0 Or State > 1 Then BattleScene.GetLabel("tmr3").Visible = 0
-            BattleScene.AddActor FlexDMD.NewLabel("HurryUp",tinyfont,"20000000") 'Placeholder value to ensure text is centered
-            BattleScene.GetLabel("HurryUp").SetAlignedPosition 32,13,FlexDMD_Align_Center
-            If State < 2 Then 
-                BattleScene.GetLabel("HurryUp").Visible = 0
-            Else
-                BattleScene.GetLabel("line3").SetAlignedPosition 30,21,FlexDMD_Align_Center
-            End If
-        Else
-            ' Every other house has the score showing
+        If MyHouse = Targaryen Then
+            ' Everything about the Targaryen scene is different
+            Select Case Me.TGLevel
+                Case 0: Dragon = "VISERION"
+                Case 1: Dragon = "RHAEGAL"
+                Case 2: Dragon = "DROGON"
+            End Select
+            
             BattleScene.AddActor FlexDMD.NewLabel("Score",FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0),FormatScore(Score(CurrentPlayer)))
-            BattleScene.GetLabel("Score").SetAlignedPosition 40,9,FlexDMD_Align_Center
-        End if
+            BattleScene.GetLabel("Score").SetAlignedPosition 0,0,FlexDMD_Align_TopLeft
+            BattleScene.AddActor FlexDMD.NewLabel("TGHurryUp",tinyfont,"12000000") 'Placeholder value to ensure text is centered
+            BattleScene.GetLabel("TGHurryUp").SetAlignedPosition 0,19,FlexDMD_Align_TopLeft
+            BattleScene.AddActor FlexDMD.NewLabel("dragon",tinyfont,Dragon)
+            BattleScene.GetLabel("dragon").SetAlignedPosition 127,7,FlexDMD_Align_TopRight
+            'TODO: If dragon = DROGON, draw a health bar in the top right corner
+        Else
+            If MyHouse <> Tyrell Then
+                BattleScene.AddActor FlexDMD.NewLabel("line3",tinyfont,line3) 
+                BattleScene.GetLabel("line3").SetAlignedPosition x3,16,FlexDMD_Align_Center
+            End If
+            BattleScene.GetLabel("tmr1").SetAlignedPosition x4,y4,FlexDMD_Align_Center
+            BattleScene.GetLabel("obj").SetAlignedPosition 40,3,FlexDMD_Align_Center
+
+            If MyHouse = Martell Then
+                BattleScene.AddActor FlexDMD.NewLabel("tmr3",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbWhite, 0),"10")
+                BattleScene.GetLabel("tmr3").SetAlignedPosition 40,13,FlexDMD_Align_Center
+                If CompletedShots = 0 Or State > 1 Then BattleScene.GetLabel("tmr3").Visible = 0
+                BattleScene.AddActor FlexDMD.NewLabel("HurryUp",tinyfont,"20000000") 'Placeholder value to ensure text is centered
+                BattleScene.GetLabel("HurryUp").SetAlignedPosition 32,13,FlexDMD_Align_Center
+                If State < 2 Then 
+                    BattleScene.GetLabel("HurryUp").Visible = 0
+                Else
+                    BattleScene.GetLabel("line3").SetAlignedPosition 30,21,FlexDMD_Align_Center
+                End If
+            Else
+                ' Every other house has the score showing
+                BattleScene.AddActor FlexDMD.NewLabel("Score",FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0),FormatScore(Score(CurrentPlayer)))
+                BattleScene.GetLabel("Score").SetAlignedPosition 40,9,FlexDMD_Align_Center
+            End if
+        End If
 
         For i = 1 to 5
             BattleScene.AddActor FlexDMD.NewLabel("combo"&i, FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 1), "0")
@@ -3818,7 +3928,7 @@ Class cBattleState
         'Set ScoreFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0)
         Set tinyfont = FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbBlack, 0)
         BattleScene.AddActor FlexDMD.NewLabel("obj",tinyfont,HouseToUCString(MyHouse))
-        BattleScene.AddActor FlexDMD.NewLabel("tmr"&n,tinyfont,Int((TimerTimestamp(tmrBattleMode1)-GameTimeStamp)/10))
+        If MyHouse <> Targaryen Then BattleScene.AddActor FlexDMD.NewLabel("tmr"&n,tinyfont,Int((TimerTimestamp(tmrBattleMode1)-GameTimeStamp)/10))
         
         y4 = 16
         Select Case MyHouse
@@ -3833,15 +3943,20 @@ Class cBattleState
             BattleScene.GetLabel("tmr3").SetAlignedPosition 32,13,FlexDMD_Align_Center
             If CompletedShots = 0 Or State > 1 Then BattleScene.GetLabel("tmr3").Visible = 0
         End If
-        If MyHouse = Martell Or MyHouse = Targaryen Then
+        If MyHouse = Martell Then
             BattleScene.AddActor FlexDMD.NewLabel("HurryUp",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite,vbWhite, 0),"20000000") 'Placeholder value to ensure text is centered
             BattleScene.GetLabel("HurryUp").SetAlignedPosition 32,13,FlexDMD_Align_Center
             If State < 2 Then BattleScene.GetLabel("HurryUp").Visible = 0
+        ElseIf MyHouse = Targaryen Then
+            BattleScene.AddActor FlexDMD.NewLabel("TGHurryUp",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite,vbWhite, 0),"12000000") 'Placeholder value to ensure text is centered
+            BattleScene.GetLabel("TGHurryUp").SetAlignedPosition 32,13,FlexDMD_Align_Center
         End If
         
-        BattleScene.AddActor FlexDMD.NewLabel("line3",tinyfont,line2) 
-        BattleScene.GetLabel("line3").SetAlignedPosition 32,16,FlexDMD_Align_Center
-        BattleScene.GetLabel("tmr"&n).SetAlignedPosition 62,1,FlexDMD_Align_TopRight
+        If MyHouse <> Targaryen Then
+            BattleScene.AddActor FlexDMD.NewLabel("line3",tinyfont,line2) 
+            BattleScene.GetLabel("line3").SetAlignedPosition 32,16,FlexDMD_Align_Center
+            BattleScene.GetLabel("tmr"&n).SetAlignedPosition 62,1,FlexDMD_Align_TopRight
+        End If
         BattleScene.GetLabel("obj").SetAlignedPosition 1,1,FlexDMD_Align_TopLeft
         
         Set MyBattleScene = BattleScene
@@ -3872,7 +3987,7 @@ Class cBattleState
             End if
             FlexDMD.UnlockRenderThread
             Exit Sub
-        Else
+        ElseIf MyHouse <> Targaryen Then
             Select Case MyHouse
                 Case Stark,Baratheon 
                     If bSmallBattleScene Then 
@@ -4615,7 +4730,7 @@ Sub EndOfGame()
 	'bFlash3Enabled = True
 	'bFlash4Enabled = True
 
-    StartAttractMode
+    vpmTimer.AddTimer 3000,"StartAttractMode '"
 
 ' you may wish to light any Game Over Light you may have
 End Sub
@@ -6120,10 +6235,10 @@ End Sub
 ' Called every 200ms by the GameTimer to update the HurryUp value
 Sub HurryUpTimer
     Dim lbl
-    HurryUpCounter = HurryUpCounter + 1
-    If HurryUpCounter < HurryUpGrace Then Exit Sub
+    If bHurryUpActive Then HurryUpCounter = HurryUpCounter + 1
+    If bTGHurryUpActive Then TGHurryUpCounter = TGHurryUpCounter + 1
     If bUseFlexDMD Then
-        If Not IsEmpty(HurryUpScene) Then
+        If bHurryUpActive And Not IsEmpty(HurryUpScene) Then
             If Not (HurryUpScene is Nothing) Then
                 Set lbl = HurryUpScene.GetLabel("HurryUp")
                 If Not lbl is Nothing Then
@@ -6133,15 +6248,36 @@ Sub HurryUpTimer
                 End If
             End if
         End If
+        If bTGHurryUpActive And Not IsEmpty(TGHurryUpScene) Then
+            If Not (TGHurryUpScene is Nothing) Then
+                Set lbl = TGHurryUpScene.GetLabel("TGHurryUp")
+                If Not lbl is Nothing Then
+                    FlexDMD.LockRenderThread
+                    lbl.Text = FormatScore(TGHurryUpValue)
+                    FlexDMD.UnlockRenderThread
+                End If
+            End if
+        End If
     Else
         'TODO Update regular DMD with hurryUp value
     End if
-    HurryUpValue = HurryUpValue - HurryUpChange
-    If HurryUpValue <= 0 Then
-        HurryUpValue = 0
-        EndHurryUp
-    Else
-        SetGameTimer tmrHurryUp,2
+    if bHurryUpActive And HurryUpCounter > HurryUpGrace Then 
+        HurryUpValue = HurryUpValue - HurryUpChange
+        If HurryUpValue <= 0 Then
+            HurryUpValue = 0
+            EndHurryUp
+        Else
+            SetGameTimer tmrHurryUp,2
+        End If
+    End If
+    if bTGHurryUpActive And TGHurryUpCounter > TGHurryUpGrace Then 
+        TGHurryUpValue = TGHurryUpValue - TGHurryUpChange
+        If TGHurryUpValue <= 0 Then
+            TGHurryUpValue = 0
+            TGEndHurryUp
+        Else
+            SetGameTimer tmrHurryUp,2
+        End If
     End If
 End Sub
 
@@ -6185,11 +6321,60 @@ End Sub
 Sub StopHurryUp
     Dim lbl
     bHurryUpActive = False
-    TimerFlags(tmrHurryUp) = TimerFlags(tmrHurryUp) And 254
+    if Not bTGHurryUpActive Then TimerFlags(tmrHurryUp) = TimerFlags(tmrHurryUp) And 254
     if bUseFlexDMD Then
         If Not IsEmpty(HurryUpScene) Then
             If Not (HurryUpScene is Nothing) Then 
                 Set lbl = HurryUpScene.GetLabel("HurryUp")
+                If Not lbl is Nothing Then
+                    FlexDMD.LockRenderThread
+                    lbl.Visible = False
+                    FlexDMD.UnlockRenderThread
+                End if
+            End If
+        End if
+    Else
+        'TODO Set DMD back to regular score
+    End if
+End Sub
+
+'Targaryen-specific HurryUp - allows it to co-exist with another HurryUp
+Sub StartTGHurryUp(value,scene,grace)
+    if bTGHurryUpActive Then
+        debug.print "HurryUp already active! Can't have two!"
+        Exit Sub
+    End If
+    If bUseFlexDMD Then
+        Set TGHurryUpScene = scene
+    Else
+        'TODO: Display hurryUp on regular DMD in place of score
+    End If
+    TGHurryUpGrace = grace
+    TGHurryUpValue = value
+    TGHurryUpCounter = 0
+    TGHurryUpChange = Int(HurryUpValue / 1033.32) * 10
+    bTGHurryUpActive = True
+    SetGameTimer tmrHurryUp,2
+End Sub
+
+' Called when the HurryUp runs down. Ends battle mode if running
+Sub EndTGHurryUp
+    StopTGHurryUp
+    If PlayerMode = 1 Then
+        If HouseBattle1 = Targaryen Then House(CurrentPlayer).BattleState(Targaryen).BEndHurryUp
+        If HouseBattle2 = Targaryen Then House(CurrentPlayer).BattleState(Targaryen).BEndHurryUp 
+    End if
+End Sub
+
+' Called when the HurryUp has been scored. Ends the HurryUp but doesn't end the battle (if applicable)
+Sub StopTGHurryUp
+    Dim lbl
+    bTGHurryUpActive = False
+    if Not bHurryUpActive Then TimerFlags(tmrHurryUp) = TimerFlags(tmrHurryUp) And 254
+    if bUseFlexDMD Then
+        If Not IsEmpty(TGHurryUpScene) Then
+            If Not (TGHurryUpScene is Nothing) Then 
+                Set lbl = TGHurryUpScene.GetLabel("TGHurryUp")
                 If Not lbl is Nothing Then
                     FlexDMD.LockRenderThread
                     lbl.Visible = False
@@ -6389,6 +6574,9 @@ Sub LaunchBattleMode
     PlaySoundAt "fx_droptarget", Target90
     Target90.IsDropped = 1
     If PlayerMode = -2.1 Then PlayerMode = 1
+    ' Start the targaryen HurryUp if appropriate
+    House(CurrentPlayer).BattleState(HouseBattle1).TGStartHurryUp
+    House(CurrentPlayer).BattleState(HouseBattle2).TGStartHurryUp
     If bBattleCreateBall Then   'LockBall has already run. Create the new ball now
         bBattleCreateBall = False
         If RealBallsInLock > BallsInLock Then
@@ -6842,7 +7030,7 @@ Sub tmrAttractModeScene_Timer
     Select Case tmrAttractModeScene.UserValue
         Case 0:img = "got-sternlogo":format=9:scrolltime=3:y=73:delay=3000
         Case 1:line1 = "PRESENTS":format=10:font="skinny10x12.fnt":delay=2000
-        Case 2:img = "got-intro":format=5:delay=21000
+        Case 2:img = "got-intro":format=5:delay=17200
         Case 3,7:img = "got-winterstorm":format=6:line1 = GetNextOath():delay=9000:font = "skinny10x12.fnt":scrolltime=9:y=100   ' Oath Text
         Case 4
             format=7:font="FlexDMD.Resources.udmd-f12by24.fnt":line1=FormatScore(Score(0)):skipifnoflex=False  ' Last score
@@ -7704,7 +7892,7 @@ Sub DMDCreateAlternateScoreScene(h1,h2)
             scene.AddActor FlexDMD.NewLabel("combo"&i, FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 1), "1X")
         Next
         mask = 104  ' combos, tmr1, tmr2
-        If h1 = Targaryen or h2 = Targaryen Then mask = mask Or 16 ' HurryUp
+        If h1 = Targaryen or h2 = Targaryen Then mask = mask Or 512 ' TGHurryUp
         If h1 = Martell or h2 = Martell Then mask = mask Or 144 'HurryUp, tmr3
     Else
         Set scene1 = FlexDMD.NewGroup(HouseToString(h1))
@@ -7730,6 +7918,7 @@ End Sub
 '   6    BattleTimer2 (tmr2)
 '   7    MartellBattleTimer (tmr3)
 '   8    SJP Timer (tmr1)
+'   9    Targaryen HurryUp
 '
 ' "scene" is a pre-created scene with all of the proper text labels already created. There MUST be a label
 ' corresponding with every bit set in the scenemask
@@ -7801,6 +7990,7 @@ Sub DMDLocalScore
         ' Update special battlemode fields
         If bAlternateScoreScene Then
             If (AlternateScoreSceneMask And 16) = 16 Then ScoreScene.GetLabel("HurryUp").Text = FormatScore(HurryUpValue)
+            If (AlternateScoreSceneMask And 512)=512 Then ScoreScene.GetLabel("TGHurryUp").Text = FormatScore(TGHurryUpValue)
             If (AlternateScoreSceneMask And 32) = 32 Then ScoreScene.GetLabel("tmr1").Text = Int((TimerTimestamp(tmrBattleMode1) - GameTimeStamp)/10)
             If (AlternateScoreSceneMask And 64) = 64 Then ScoreScene.GetLabel("tmr2").Text = Int((TimerTimestamp(tmrBattleMode2) - GameTimeStamp)/10)
             If (AlternateScoreSceneMask And 128)=128 Then ScoreScene.GetLabel("tmr3").Text = Int((TimerTimestamp(tmrMartellBattle) - GameTimeStamp)/10)
@@ -7893,9 +8083,8 @@ End Class
 ' √? "Shoot orbits" still overlaps timer
 ' - top right gate doesn't close. top left does
 ' √? in high score enter initials, letters overlap top row, and don't stay in one place. Use left instead of center
-' - Need the "> <" characters in the Skinny10x12 font
-' - After match sequence, game doesn't change to "GAME OVER" but goes straight to show attract sequence
-'     - would need to change attract sequence to leave "game over" on screen while light sequences play
+' √ Need the "> <" characters in the Skinny10x12 font
+' √ After match sequence, game doesn't change to "GAME OVER" but goes straight to show attract sequence
 ' √ Match changes to number too quickly (or scene plays too slowly)
 ' - DMD sometimes plays scenes twice, producing an echo of sound too
 ' - UPF can't handle multiball and battle at the same time
