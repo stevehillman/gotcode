@@ -3568,7 +3568,12 @@ Class cBattleState
                     State = State + 1
                     Select Case State
                         Case 4,7: EndBattleMode
-                        Case 9: If DrogonHits < 15 Then TGShotCount = 0 : State = 7 : TGStartHurryUp Else DoCompleteMode Targaryen
+                        Case 9
+                            If DrogonHits < 15 Then 
+                                TGShotCount = 0 : State = 7 : TGStartHurryUp 
+                            Else 
+                                DoCompleteMode Targaryen
+                            End if
                         Case Else: TGStartHurryUp
                     End Select
                     SetModeLights
@@ -3839,7 +3844,7 @@ Class cBattleState
     End Sub
 
     Public Function TGLevel
-        If MyHouse <> Targaryen Then TGLevel = 0:Exit Sub
+        If MyHouse <> Targaryen Then TGLevel = 0:Exit Function
         If State < 4 Then 
             TGLevel = 0
         Elseif State < 7 Then 
@@ -3877,6 +3882,7 @@ Class cBattleState
 
         If MyHouse = Targaryen Then
             ' Everything about the Targaryen scene is different
+            Dim Dragon
             Select Case Me.TGLevel
                 Case 0: Dragon = "VISERION"
                 Case 1: Dragon = "RHAEGAL"
@@ -8089,6 +8095,15 @@ End Class
 ' - DMD sometimes plays scenes twice, producing an echo of sound too
 ' - UPF can't handle multiball and battle at the same time
 ' √? UFP targets got reset, maybe by "pass for now"?
+
+' Targaryen battle mode:
+'  - HurryUps don't count down
+'  - score and objective are both in top left corner
+'  - beginning of battle mode needs to choose different objective depending on TG level
+'  - After first level, targaryen total was wrong. Showed 16M instead of 24M.
+'  - Total awarded was always 8M. Should have been 8, then 10, then 12.
+'  - In level 2, shots don't turn off once made.
+
 
 ' √? combo multiplier, or score, doesn't update until ball is back in play
 ''
