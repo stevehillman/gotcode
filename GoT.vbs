@@ -159,7 +159,7 @@ Sub Table1_Init()
     Dim i
     Randomize
 
-	' TODO need to look into this 
+	' TODO need to look into right tilt settings
 	vpmNudge.TiltSwitch = 14
     vpmNudge.Sensitivity = 1
     vpmNudge.TiltObj = Array(Bumper1, bumper2, bumper3, LeftSlingshot, RightSlingshot)
@@ -204,6 +204,9 @@ Sub Table1_Init()
 
     'load saved values, highscore, names, jackpot
     Loadhs
+
+    'TODO. For debugging. Comment in once HS entry is debugged
+    'If HighScore(0) = 100000 Then Reseths
 
     ' initalise the DMD display
     DMD_Init
@@ -762,8 +765,6 @@ Sub aRubber_Pegs_Hit(idx):PlaySoundAtBall "fx_rubber_peg":End Sub
 Sub aPlastics_Hit(idx):PlaySoundAtBall "fx_PlasticHit":End Sub
 Sub aGates_Hit(idx):PlaySoundAtBall "fx_Gate":End Sub
 Sub aWoods_Hit(idx):PlaySoundAtBall "fx_Woodhit":End Sub
-' TODO: Not sure we want to play random sounds when triggers are hit?
-'Sub aTriggers_Hit(idx):PlaySfx:End Sub
 
 ' Slingshots has been hit
 
@@ -1047,6 +1048,7 @@ Sub HighScoreCommitName()
 
     HighScoreName(3) = hsEnteredName
     SortHighscore
+    Savehs
     tmrDMDUpdate.Enabled = True
     EndOfBallComplete()
 End Sub
@@ -1204,30 +1206,9 @@ Sub DMDScore()
     Dim tmp, tmp1, tmp2
 	Dim TimeStr
 
-	if bUseFlexDMD Then 
-		'If Not UltraDMD.IsRendering Then
-            'TODO: This is where we'll display custom text when selecting house, battle, and mystery awards
-			' if PlayerMode = -1 Then
-			' 	If bSecondMode then
-			' 		if PlayerMode2 = -1 then 
-			' 			TimeStr = "Select Mode/2nd"
-			' 		Else 
-			' 			if PlayerMode2 = 7 or PlayerMode2 = 2 Then  ' SwitchHits 
-			' 				TimeStr = Mode2Percent(PlayerMode2) & "%  HITS:" & SwitchHitCount & " 2nd"
-			' 			else
-			' 				TimeStr = Mode2Percent(PlayerMode2) & "% 2nd"
-			' 			end If
-			' 		End if 
-			' 	else 
-			' 		TimeStr = "Select Mode"
-			' 	End If 
-			' elseif PlayerMode = 7 Then  ' SwitchHits 
-			' 	TimeStr = "Time:" & ModeCountdownTimer.UserValue & "(" & ModePercent(PlayerMode) & ") Sw:" & SwitchHitCount
-			' else
-			' 	TimeStr = "Time:" & ModeCountdownTimer.UserValue & "(" & ModePercent(PlayerMode) & ")"
-			' end If
-			DisplayDMDText RL(0,FormatScore(Score(CurrentPlayer))), "", 1000 
-		'End If
+	if bUseFlexDMD Then
+        debug.log "Call to old DMDScore routine" 
+		'	DisplayDMDText RL(0,FormatScore(Score(CurrentPlayer))), "", 1000 
 	End If
 End Sub
 
@@ -2066,10 +2047,10 @@ Sub TurnOffPlayfieldLights()
     Next
 End Sub
 
+' Not used for GoT table. See GameStartAttractMode()
 Sub ShowTableInfo
    Dim tmp
    'info goes in a loop only stopped by the credits and the startkey
-   ' TODO: Add Game Of Thrones logo animation and move this to game-specific code
    If Score(1)Then
        DMD CL(0, "LAST SCORE"), CL(1, "PLAYER1 " &FormatScore(Score(1))), "", eNone, eNone, eNone, 3000, False, ""
    End If
@@ -2216,11 +2197,11 @@ Sub swPlungerRest_Hit()
         vpmtimer.addtimer 1000, "PlungerIM.AutoFire:DOF 120, DOFPulse:PlaySoundAt ""fx_kicker"", swPlungerRest:bAutoPlunger = False:bAutoPlunged = True '"
     End If
     'Start the Selection of the skillshot if ready
+    ' GoT Premium/LE has no skill shot
     If bSkillShotReady Then
         PlaySong "mu_shooterlane"
         UpdateSkillshot()
         ' show the message to shoot the ball in case the player has fallen sleep
-        ' TODO: Should this only happen when SkillShot is lit? GoT LE has no skill shot
         SwPlungerCount = 0
         swPlungerRest.TimerEnabled = 1
     End If
@@ -2328,7 +2309,7 @@ Const Targaryen = 7
 
 
 ' Constants we might need to tweak later
-Const SpinnerAddValue = 500      ' Base amount that Spinner's value increases by for each target hit. TODO: Figure out right value
+Const SpinnerAddValue = 500      ' Base amount that Spinner's value increases by for each target hit.
 
 ' Global table-specific variables
 Dim HouseColor
@@ -2379,7 +2360,7 @@ Dim TimerSubroutine     ' Names of subroutines to call when each timer's time ex
 ' Timers 1 - 4 can't be frozen. if adding more unfreezable timers, put them next and adjust the number in tmrGame_Timer sub
 TimerSubroutine = Array("","UpdateChooseBattle","PreLaunchBattleMode","LaunchBattleMode","UpdateBattleMode","BattleModeTimer1","BattleModeTimer2", _ 
                         "MartellBattleTimer","HurryUpTimer","ResetComboMultipliers","ModePauseTimer","BlackwaterSJPTimer","WildfireModeTimer", _
-                        "UPFMultiplierTimer")
+                        "UPFMultiplierTimer","PFMStateTimer","PFMultiplierTimer")
 Const tmrUpdateChooseBattle = 1 ' Update DMD timers during Choose Your Battle
 Const tmrChooseBattle = 2       ' Countdown timer for choosing your Battle
 Const tmrLaunchBattle = 3       ' After battle is chosen, countdown to launch while scenes play. Can be aborted with flippers
@@ -2393,7 +2374,9 @@ Const tmrModePause = 10         ' "no activity" timer that will pause battle mod
 Const tmrBlackwaterSJP = 11     ' SuperJackpot battering ram countdown timer
 Const tmrWildfireMode = 12      ' Wildfire Mini Mode timer
 Const tmrUPFMultiplier = 13
-Const MaxTimers = 13     ' Total number of defined timers. There MUST be a corresponding subroutine for each
+Const tmrPFMState = 14
+Const tmrPFMultiplier = 15
+Const MaxTimers = 15     ' Total number of defined timers. There MUST be a corresponding subroutine for each
 
 'HurryUp Support
 Dim HurryUpValue
@@ -2431,6 +2414,7 @@ Dim bElevatorShotUsed   ' Whether a shot to the upper playfield via the right or
 Dim bCastleShotAvailable ' Whether the ball has just been plunged to the upper PF
 Dim HouseBattle1        ' When in battle, the primary (top) House
 Dim HouseBattle2        ' When in two-way battle, the second House
+Dim PFMState
 
 HouseColor = Array(white,white,yellow,red,purple,green,amber,blue)
 ' Assignment of centre playfield shields
@@ -2492,6 +2476,7 @@ Class cPState
     Dim myCastlesCollected
     Dim myCurrentWildfire
     Dim myTargaryenInProgress
+    Dim myPFMState
 
     Public Sub Save
         Dim i
@@ -2510,6 +2495,7 @@ Class cPState
         mySwordsCollected = SwordsCollected
         myCastlesCollected = CastlesCollected
         myTargaryenInProgress = bTargaryenInProgress
+        If PFMState = 2 Then myPFMState = 2 Else myPFMState = 0
         For i = 0 to 5:myGoldTargets(i) = bGoldTargets(i):Next
     End Sub
 
@@ -2528,6 +2514,7 @@ Class cPState
         TotalWildfire = myTotalWildfire
         CurrentWildfire = myCurrentWildfire
         bTargaryenInProgress = myTargaryenInProgress
+        PFMState = myPFMState
 
         CurrentGold = myCurrentGold
         CastlesCollected = myCastlesCollected
@@ -2790,10 +2777,9 @@ Class cHouse
                 Next
                 If t Then
                     BWState = BWState + 1
-                    li132.BlinkInterval = 100
-                    SetLightColor li132,midblue,2  ' SJP light at battering ram
                     SetGameTimer tmrBlackwaterSJP,200
                     bBlackwaterSJPMode = True
+                    SetBatteringRamLights
                     UpdateBWMBScene
                 End If
             End If
@@ -2899,7 +2885,7 @@ Class cHouse
             Else
                 ' Already lit
                 If HouseSelected = Lannister Then AddGold 15 Else AddGold 5
-                PlaySoundVol "gotfx-coins1",VolDef/4
+                PlaySoundVol "gotfx-litgold",VolDef/4
             End If
         End If
     End Sub
@@ -3025,7 +3011,7 @@ Class cHouse
                 End If
                 If (UPFShotMask And 1) > 0 Then     ' Castle was lit
                     Select Case UPFState
-                        Case 0: IncreaseUPFLevel : UPFShotMask = 42 : UPFCastleShotMask = 42 : PlaySoundVol "gotfx-wildfiremini",VolDef
+                        Case 0: IncreaseUPFLevel : UPFShotMask = 42 : UPFCastleShotMask = 42 : PlaySoundVol "gotfx-wildfiremini2",VolDef
                         Case 1 ' Battlemode hit
                             UPFShotMask = 42
                             ' Award a castle for each battle mode that's active
@@ -3160,7 +3146,6 @@ Dim CompletionAnimationTimes
 CompletionAnimationTimes = Array(0,2,2,1.5,4,2.3,6,2)
 
 'Each number is a bit mask of which shields light up for the given mode
-'TODO Targaryen light pattern needs more investigation
 ModeLightPattern = Array(0,10,16,0,218,138,80,10)
 
 AryaKills = Array("","","joffrey","cercai","walder frey","tywin","the red woman","beric dondarrion","Thoros of Myr", _
@@ -3223,7 +3208,7 @@ Class cBattleState
                 If SelectedHouse=GreyJoy And State = 2 Then mask = mask or 16
                 If State = 2 Then mask = mask or 128    ' Light dragon shot
                 If State = 3 Then mask = mask or 4      ' Light LoL target bank
-            Case Lannister
+            Case Lannister,Targaryen
                 mask = ShotMask
             Case Greyjoy
                 mask = GreyjoyMask
@@ -3235,14 +3220,6 @@ Class cBattleState
                 End Select
             Case Martell
                 If State = 2 Then mask = 10
-            Case Targaryen
-                Select Case State
-                    Case 2,5: mask = 80
-                    Case 3,6,8: mask = 128
-                    Case 4: mask = 10
-                    Case 7
-                        ' TODO: How are Drogon's shots chosen
-                End Select
         End Select
 
         debug.print "House:"&MyHouse&" State:"&State&" Mask:"&mask
@@ -3327,7 +3304,7 @@ Class cBattleState
                         State = 2
                         SetModeLights
                     End If
-                    PlaySoundVol "gotfx-ramphit",VolDef/4 'TODO: Is this sound effect specific to Stark battle ramp hits?
+                    PlaySoundVol "gotfx-ramphit",VolDef/4
                     debug.print "Stark hits: "&CompletedShots
                     If CompletedShots >= 3 Then
                         'TODO: On the real table, if you restart the mode, it doesn't reuse the same victims. It also randomizes the order
@@ -3370,7 +3347,6 @@ Class cBattleState
                 If (ShotMask And 2^h) > 0 Then
                     ShotMask = ShotMask And (2^h Xor 255)
                     LannisterGreyjoyMask = LannisterGreyjoyMask Or 2^h
-                    ' TODO: Does making a lit shot score value during Lannister, or just increase HouseValue? 
                     CompletedShots = CompletedShots + 1
                     If (SelectedHouse = GreyJoy And LannisterGreyjoyMask = 218) or (SelectedHouse <> Greyjoy And CompletedShots >= 5) Then
                         DoCompleteMode h
@@ -3464,7 +3440,6 @@ Class cBattleState
                         TimerFlags(tmrMartellBattle) = 0
                         State = 2
                         UpdateBattleScene
-                        'TODO: Create a HurryUp Scene
                         StartHurryUp ScoredValue,MyBattleScene,0
                         SetModeLights
                     Else
@@ -3490,7 +3465,7 @@ Class cBattleState
                     
                 End If
 
-            ' Targaryen: 3 LEVELS, each with 3 states except last which has 2? - 8 states total
+            ' Targaryen: 3 LEVELS, each with 3 states except last which has 2 that repeat 4 times - 8 states total
             ' All shots involve HurryUps. Mode ends if HurryUp runs down
                 ' Level 1 Start: light 2 ramps for HurryUp. 8M
                 ' State 1: Shoot 1 of the lit ramps to advance to State 2
@@ -3561,8 +3536,17 @@ Class cBattleState
                 End Select
                 If hit Then
                     ScoredValue = TGHurryUpValue
-                    hitscene = "hit"&(Int((State-1)/3)+1)
+                    StopTGHurryUp
+                    If State < 4 Then
+                        hitscene = "hit1"
+                    ElseIf State < 7 Then
+                        hitscene = "hit2"
+                    ElseIf State = 7 Then
+                        hitscene = "hit" & 3 + TGShotCount MOD 3
+                    Else
+                        hitscene = "hit6" 
                     If (State=4 Or State=5 Or State=7) And Not done then TGStartHurryUp 
+                    If Not done then SetModeLights
                 End If
                 If done Then
                     State = State + 1
@@ -3674,7 +3658,7 @@ Class cBattleState
                 Next
             End If
             If br or br1 Then House(CurrentPlayer).BattleReady = True
-            'TODO: Anything else needed to end battle mode?
+
             If Not bMultiBallMode Then
                 TimerFlags(tmrUpdateBattleMode) = 0     ' Disable the timer that updates the Battle Alternate Scene
                 DMDResetScoreScene
@@ -3760,7 +3744,6 @@ Class cBattleState
 
     ' Upper Playfield Castle Loop completes this Mode when lit
     ' But no score awarded, other than what they get from the castle itself
-    ' TODO: If we are Targaryen, there are special rules
     Public Sub RegisterCastleComplete
         If MyHouse <> Targaryen Then
             bComplete = True
@@ -3796,11 +3779,14 @@ Class cBattleState
         If MyHouse = Baratheon And State = 3 And tgt = 0 Then
             ' Mode completed!
             DoCompleteMode Baratheon
+        ElseIf MyHouse = Targaryen And State = 7 And (ShotMask And 4) > 0 And tgt = 0 Then
+            Me.RegisterHit Baratheon
+        ElseIf MyHouse = Targaryen And State = 7 And (ShotMask And 32) > 0 And tgt = 1 Then
+            Me.RegisterHit Tyrell
         ElseIf tgt = 0 Then
             ResetDropTargets
-            'TODO Drop targets also reset if you're in Targaryen mode
         ElseIf tgt = 1 Then
-            Me.RegisterHit(Tyrell)
+            Me.RegisterHit Tyrell
         End if
     End Sub
 
@@ -3808,7 +3794,7 @@ Class cBattleState
     Public Sub RegisterGoldHit(tgt)
         Dim litmask,litshots,growval
         If MyHouse <> Lannister Then Exit Sub
-        If (GoldShotMask And 2^tgt) = 0 Then Exit Sub   ' Gold target wasn't lit
+        If (GoldShotMask And 2^tgt) = 0 Then PlaySoundVol "gotfx-litgold",VolDef : Exit Sub   ' Gold target wasn't lit
         PlaySoundVol "gotfx-goldcoin",VolDef
         GoldShotMask = GoldShotMask Xor 2^tgt
         Select Case tgt
@@ -3870,16 +3856,7 @@ Class cBattleState
         Dim tinyfont,ScoreFont,line3,x3,x4,y4,i
     
         Set tinyfont = FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0)
-        BattleScene.AddActor FlexDMD.NewLabel("obj",tinyfont,BattleObjectivesShort(MyHouse))
-        BattleScene.AddActor FlexDMD.NewLabel("tmr1",tinyfont,Int((TimerTimestamp(tmrBattleMode1)-GameTimeStamp)/10))
-        y4 = 20
-        Select Case MyHouse
-            Case Stark,Baratheon: line3 = "VALUE = "&FormatScore(HouseValue) : x3 = 40: x4 = 40: y4 = 22
-            Case Lannister,Greyjoy: line3 = "SHOTS = " & 5-CompletedShots : x3 = 20: x4 = 56
-            Case Tyrell: x4 = 40
-            Case Martell: line3 = "SHOOT ORBITS":x3=28:x4 = 56
-        End Select
-
+        
         If MyHouse = Targaryen Then
             ' Everything about the Targaryen scene is different
             Dim Dragon
@@ -3897,6 +3874,17 @@ Class cBattleState
             BattleScene.GetLabel("dragon").SetAlignedPosition 127,7,FlexDMD_Align_TopRight
             'TODO: If dragon = DROGON, draw a health bar in the top right corner
         Else
+            ' x3,y3 = line3 location
+            y4 = 20 ' x4,y4 = timer location
+            Select Case MyHouse
+                Case Stark,Baratheon: line3 = "VALUE = "&FormatScore(HouseValue) : x3 = 40: x4 = 40: y4 = 22
+                Case Lannister,Greyjoy: line3 = "SHOTS = " & 5-CompletedShots : x3 = 20: x4 = 56
+                Case Tyrell: x4 = 40
+                Case Martell: line3 = "SHOOT ORBITS":x3=28:x4 = 56
+            End Select
+
+            BattleScene.AddActor FlexDMD.NewLabel("obj",tinyfont,BattleObjectivesShort(MyHouse))
+            BattleScene.AddActor FlexDMD.NewLabel("tmr1",tinyfont,Int((TimerTimestamp(tmrBattleMode1)-GameTimeStamp)/10))
             If MyHouse <> Tyrell Then
                 BattleScene.AddActor FlexDMD.NewLabel("line3",tinyfont,line3) 
                 BattleScene.GetLabel("line3").SetAlignedPosition x3,16,FlexDMD_Align_Center
@@ -3940,7 +3928,7 @@ Class cBattleState
         Select Case MyHouse
             Case Stark,Baratheon: line2 = "VALUE = "& vbLf & FormatScore(HouseValue) 
             Case Lannister,Greyjoy: line2 = "SHOTS = " & 5-CompletedShots
-            Case Tyrell: line2="" ' TODO: What is Tyrell's line2 value during stacked house battle
+            Case Tyrell: line2=""
             Case Martell: line2 = "SHOOT ORBITS"
         End Select
 
@@ -4016,7 +4004,6 @@ Class cBattleState
     End Sub
 
     Public Sub DoMyBattleCompleteScene
-        'TODO Display a scene with this house name, sigil, and earned total points
         Dim scene
         Set scene = NewSceneWithVideo("btotal","got-"&HouseToString(MyHouse)&"sigil")
         scene.AddActor FlexDMD.NewLabel("ttl",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0),HouseToUCString(MyHouse)&" TOTAL")
@@ -4225,10 +4212,11 @@ Sub ResetNewBallVariables() 'reset variables for a new ball or player
     'playfield multipiplier
     pfxtimer.Enabled = 0
     PlayfieldMultiplierVal = 1
+    PFMState = 0
     SpinnerLevel = 1
     AccumulatedSpinnerValue = 0
     SpinnerValue = 500 + (1+BallsPerGame-BallsRemaining(CurrentPlayer))*2000 ' Appears to start at 2500 on ball 1 and 4500 on ball 2
-    UpdatePFXLights(PlayfieldMultiplierVal)
+    SetPFMLights
     bWildfireLit = False
     bPlayfieldValidated = False
     bBattleCreateBall = False
@@ -4237,7 +4225,7 @@ End Sub
 Sub SetPlayfieldLights
     TurnOffPlayfieldLights
     If PlayerMode = 1 or PlayerMode = -2.1 Then
-        SetModeLights       ' Set Sigils and Shields for battle
+        SetModeLights       ' Set Sigils and Shields for battle, as well as UpperPF lights
     ElseIf PlayerMode = 0 Then
         If House(CurrentPlayer).MyHouse > 0 Then House(CurrentPlayer).ResetLights    ' Set Sigils and Shields for normal play
         SetGoldTargetLights
@@ -4252,7 +4240,8 @@ Sub SetPlayfieldLights
     SetComboLights
     SetWildfireLights
     SetTargetLights
-    ' TODO SetUpperPFLights
+    SetBatteringRamLights
+    SetPFMLights
 End Sub
 
 ' Create a new ball on the Playfield
@@ -4311,8 +4300,7 @@ Sub AddScore(points)
             EnableBallSaver BallSaverTime
         End If
 
-        ' TODO: If in a mode (HOTK, Wizard, or 1 of 3 multiball modes), track the points earned in this mode
-
+        'TODO: Award replay if score goes over replay score
         Score(CurrentPlayer) = Score(CurrentPlayer) + points * PlayfieldMultiplierVal	'only for this table
 
         ' update the score display
@@ -4475,8 +4463,8 @@ Sub tmrEndOfBallBonus_Timer()
             tmrEndOfBallBonus.Interval = 1200
         Case 9
             line1 = "TOTAL BONUS" : line2 = FormatScore(BonusCnt * BonusMultiplier(CurrentPlayer))
-            'TODO: Send this via AddScore so that credits can be awarded if earned
-            Score(CurrentPlayer) = Score(CurrentPlayer) + (BonusCnt * BonusMultiplier(CurrentPlayer))
+            PlayfieldMultiplierVal = 1
+            AddScore BonusCnt * BonusMultiplier(CurrentPlayer)
             tmrEndOfBallBonus.Interval = 1700
         Case 10
             vpmtimer.addtimer 100, "EndOfBall2 '"
@@ -4695,7 +4683,7 @@ Sub EndOfBallComplete()
 
         ' play a sound if more than 1 player
         If PlayersPlayingGame > 1 Then
-            'TODO: Add player <X> sound
+            'TODO: Add "player <X>, you're up!" sound
             'PlaySoundVol "say-player" &CurrentPlayer+1, VolDef
             DMD "", CL(1, "PLAYER " &CurrentPlayer+1), "", eNone, eNone, eNone, 800, True, ""
         End If
@@ -4817,7 +4805,6 @@ End Sub
 
 ' Called when the last ball of multiball is lost
 Sub StopMBmodes
-' TODO: Need to do anything here? E.g. reset lighting, restore pre-mb state?
     if bBWMultiballActive Then
         BWMultiballsCompleted = BWMultiballsCompleted + 1
         DMDBlackwaterCompleteScene
@@ -4908,14 +4895,14 @@ Sub GameGiOff
     Fi006.Visible = 0
 End Sub
 
-Sub UpdatePFXLights(Level)
+Sub SetPFMLights
     ' Update the playfield multiplier lights
     Dim i
     For i = 2 to 5
-        If Level < i Then 
+        If PlayfieldMultiplierVal < i Then 
             SetLightColor pfmuxlights(i-2),amber,0
-        Elseif Level = i Then
-            pfmuxlights(i-2).Interval = 100
+        Elseif PlayfieldMultiplierVal = i Then
+            pfmuxlights(i-2).BlinkInterval = 100
             SetLightColor pfmuxlights(i-2),amber,2
         Else 
             SetLightColor pfmuxlights(i-2),amber,1
@@ -5354,7 +5341,7 @@ Sub doWFTargetHit(t)
         If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).RegisterTargetHit 1
     End If
 
-    If (BWMultiballsCompleted = 0 or bWildfireTargets(t1)) And Not bMultiBallMode Then LightLock 'TODO: Should we be able to light lock during a mode?
+    If (BWMultiballsCompleted = 0 or bWildfireTargets(t1)) And Not bMultiBallMode Then LightLock
     if bWildfireTargets(t1) Then
         'Target bank completed
         AddBonus 100000
@@ -5524,11 +5511,11 @@ Sub sw30b_Hit
 End Sub
 ' Left ramp switch
 Sub sw39_Hit
-    If Tilted then Exit Sub 'TODO need to release locked ball if there is one
+    If Tilted then Exit Sub
     AddScore 1000
     debug.print "left ramp hit"
     House(CurrentPlayer).RegisterHit(Lannister)
-    'TODO: This ramp shot kicks off lots of other actions too
+    
     LastSwitchHit = "sw39"
     sw48.UserValue = "sw39"
 End Sub
@@ -5761,7 +5748,7 @@ End Sub
 ' Battering Ram
 Sub BatteringRam_Hit
     If Tilted Then Exit Sub
-    Dim scene
+    Dim scene,line1,i
     AddScore 1130
     AddBonus 5000
     PlaySoundVol "gotfx-battering-ram",Voldef
@@ -5777,11 +5764,12 @@ Sub BatteringRam_Hit
             DelayActor scene.GetLabel("obj"),1,True
             scene.GetLabel("ttl").SetAlignedPosition 64,22,FlexDMD_Align_Center
             DelayActor scene.GetLabel("ttl"),1,True
-            DMDEnqueueScene scene,1,1800,4000,1500,"gotfx-wildfiremini"
+            i = (Int(CurrentWildfire/10) MOD 2) + 1
+            DMDEnqueueScene scene,1,1800,4000,1500,"gotfx-wildfiremini"&i
         End If
     ElseIf bWildfireLit = True Then
         ' Start Wildfire Mini Mode
-        SetGameTimer tmrWildfireMode,200    ' 20 second mode timer
+        SetGameTimer tmrWildfireMode,220    ' 22 second mode timer
         debug.print "starting wildfire minimode"
         li126.BlinkInterval = 100
         SetLightColor li126, darkgreen, 2
@@ -5799,6 +5787,57 @@ Sub BatteringRam_Hit
         bWildfireLit = 2
     End If
     If bBlackwaterSJPMode Then House(CurrentPlayer).ScoreSJP 0    'Super Jackpot!!
+
+    'Playfield Multiplier support
+    'PFMState:
+    ' 0 - all lights off
+    ' 1 - blue arrow flashing - timer active
+    ' 2 - PFM light on solid
+    ' 3 - PFM light flashing - timer active
+    ' Hits advance state. A hit on state 3 awards PF multiplier. Timer resets state to 0
+    Select Case PFMState
+        Case 0
+            If PlayfieldMultiplierVal < 3 Or (PlayfieldMultiplierVal < 3 + SwordsCollected And PlayfieldMultiplierVal < 5) Then
+                SetGameTimer tmrPFMState,200    ' 20 seconds
+                line1 = ""
+            End If
+        Case 1
+            TimerFlags(tmrPFMState) = 0
+            line1 = "LIGHT PLAYFIELD"&vbLf&"MULTIPLIER"
+        Case 2
+            SetGameTimer tmrPFMState,200    ' 20 seconds
+            line1 = ""
+        Case 3
+            TimerFlags(tmrPFMState) = 0
+            PlayfieldMultiplierVal = PlayfieldMultiplierVal + 1
+            SetGameTimer tmrPFMultiplier,80-(PlayfieldMultiplierVal*10)
+            line1 = "+1 PLAYFIELD"&vbLf&"MULTIPLIER"
+        Case Else
+            ' Special case. When the PF Multiplier timer runs out, there's a short grace period where a single
+            ' hit will restore it
+            If PFMState > 3 Then
+                PlayfieldMultiplierVal = PFMState - 2
+                SetGameTimer tmrPFMultiplier,80-(PlayfieldMultiplierVal*10)
+                PFMState = 3
+                line1 = ""
+            End If
+    End Select
+    If PFMState <> 0 Or (PlayfieldMultiplierVal < 3 Or (PlayfieldMultiplierVal < 3 + SwordsCollected And PlayfieldMultiplierVal < 5) ) Then
+        PFMState = PFMState + 1 : If PFMState = 4 Then PFMState = 0
+        If Not bWildfireLit Then
+            If line1 = "" Then
+                Set scene = NewSceneWithVideo("pfmq","got-batteringram")
+                DMDEnqueueScene scene,1,500,500,1000,""
+            Else
+                Set scene = NewSceneWithVideo("wfmm","got-wildfiremode")
+                scene.AddActor FlexDMD.NewLabel("obj",FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbBlack, 0),line1)
+                scene.GetLabel("obj").SetAlignedPosition 64,16,FlexDMD_Align_Center
+                DelayActor scene.GetLabel("obj"),1,True
+                DMDEnqueueScene scene,1,1800,4000,1500,"gotfx-wildfiremini"&PFMState/2
+            End If
+        End if
+    End If
+    SetBatteringRamLights
 End Sub
 
 Sub WildfireModeTimer
@@ -5806,6 +5845,36 @@ Sub WildfireModeTimer
     SetLightColor li126, darkgreen, 0
     TimerFlags(tmrWildfireMode) = 0
     debug.print "Ending Wildfire Minimode"
+End Sub
+
+Sub PFMStateTimer
+    PFMState = 0
+    SetLightColor li132, darkblue, 0
+    SetLightColor li123, amber, 0
+End Sub
+
+Sub PFMultiplierTimer
+    PFMState = PlayfieldMultiplierVal + 2
+    PlayfieldMultiplierVal = 1
+    SetPFMLights
+    vpmTimer.AddTimer 4000,"PFMState=0 '"
+End Sub
+
+Sub SetBatteringRamLights
+    If PFMState = 2 Then SetLightColor li123, amber, 1 Else li123.State = 0
+    If (PFMState MOD 2) = 1 Or bWildfireLit <> 0 Or bBlackwaterSJPMode Then 
+        SetLightColor li132,midblue,2
+    Else
+        SetLightColor li132,midblue,0
+    End If
+    If bBlackwaterSJPMode Then 
+        li132.BlinkInterval = 66
+        li129.BlinkInterval = 66
+        SetLightColor li129,red,2
+    Else 
+        li132.BlinkInterval = 100
+        li129.State = 0
+    End If
 End Sub
 
 Sub Spinner001_Spin
@@ -5963,13 +6032,12 @@ Sub doPictoPops(b)
             IncreaseBonusMultiplier 3
         Case 10     ' Add Time (to mode or Hurry Up)
             If PlayerMode = 1 Then
-                If (TimerFlags(tmrBattleMode1) And 1) = 1 Then TimerTimestamp(tmrBattleMode1) = TimerTimestamp(tmrBattleMode1) + 100
-                If (TimerFlags(tmrBattleMode2) And 1) = 1 Then TimerTimestamp(tmrBattleMode2) = TimerTimestamp(tmrBattleMode2) + 100
-            End IF
-            If bHurryUpActive Then
-                'TODO: Add "Time" to HurryUp
+                If HouseBattle1 > 0 Then House(CurrentPlayer).BattleState(HouseBattle1).AddTime 10
+                If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).AddTime 10
+            ElseIf bHurryUpActive Then
+                HurryUpValue = HurryUpValue + (HurryUpChange * 50)
+                'TODO: pLay an "Add Time" scene with two hourglasses
             End if
-            'TODO: pLay an "Add Time" scene with two hourglasses
         Case 11
             If bMultiBallMode Then
                 AddMultiballFast 1
@@ -6048,7 +6116,7 @@ Sub LockBall
     TotalGold = TotalGold + g
     CurrentGold = CurrentGold + g
     TotalWildfire = TotalWildfire + 5 
-    House(CurrentPlayer).AddWildfire 5 'TODO Does this go up with BallInPlay?
+    House(CurrentPlayer).AddWildfire 5
     i = RndNbr(3)
     if i > 1 Then i = ""
     PlaySoundVol "say-ball-" & BallsInLock & "-locked" & i, VolDef
@@ -6226,7 +6294,7 @@ End Sub
 Sub BlackwaterSJPTimer
     TimerFlags(tmrBlackwaterSJP) = 0
     bBlackwaterSJPMode = False
-    li132.State = 0
+    SetBatteringRamLights
     If bBWMultiballActive Then House(CurrentPlayer).IncreaseBWJackpotLevel
 End Sub
 
@@ -6269,22 +6337,13 @@ Sub HurryUpTimer
     End if
     if bHurryUpActive And HurryUpCounter > HurryUpGrace Then 
         HurryUpValue = HurryUpValue - HurryUpChange
-        If HurryUpValue <= 0 Then
-            HurryUpValue = 0
-            EndHurryUp
-        Else
-            SetGameTimer tmrHurryUp,2
-        End If
+        If HurryUpValue <= 0 Then HurryUpValue = 0 : EndHurryUp
     End If
     if bTGHurryUpActive And TGHurryUpCounter > TGHurryUpGrace Then 
         TGHurryUpValue = TGHurryUpValue - TGHurryUpChange
-        If TGHurryUpValue <= 0 Then
-            TGHurryUpValue = 0
-            TGEndHurryUp
-        Else
-            SetGameTimer tmrHurryUp,2
-        End If
+        If TGHurryUpValue <= 0 Then TGHurryUpValue = 0 : TGEndHurryUp
     End If
+    If bTGHurryUpActive or bHurryUpActive Then SetGameTimer tmrHurryUp,2
 End Sub
 
 ' Start a HurryUp
@@ -6726,8 +6785,9 @@ Sub SetDefaultPlayfieldLights
     SetLightColor li162,white,-1    ' Toplane lights
     SetLightColor li165,white,-1    ' Toplane lights
     SetLightColor li132,midblue,-1  ' Battering Ram
-    SetLightColor li129,white,-1    ' Playfield mul light
+    SetLightColor li129,red,-1      ' SuperJackpot Light
     SetLightColor li126,darkgreen,-1    ' Wildfire light
+    SetLightColor li123,white,-1    ' Playfield Mul light
     For i = 1 to 7
         SetLightColor HouseShield(i),HouseColor(i),-1
         SetLightColor HouseSigil(i),HouseColor(i),-1
@@ -7170,7 +7230,7 @@ Sub tmrAttractModeLighting_Timer
             LightSeqAttract.StopPlay
             RestorePlayfieldLightState True
             LightSeqAttract.UpdateInterval = 75
-            LightSeqAttract.Play SeqRandom,25,,10000    'TODO figure out right values
+            LightSeqAttract.Play SeqRandom,25,,10000
             LightSeqAttract.Play SeqAllOff
             seqtime = 10000
         Case 1,9
@@ -7642,9 +7702,22 @@ Sub DMDChooseBattleScene(line0,line1,line2,tmr)
             FlexDMD.LockRenderThread
             CBScene.GetLabel("house1").Text = line1
             If line2 = "" Then
-                CBScene.GetLabel("house1").SetAlignedPosition 64,20,FlexDMD_Align_Center
-                CBScene.GetLabel("and").Visible = False
-                CBScene.GetLabel("house2").Visible = False
+                If SelectedHouse = Greyjoy Then
+                    With CBScene.GetLabel("and")
+                        .Text = "IN ALLIANCE WITH"
+                        .SetAlignedPosition 64,20,FlexDMD_Align_Center
+                        .Visible = True
+                    End With
+                    With CBScene.GetLabel("house2")
+                        .Visible = True
+                        .Text = "GREYJOY"
+                        .SetAlignedPosition 64,28,FlexDMD_Align_Center
+                    End With
+                Else
+                    CBScene.GetLabel("house1").SetAlignedPosition 64,20,FlexDMD_Align_Center
+                    CBScene.GetLabel("and").Visible = False
+                    CBScene.GetLabel("house2").Visible = False
+                End if
             Else
                 CBScene.GetLabel("house1").SetAlignedPosition 64,12,FlexDMD_Align_Center
                 CBScene.GetLabel("and").Visible = True
@@ -7672,14 +7745,21 @@ End Sub
 ' Play the intro video, music, and goals for a House Battle Mode
 ' We create a single scene consisting of the animation followed by the objective.
 ' The total scene play length is the same as the music
-Dim SceneSoundLengths: SceneSoundLengths = Array(0,4654,4855,7305,4368,4665,4702,5500)  ' Battle sound lengths in 1/1000th's of a second, minus half a second
+Dim SceneSoundLengths: SceneSoundLengths = Array(0,4654,4855,7305,4368,4665,4702,5500,5500,5500)  ' Battle sound lengths in 1/1000th's of a second, minus half a second
 Sub DMDHouseBattleScene(h)
-    Dim scene,vid,af,blink,hname,delay
+    Dim scene,vid,af,blink,hname,delay,vidname,lvl
 
     If h = 0 Then Exit Sub    
     If bUseFlexDMD Then
         hname = HouseToString(h)
-        Set scene = NewSceneWithVideo(hname&"battleintro","got-"&hname&"battleintro")
+        If h = Targaryen Then 
+            lvl = House(CurrentPlayer).BattleState(Targaryen).TGLevel
+            h = h + lvl
+            vidname = "got-targaryen"&lvl+1&"battleintro"
+        Else
+            vidname = "got-"&hname&"battleintro"
+        End If
+        Set scene = NewSceneWithVideo(hname&"battleintro",vidname)
         Set vid = scene.GetVideo(hname&"battleintrovid")
         If vid is Nothing Then Set vid = scene.getImage(hname&"battleintroimg")
         scene.AddActor FlexDMD.NewLabel("objective",FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbWhite, 0),BattleObjectives(h))
@@ -8066,24 +8146,15 @@ End Class
 '   - need to modify Drain and CreateNewBall code to not think we’re in multiball mode
 ' √ implement elevator logic
 ' - fix right ramp to upper PF
-' √ Implement upper PF switches
 ' - Implement playfield lighting effects
-'   
 ' - Implement Wall MB countdown. Wall MB comes later
-' - Finish BWmultiball
-'   √? implement Super Jackpot at the battering ram
-'   √? implement SJP scene and lighting
-'   √? implement final post-multiball scene
 
-' √? jackpot scenes need to be higher priority
 ' √? Baratheon didn't light as qualified until LOL targets had been completed 4 times
 ' √? need to reset drop targets for Baratheon mode
-' - need a second sound for wildfire mini mode "hit"
 ' - final post-multiball scene score is being converted to scientific notation
 '   - worked when score was 9 digits with a non-zero second last digit
 ' - in Targaryen battle mode, number is way off to the left
 ' √? In dual battle mode , there's a '0' in the top left corner of the right-hand battle
-' - need more things awarding bonus
 ' - When Martell HurryUp ends, goes back to Battle mode with timer negative
 ' - Martell battle mode has "shoot orbits" and score (or hurryUp?) on top of each other
 ' √? "Shoot orbits" still overlaps timer
@@ -8097,18 +8168,21 @@ End Class
 ' √? UFP targets got reset, maybe by "pass for now"?
 
 ' Targaryen battle mode:
-'  - HurryUps don't count down
-'  - score and objective are both in top left corner
-'  - beginning of battle mode needs to choose different objective depending on TG level
+'  √? HurryUps don't count down
+'  √? score and objective are both in top left corner
+'  √? beginning of battle mode needs to choose different objective depending on TG level
 '  - After first level, targaryen total was wrong. Showed 16M instead of 24M.
-'  - Total awarded was always 8M. Should have been 8, then 10, then 12.
-'  - In level 2, shots don't turn off once made.
+'  √? Total awarded was always 8M. Should have been 8, then 10, then 12.
+'  √? In level 2, shots don't turn off once made.
 
 
 ' √? combo multiplier, or score, doesn't update until ball is back in play
 ''
 ' - gold targets need to be bouncier. 
 ' - battering ram needs to be less bouncy and more scattery
+' - need a second sound for wildfire mini mode "hit"
+' - need more things awarding bonus
+
 
 ' √? If playing as Greyjoy, BattleReady is lit at start, even though no houses are qualified
 
