@@ -2422,7 +2422,7 @@ HouseSigil = Array(li38,li38,li41,li44,li47,li50,li53,li32)
 ' Assignment of "shot" shields. Last 3 are Upper PF target lights
 HouseShield = Array(li141,li141,li26,li114,li86,li77,li156,li98,li189,li192,li195)
 ' House Ability strings, used during House Selection
-HouseAbility = Array("","increase winter is coming","advance wall multiball","collect more gold","plunder rival abilities","increase hand of the king","action button = add a ball","")
+HouseAbility = Array("","INCREASE WINTER IS COMING","ADVANCE WALL MULTIBALL","COLLECT MORE GOLD","PLUNDER RIVAL ABILITIES","INCREASE HAND OF THE KING","ACTION BUTTON=ADD A BALL","")
 
 BattleObjectives = Array("", _ 
             "ARYA BECOMES AN ASSASSIN"&vbLf&"RAMPS BUILD VALUE"&vbLf&"ORBITS COLLECT VALUE", _
@@ -3821,14 +3821,23 @@ Class cBattleState
 
     Public Sub TGStartHurryUp
         If MyHouse <> Targaryen Then Exit Sub
+        Me.SetTGHurryUpValue
+        MyBattleScene.GetLabel("TGHurryUp").Visible = True
+        StartTGHurryUp HouseValue,MyBattleScene,5
+    End Sub
+
+    Public Sub SetTGHurryUpValue
+        If MyHouse <> Targaryen Then Exit Sub
         Select Case State
             Case 1,2,3: HouseValue = 6000000 + 2000000*State ' verified
             Case 4,5,6: HouseValue = 3000000*State ' verified
             Case 7: HouseValue = 9000000+3000000*TGShotCount ' real vals: 9M, 12M, 15M, 
             Case 8: HouseValue = 12000000
         End Select
-        MyBattleScene.GetLabel("TGHurryUp").Visible = True
-        StartTGHurryUp HouseValue,MyBattleScene,5
+        ' There's a bit of a race condition here, since the battle scene gets set up
+        ' before the HurryUp is started. So stuff the right value into the Targaryen HurryUpValue
+        ' so that the scene renders correctly at the beginning
+        TGHurryUpValue = HouseValue
     End Sub
 
     Public Function TGLevel
@@ -3868,9 +3877,11 @@ Class cBattleState
                 Case 2: Dragon = "DROGON"
             End Select
             
+            Me.SetTGHurryUpValue
+
             BattleScene.AddActor FlexDMD.NewLabel("Score",FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0),FormatScore(Score(CurrentPlayer)))
             BattleScene.GetLabel("Score").SetAlignedPosition 0,0,FlexDMD_Align_TopLeft
-            BattleScene.AddActor FlexDMD.NewLabel("TGHurryUp",tinyfont,"12000000") 'Placeholder value to ensure text is centered
+            BattleScene.AddActor FlexDMD.NewLabel("TGHurryUp",tinyfont,HouseValue) 'Placeholder value to ensure text is centered
             BattleScene.GetLabel("TGHurryUp").SetAlignedPosition 0,19,FlexDMD_Align_TopLeft
             BattleScene.AddActor FlexDMD.NewLabel("dragon",tinyfont,Dragon)
             BattleScene.GetLabel("dragon").SetAlignedPosition 127,7,FlexDMD_Align_TopRight
@@ -4008,9 +4019,10 @@ Class cBattleState
     Public Sub DoMyBattleCompleteScene
         Dim scene
         Set scene = NewSceneWithVideo("btotal","got-"&HouseToString(MyHouse)&"battlesigil")
+        scene.GetVideo("btotalvid").SetAlignedPosition 127,0,FlexDMD_Align_TopRight
         scene.AddActor FlexDMD.NewLabel("ttl",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0),HouseToUCString(MyHouse)&" TOTAL")
         scene.AddActor FlexDMD.NewLabel("bscore",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbBlack, 0),FormatScore(TotalScore))
-        scene.GetLabel("ttl").SetAlignedPosition 40,10,FlexDMD_Align_Center
+        scene.GetLabel("ttl").SetAlignedPosition 0,10,FlexDMD_Align_Left
         scene.GetLabel("bscore").SetAlignedPosition 40,20,FlexDMD_Align_Center
         DMDEnqueueScene scene,0,3000,3000,4000,"gotfx-battletotal"
     End Sub
@@ -4644,6 +4656,12 @@ Sub EndOfBallComplete()
         ' generally only done when not in free play mode
 
 		DisplayDMDText2 "_", "GAME OVER", 20000, 5, 0
+
+        ' Drop the lock walls just in case the ball is behind it (just in Case)
+        SwordWall.collidable = False
+        LockWall.collidable = False
+        vpmtimer.addtimer 1000, "LockWallReset '"
+
 		bGameInPLay = False									' EndOfGame sets this but need to set early to disable flippers 
 		bShowMatch = True
 
@@ -4665,7 +4683,7 @@ Sub EndOfBallComplete()
 		'if osbactive <> 0 then 	' Orbital takes more time 
 		'	vpmtimer.addtimer 9000, "if bShowMatch then EndOfGame() '"
 		'else 
-			vpmtimer.addtimer 8000, "if bShowMatch then EndOfGame() '"
+			vpmtimer.addtimer 9500, "if bShowMatch then EndOfGame() '"
 		'End If 
 
     ' you may wish to put a Game Over message on the desktop/backglass
@@ -4696,6 +4714,8 @@ End Sub
 ' Drop targets, AND eject any 'held' balls, start any attract sequences etc..
 
 Sub EndOfGame()
+
+    If bGameInPLay = True then Exit Sub ' In case someone pressed 'Start' during Match sequence
     debug.print "End Of Game"	
 	
     bGameInPLay = False	
@@ -5812,14 +5832,15 @@ Sub BatteringRam_Hit
         Case 3
             TimerFlags(tmrPFMState) = 0
             PlayfieldMultiplierVal = PlayfieldMultiplierVal + 1
-            SetGameTimer tmrPFMultiplier,80-(PlayfieldMultiplierVal*10)
+            SetGameTimer tmrPFMultiplier,800-(PlayfieldMultiplierVal*100)
             line1 = "+1 PLAYFIELD"&vbLf&"MULTIPLIER"
         Case Else
             ' Special case. When the PF Multiplier timer runs out, there's a short grace period where a single
             ' hit will restore it
             If PFMState > 3 Then
                 PlayfieldMultiplierVal = PFMState - 2
-                SetGameTimer tmrPFMultiplier,80-(PlayfieldMultiplierVal*10)
+                SetGameTimer tmrPFMultiplier,800-(PlayfieldMultiplierVal*100)
+                SetPFMLights
                 PFMState = 3
                 line1 = ""
             End If
@@ -5863,7 +5884,11 @@ Sub PFMultiplierTimer
 End Sub
 
 Sub SetBatteringRamLights
-    If PFMState = 2 Then SetLightColor li123, amber, 1 Else li123.State = 0
+    Select Case PFMState
+        Case 2: SetLightColor li123, amber, 1
+        Case 3: li123.BlinkInterval = 100 : SetLightColor li123, amber, 2
+        Case Else: li123.State = 0
+    End Select
     If (PFMState MOD 2) = 1 Or bWildfireLit <> 0 Or bBlackwaterSJPMode Then 
         SetLightColor li132,midblue,2
     Else
@@ -6642,8 +6667,8 @@ Sub LaunchBattleMode
     Target90.IsDropped = 1
     If PlayerMode = -2.1 Then PlayerMode = 1
     ' Start the targaryen HurryUp if appropriate
-    House(CurrentPlayer).BattleState(HouseBattle1).TGStartHurryUp
-    House(CurrentPlayer).BattleState(HouseBattle2).TGStartHurryUp
+    If HouseBattle1 = Targaryen Then House(CurrentPlayer).BattleState(HouseBattle1).TGStartHurryUp
+    If HouseBattle2 = Targaryen Then House(CurrentPlayer).BattleState(HouseBattle2).TGStartHurryUp
     If bBattleCreateBall Then   'LockBall has already run. Create the new ball now
         bBattleCreateBall = False
         If RealBallsInLock > BallsInLock Then
@@ -8155,6 +8180,13 @@ End Class
 ' - fix right ramp to upper PF
 ' - Implement playfield lighting effects
 ' - Implement Wall MB countdown. Wall MB comes later
+' - Implement Mystery award
+' - Implement Extra Ball
+' - Implement Flashers
+' - Implement proper BallSave timer
+'   - Stops once used
+'   - pauses with game timers
+'   - starts for multiball and add-a-ball
 
 ' √? Baratheon didn't light as qualified until LOL targets had been completed 4 times
 ' √? need to reset drop targets for Baratheon mode
@@ -8171,10 +8203,10 @@ End Class
 ' - DMD sometimes plays scenes twice, producing an echo of sound too
 ' - UPF can't handle multiball and battle at the same time
 ' √? UFP targets got reset, maybe by "pass for now"?
-' - PFMult doesn't flash PFM light during state 3 or light multipliers or increase playfieldmult value
-' - blue arrow is too dim
-' - "Game Over" needs to wait a bit longer after match
-' - if you press "start" during end-of-game sequence, it'll start a new game but then go into attract mode
+' √? PFMult doesn't flash PFM light during state 3 or light multipliers or increase playfieldmult value
+' √ blue arrow is too dim
+' √ "Game Over" needs to wait a bit longer after match
+' √? if you press "start" during end-of-game sequence, it'll start a new game but then go into attract mode
 
 ' Targaryen battle mode:
 '  √? HurryUps don't count down
@@ -8189,7 +8221,6 @@ End Class
 ''
 ' - gold targets need to be bouncier. 
 ' - battering ram needs to be less bouncy and more scattery
-' - need a second sound for wildfire mini mode "hit"
 ' - need more things awarding bonus
 
 
