@@ -2594,7 +2594,7 @@ Class cHouse
 
     Public Property Get Qualified(h) : Qualified = bQualified(h) : End Property
     Public Property Get Completed(h) : Completed = bCompleted(h) : End Property
-    Public Property Get BattleState(h) : Set BattleState = MyBattleState(h) : End Property
+    Public Property Get BattleState(h) : debug.print h : Set BattleState = MyBattleState(h) : End Property
     Public Property Get BWJackpot : BWJackpot = BWJackpotValue : End Property
     Public Property Let BWJackpot(v) : BWJackpotValue = v : End Property
 
@@ -3544,7 +3544,8 @@ Class cBattleState
                     ElseIf State = 7 Then
                         hitscene = "hit" & 3 + TGShotCount MOD 3
                     Else
-                        hitscene = "hit6" 
+                        hitscene = "hit6"
+                    End if
                     If (State=4 Or State=5 Or State=7) And Not done then TGStartHurryUp 
                     If Not done then SetModeLights
                 End If
@@ -3826,6 +3827,7 @@ Class cBattleState
             Case 7: HouseValue = 9000000+3000000*TGShotCount ' real vals: 9M, 12M, 15M, 
             Case 8: HouseValue = 12000000
         End Select
+        MyBattleScene.GetLabel("TGHurryUp").Visible = True
         StartTGHurryUp HouseValue,MyBattleScene,5
     End Sub
 
@@ -4005,7 +4007,7 @@ Class cBattleState
 
     Public Sub DoMyBattleCompleteScene
         Dim scene
-        Set scene = NewSceneWithVideo("btotal","got-"&HouseToString(MyHouse)&"sigil")
+        Set scene = NewSceneWithVideo("btotal","got-"&HouseToString(MyHouse)&"battlesigil")
         scene.AddActor FlexDMD.NewLabel("ttl",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0),HouseToUCString(MyHouse)&" TOTAL")
         scene.AddActor FlexDMD.NewLabel("bscore",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbBlack, 0),FormatScore(TotalScore))
         scene.GetLabel("ttl").SetAlignedPosition 40,10,FlexDMD_Align_Center
@@ -6341,7 +6343,7 @@ Sub HurryUpTimer
     End If
     if bTGHurryUpActive And TGHurryUpCounter > TGHurryUpGrace Then 
         TGHurryUpValue = TGHurryUpValue - TGHurryUpChange
-        If TGHurryUpValue <= 0 Then TGHurryUpValue = 0 : TGEndHurryUp
+        If TGHurryUpValue <= 0 Then TGHurryUpValue = 0 : EndTGHurryUp
     End If
     If bTGHurryUpActive or bHurryUpActive Then SetGameTimer tmrHurryUp,2
 End Sub
@@ -6417,7 +6419,7 @@ Sub StartTGHurryUp(value,scene,grace)
     TGHurryUpGrace = grace
     TGHurryUpValue = value
     TGHurryUpCounter = 0
-    TGHurryUpChange = Int(HurryUpValue / 1033.32) * 10
+    TGHurryUpChange = Int(TGHurryUpValue / 1033.32) * 10
     bTGHurryUpActive = True
     SetGameTimer tmrHurryUp,2
 End Sub
@@ -7978,7 +7980,11 @@ Sub DMDCreateAlternateScoreScene(h1,h2)
             scene.AddActor FlexDMD.NewLabel("combo"&i, FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbBlack, 1), "1X")
         Next
         mask = 104  ' combos, tmr1, tmr2
-        If h1 = Targaryen or h2 = Targaryen Then mask = mask Or 512 ' TGHurryUp
+        If h1 = Targaryen or h2 = Targaryen Then 
+            mask = mask Or 512 ' TGHurryUp
+            If h1=Targaryen Then mask = mask And 223
+            If h2=Targaryen Then mask = mask And 191
+        End If
         If h1 = Martell or h2 = Martell Then mask = mask Or 144 'HurryUp, tmr3
     Else
         Set scene1 = FlexDMD.NewGroup(HouseToString(h1))
@@ -7987,6 +7993,7 @@ Sub DMDCreateAlternateScoreScene(h1,h2)
         scene.AddActor scene1
         mask = 41   ' score, combos, tmr1
         If h1 = Martell Then mask = 184
+        If h1 = Targaryen Then mask = 521
     End If
     SetGameTimer tmrUpdateBattleMode,5
     DMDSetAlternateScoreScene scene,mask
@@ -8161,19 +8168,21 @@ End Class
 ' - top right gate doesn't close. top left does
 ' √? in high score enter initials, letters overlap top row, and don't stay in one place. Use left instead of center
 ' √ Need the "> <" characters in the Skinny10x12 font
-' √ After match sequence, game doesn't change to "GAME OVER" but goes straight to show attract sequence
-' √ Match changes to number too quickly (or scene plays too slowly)
 ' - DMD sometimes plays scenes twice, producing an echo of sound too
 ' - UPF can't handle multiball and battle at the same time
 ' √? UFP targets got reset, maybe by "pass for now"?
+' - PFMult doesn't flash PFM light during state 3 or light multipliers or increase playfieldmult value
+' - blue arrow is too dim
+' - "Game Over" needs to wait a bit longer after match
+' - if you press "start" during end-of-game sequence, it'll start a new game but then go into attract mode
 
 ' Targaryen battle mode:
 '  √? HurryUps don't count down
-'  √? score and objective are both in top left corner
 '  √? beginning of battle mode needs to choose different objective depending on TG level
 '  - After first level, targaryen total was wrong. Showed 16M instead of 24M.
 '  √? Total awarded was always 8M. Should have been 8, then 10, then 12.
 '  √? In level 2, shots don't turn off once made.
+' - tmrhurryup is sometimes getting turned off during Targaryen
 
 
 ' √? combo multiplier, or score, doesn't update until ball is back in play
