@@ -2374,7 +2374,7 @@ Dim TimerFlags(30)      ' Flags for each timer's state
 Dim TimerTimestamp(30)  ' Each timer's end timestamp
 Dim TimerSubroutine     ' Names of subroutines to call when each timer's time expires
 ' Timers 1 - 4 can't be frozen. if adding more unfreezable timers, put them next and adjust the number in tmrGame_Timer sub
-TimerSubroutine = Array("","UpdateChooseBattle","PreLaunchBattleMode","LaunchBattleMode","UpdateBattleMode","MysteryAwardTimer"
+TimerSubroutine = Array("","UpdateChooseBattle","PreLaunchBattleMode","LaunchBattleMode","UpdateBattleMode","MysteryAwardTimer", _
                         "BattleModeTimer1","BattleModeTimer2", _ 
                         "MartellBattleTimer","HurryUpTimer","ResetComboMultipliers","ModePauseTimer","BlackwaterSJPTimer","WildfireModeTimer", _
                         "UPFMultiplierTimer","PFMStateTimer","PFMultiplierTimer","BallSaveTimer","BallSaverSpeedUpTimer")
@@ -5963,7 +5963,7 @@ Sub DoBatteringRamScene(line1)
             PlaySoundVol "gotfx-wildfiremini"&PFMState/2,VolDef
         End If
     End If
-Exit Sub
+End Sub
 
 Sub WildfireModeTimer
     bWildfireLit = False
@@ -6058,7 +6058,7 @@ Dim MysteryVals(2)
 Dim MysterySelected
 
 MysteryAwards(0) = ARRAY("KEEP YOUR"&vbLf&"GOLD",0)
-MysterAwards(1) = Array(1,120)
+MysteryAwards(1) = Array(1,120)
 MysteryAwards(2) = Array("LIGHT A"&vbLf&"HOUSE",140)
 MysteryAwards(3) = Array("+1 BONUS X",160)
 MysteryAwards(4) = Array("GROW"&vbLf&"WALL"&vbLf&"JACKPOT",190)
@@ -6783,7 +6783,7 @@ Sub DoAwardSword
     AddScore j
     If bUseFlexDMD Then
         Set scene = NewSceneWithVideo("sword","got-swordawarded")
-        Set font = FlexDMD.NewFont("udmd-f6by8",vbWhite,vbWhite,0))
+        Set font = FlexDMD.NewFont("udmd-f6by8.fnt",vbWhite,vbWhite,0)
         scene.AddActor FlexDMD.NewLabel("swname",font,SwordNames(i))   
         scene.AddActor FlexDMD.NewLabel("score",font,FormatScore(j))
         scene.GetLabel("swname").SetAlignedPosition 120,2,FlexDMD_Align_TopRight
@@ -8240,7 +8240,7 @@ Sub DMDMysteryAwardScene
                 Set poplabel = MysteryScene.GetLabel("pop"&i)
                 poplabel.SetAlignedPosition i*42+21, 16, FlexDMD_Align_Center
                 ' Choice has been made, flash the selected option
-                If i = MysterySelected Not bMysteryAwardActive Then BlinkActor poplabel,0.1,5
+                If i = MysterySelected And Not bMysteryAwardActive Then BlinkActor poplabel,0.1,5
             Next
             MysteryScene.AddActor FlexDMD.NewLabel("tmr",font,"10")
             MysteryScene.GetLabel("tmr").SetAlignedPosition 3,0,FlexDMD_Align_TopLeft
@@ -8263,7 +8263,7 @@ Sub DMDMysteryAwardScene
                     .Visible = True
                 End With
                 ' Choice has been made, flash the selected option
-                If i = MysterySelected Not bMysteryAwardActive Then BlinkActor poplabel,0.1,5
+                If i = MysterySelected And Not bMysteryAwardActive Then BlinkActor poplabel,0.1,5
             Next
             MysteryScene.GetLabel("tmr").Text = CStr(10-MATstep)
             FlexDMD.UnlockRenderThread
@@ -8596,7 +8596,6 @@ End Class
 ' √? Baratheon didn't light as qualified until LOL targets had been completed 4 times
 ' √? need to reset drop targets for Baratheon mode
 ' √? final post-multiball scene score is being converted to scientific notation
-' √? in Targaryen battle mode, number is way off to the left
 ' √? In dual battle mode , there's a '0' in the top left corner of the right-hand battle
 ' - When Martell HurryUp ends, goes back to Battle mode with timer negative
 ' - Martell battle mode has "shoot orbits" and score (or hurryUp?) on top of each other
@@ -8606,18 +8605,23 @@ End Class
 ' √ Need the "> <" characters in the Skinny10x12 font
 ' - DMD sometimes plays scenes twice, producing an echo of sound too
 ' √? UFP targets got reset, maybe by "pass for now"?
-' √? PFMult doesn't flash PFM light during state 3 or light multipliers or increase playfieldmult value
 ' √ blue arrow is too dim
 ' √ "Game Over" needs to wait a bit longer after match
 ' √? if you press "start" during end-of-game sequence, it'll start a new game but then go into attract mode
 
+' - it shouldn't be possible to shoot to mystery mode on plunge
+' - exiting mystery mode doesn't turn off bMysteryLit
+' - Always says 0 gold, even after more gold earned. Might be using the award val rather than currentGold
+
 ' Targaryen battle mode:
-'  √? HurryUps don't count down
+' - at beginning of Level2, something is throwing a subscript out of range by calling BattleState with h=8
+'     "Enqueued scene at 0 name: targaryenbattleintro
+'      8"
 '  √? beginning of battle mode needs to choose different objective depending on TG level
 '  - After first level, targaryen total was wrong. Showed 16M instead of 24M.
-'  √? Total awarded was always 8M. Should have been 8, then 10, then 12.
 '  √? In level 2, shots don't turn off once made.
 ' - tmrhurryup is sometimes getting turned off during Targaryen
+' - tmrhurryup didn't get started when mode was restarted
 
 
 ' √? combo multiplier, or score, doesn't update until ball is back in play
