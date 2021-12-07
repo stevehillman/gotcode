@@ -131,6 +131,7 @@ Dim TotalPlayfieldLights
 Dim bMultiBallMode
 Dim bAutoPlunger
 Dim bAutoPlunged
+Dim bJustPlunged
 Dim bBallSaved
 Dim bInstantInfo
 Dim bAttractMode
@@ -2236,11 +2237,16 @@ Sub swPlungerRest_UnHit()
         ChangeSong
         ResetSkillShotTimer.Enabled = 1
     End If
-    
+    bJustPlunged = True
+    tmrJustPlunged.Interval = 2500
+    tmrJustPlunged.Enabled = 1
+
     GameDoBallLaunched
     bAutoPlunged = False
     bBallSaved = False
 End Sub
+
+Sub tmrJustPlunged_Timer : bJustPlunged = False : End Sub
 
 ' Not used in this game. GoT has its own BallSaver logic
 ' Sub EnableBallSaver(seconds)
@@ -3612,11 +3618,11 @@ Class cBattleState
             combo = 0
             'Play a scene and add score
             If ScoredValue <> 0 Then
-                line2 = FormatScore(ScoredValue)
+                line2 = FormatScore(ScoredValue*combo*PlayfieldMultiplierVal)
                 line3 = "AWARDED"
                 combo = ComboMultiplier(ComboLaneMap(h))
                 AddScore ScoredValue*combo
-                TotalScore = TotalScore + (ScoredValue*combo)
+                TotalScore = TotalScore + (ScoredValue*combo*PlayfieldMultiplierVal)
             Else
                 line2 = FormatScore(HouseValue)
             End If
@@ -5637,7 +5643,7 @@ Sub ROrbitsw31_Hit
     If Tilted then Exit Sub
     If LastSwitchHit <> "swPlungerRest" Then 
         AddScore 1000
-        If LastSwitchHit <> "sw30b" Then House(CurrentPlayer).RegisterHit(Martell)
+        If LastSwitchHit <> "sw30b" And Not bJustPlunged Then House(CurrentPlayer).RegisterHit(Martell)
         'House(CurrentPlayer).RegisterHit(Martell)
     End If
     LastSwitchHit = "ROrbitsw31"
@@ -5674,7 +5680,7 @@ Sub KickerFloor_Hit
     Me.DestroyBall
     MoveDiverter(0)
     ' TODO Add logic for any other modes that kick the ball to the Iron Throne
-    If (bMysteryLit And Not bMultiBallMode) or bEBisLit Then
+    If ((bMysteryLit And Not bMultiBallMode) or bEBisLit) And Not bJustPlunged Then
         vpmTimer.AddTimer 500,"ElevatorKick 2 '"
         If Not bMultiBallMode Then FreezeAllGameTimers
     Else
@@ -6143,7 +6149,7 @@ Sub UpdateMysteryAward(keycode)
 			(keycode = PlungerKey and bUsePlungerForSternKey) Then SelectMysteryAward
     If keycode = LeftFlipperKey Then
         MysterySelected = MysterySelected - 1
-        If MysterySelected <= 0 Then MysterySelected = 2
+        If MysterySelected < 0 Then MysterySelected = 2
         PlaySoundVol "gotfx-mysteryleft",VolDef
         DMDMysteryAwardScene
     ElseIf keycode = RightFlipperKey Then
@@ -6157,10 +6163,11 @@ End Sub
 Sub SelectMysteryAward
     Dim i
     bMysteryAwardActive = False
+    bMysteryLit = False : SetMysteryLight
     DMDMysteryAwardScene
     TimerFlags(tmrMysteryAward) = 0
     PlaySoundVol "gotfx-mysteryselect",VolDef
-    Select Case MysterySelected
+    Select Case MysteryVals(MysterySelected)
         Case 0: 'keep gold
         Case 1
             AddScore 1000000
@@ -8114,10 +8121,11 @@ End Sub
 ' We create a single scene consisting of the animation followed by the objective.
 ' The total scene play length is the same as the music
 Dim SceneSoundLengths: SceneSoundLengths = Array(0,4654,4855,7305,4368,4665,4702,5500,5500,5500)  ' Battle sound lengths in 1/1000th's of a second, minus half a second
-Sub DMDHouseBattleScene(h)
-    Dim scene,vid,af,blink,hname,delay,vidname,lvl
+Sub DMDHouseBattleScene(hse)
+    Dim scene,vid,af,blink,hname,delay,vidname,lvl,h
 
-    If h = 0 Then Exit Sub    
+    If hse = 0 Then Exit Sub
+    h = hse
     If bUseFlexDMD Then
         hname = HouseToString(h)
         If h = Targaryen Then 
@@ -8243,7 +8251,7 @@ Sub DMDMysteryAwardScene
                 If i = MysterySelected And Not bMysteryAwardActive Then BlinkActor poplabel,0.1,5
             Next
             MysteryScene.AddActor FlexDMD.NewLabel("tmr",font,"10")
-            MysteryScene.GetLabel("tmr").SetAlignedPosition 3,0,FlexDMD_Align_TopLeft
+            MysteryScene.GetLabel("tmr").SetAlignedPosition 3,2,FlexDMD_Align_TopLeft
             If MATstep = 0 then DMDFlush
             Set DefaultScene = MysteryScene
         Else
@@ -8254,9 +8262,14 @@ Sub DMDMysteryAwardScene
                     If i = MysterySelected Then .Thickness = 2 Else .Thickness = 1
                     .SetBounds i*42, 0, 43, 32      ' Each frame is 43W by 32H, and offset by 0, 42, or 84 pixels
                 End With
+                line1 = MysteryAwards(MysteryVals(i))(0) & vbLf & MysteryAwards(MysteryVals(i))(1) & " GOLD"
+                Select Case MysteryVals(i)
+                    Case 0: line1 = "KEEP MY" & vbLf & CurrentGold & " GOLD"
+                    Case 1,18,28: line1 = CStr(MysteryAwards(MysteryVals(i))(0)*PlayfieldMultiplierVal) & vblf & "MILLION" & vbLf & "POINTS" & vbLf & MysteryAwards(MysteryVals(i))(1) & " GOLD"
+                End Select
                 Set poplabel = MysteryScene.GetLabel("pop"&i)
                 With poplabel
-                    .Text = MysteryAwards(MysteryVals(i))(0) & vbLf & MysteryAwards(MysteryVals(i))(1) & " GOLD"
+                    .Text = line1
                     .SetAlignedPosition i*42+21, 16, FlexDMD_Align_Center
                 ' Remove any existing action
                     .ClearActions()
@@ -8609,12 +8622,12 @@ End Class
 ' √ "Game Over" needs to wait a bit longer after match
 ' √? if you press "start" during end-of-game sequence, it'll start a new game but then go into attract mode
 
-' - it shouldn't be possible to shoot to mystery mode on plunge
-' - exiting mystery mode doesn't turn off bMysteryLit
-' - Always says 0 gold, even after more gold earned. Might be using the award val rather than currentGold
+' √? it shouldn't be possible to shoot to mystery mode on plunge
+' √? exiting mystery mode doesn't turn off bMysteryLit
+' √? Always says 0 gold, even after more gold earned. Might be using the award val rather than currentGold
 
 ' Targaryen battle mode:
-' - at beginning of Level2, something is throwing a subscript out of range by calling BattleState with h=8
+' √? at beginning of Level2, something is throwing a subscript out of range by calling BattleState with h=8
 '     "Enqueued scene at 0 name: targaryenbattleintro
 '      8"
 '  √? beginning of battle mode needs to choose different objective depending on TG level
