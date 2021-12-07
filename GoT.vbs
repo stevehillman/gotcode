@@ -2772,7 +2772,7 @@ Class cHouse
     ' m = UPF multiplier. 0 if not a UPF shot
     Public Sub ScoreSJP(m)
         DMDBlackwaterSJPScene FormatScore((BWJackpotValue*BWJackpotLevel*6 + 10000000)*(PlayfieldMultiplierVal+m))
-        Score(CurrentPlayer) = Score(CurrentPlayer) + points * (PlayfieldMultiplierVal+m)
+        Score(CurrentPlayer) = Score(CurrentPlayer) + ((BWJackpotValue*BWJackpotLevel*6+10000000)*(PlayfieldMultiplierVal+m))
         BlackwaterScore = BlackwaterScore + ((BWJackpotValue*BWJackpotLevel*6+10000000)*(PlayfieldMultiplierVal+m))
     End Sub
 
@@ -3618,9 +3618,9 @@ Class cBattleState
             combo = 0
             'Play a scene and add score
             If ScoredValue <> 0 Then
-                line2 = FormatScore(ScoredValue*combo*PlayfieldMultiplierVal)
                 line3 = "AWARDED"
                 combo = ComboMultiplier(ComboLaneMap(h))
+                line2 = FormatScore(ScoredValue*combo*PlayfieldMultiplierVal)
                 AddScore ScoredValue*combo
                 TotalScore = TotalScore + (ScoredValue*combo*PlayfieldMultiplierVal)
             Else
@@ -4226,8 +4226,8 @@ Sub ResetForNewPlayerBall()
     bBWMultiballActive = False
     bBlackwaterSJPMode = False
 
-    bMysteryLit = False     ' TODO: Are these carried over across balls?
-    bSwordLit = False
+    bMysteryLit = True     ' TODO: While Debugging
+    bSwordLit = True       ' TODO: While debugging
     bElevatorShotUsed = False
     bCastleShotAvailable = False
     SetTopGates
@@ -4940,7 +4940,7 @@ Sub SetTopGates
     If HouseBattle1 = Baratheon or HouseBattle2 = Baratheon or HouseBattle1 = Martell or HouseBattle2 = Martell or HouseBattle1=Greyjoy or HouseBattle2 = Greyjoy Then
         lstate=True:rstate=True
     ElseIf bEBisLit or bElevatorShotUsed = False or (bMysteryLit And Not bMultiBallMode) Then
-        lstate=True
+        lstate=True : MoveDiverter(1)
     End If
     If ComboMultiplier(1) > 1 Then rstate=True
     topgater.open = rstate
@@ -6114,7 +6114,7 @@ Sub DoMysteryAward
     MysterySelected = 0
     i = RndNbr(5)
     MATstep = 0
-    PlaySoundVol "say-make-a-choice"&i,VolDef
+    PlaySoundVol "say-make-your-choice"&i,VolDef
     SetGameTimer tmrMysteryAward,10
     PlayModeSong
 
@@ -6124,12 +6124,10 @@ End Sub
 Dim MATstep
 Sub MysteryAwardTimer
     Dim i,j,snd
-    snd = ""
+    snd = "":i=1
     MATstep = MATstep + 1
-    Select Case MATstep
-        Case 6: If MysterySelected = 0 Then snd="say-make-your-choice-quickly":i=6
-        Case 10: snd="say-gold-is-always-useful":i=2
-    End Select
+    If MATstep=6 And MysterySelected = 0 Then snd="say-make-your-choice-quickly":i=6
+    If MATstep=10 And MysterySelected = 0 Then snd="say-gold-is-always-useful":i=2
     j = RndNbr(i)
     If snd <> "" Then PlaySoundVol snd&j,VolDef
     If bUseFlexDMD Then
@@ -6765,7 +6763,7 @@ Sub DoLordOfLight
     Dim Scene
     If bUseFlexDMD Then
         Set Scene = FlexDMD.NewGroup("lol")
-        Scene.AddActor FlexDMD.NewLabel("txt",FlexDMD.NewFont("udmd-f3by7",vbWhite,vbWhite,0),"LORD OF LIGHT"&vbLf&"OUTLANE BALL-SAVE LIT")
+        Scene.AddActor FlexDMD.NewLabel("txt",FlexDMD.NewFont("udmd-f3by7.fnt",vbWhite,vbWhite,0),"LORD OF LIGHT"&vbLf&"OUTLANE BALL-SAVE LIT")
         Scene.GetLabel("txt").SetAlignedPosition 64,16,FlexDMD_Align_Center
         DMDEnqueueScene Scene,2,750,750,1500,"gotx-lolsave"
     Else
@@ -7459,8 +7457,8 @@ Sub tmrAttractModeScene_Timer
         Case 2:img = "got-intro":format=5:delay=17200
         Case 3,7:img = "got-winterstorm":format=6:line1 = GetNextOath():delay=9000:font = "skinny10x12.fnt":scrolltime=9:y=100   ' Oath Text
         Case 4
-            format=7:font="FlexDMD.Resources.udmd-f12by24.fnt":line1=FormatScore(Score(0)):skipifnoflex=False  ' Last score
-            If Score(0) > 999999999 Then font="udmd-f7by10.fnt"
+            format=7:font="udmd-f11by18.fnt":line1=FormatScore(Score(1)):skipifnoflex=False  ' Last score
+            If Score(1) > 999999999 Then font="udmd-f7by10.fnt"
             If bFreePlay Then line2 = "FREE PLAY" Else Line2 = "CREDITS "&Credits
         Case 5
             format=1:font="udmd-f7by10.fnt":skipifnoflex=False
