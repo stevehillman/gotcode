@@ -1581,12 +1581,12 @@ Function NewSceneFromImageSequence(name,imgdir,num,fps,hold,repeat)
 End Function
 
 Function NewSceneFromImageSequenceRange(name,imgdir,start,num,fps,hold,repeat)
-    Dim scene,i,actor,af,blink,total,delay,end
+    Dim scene,i,actor,af,blink,total,delay,e
     total = num/fps + hold
     delay = 1/fps
-    end = start+num
+    e = start+num-1
     Set scene = FlexDMD.NewGroup(name)
-    For i = start to end
+    For i = start to e
         Set actor = FlexDMD.NewImage(name&i,imgdir&"\image"&i&".png")
         actor.Visible = 0
         Set af = actor.ActionFactory
@@ -1594,15 +1594,15 @@ Function NewSceneFromImageSequenceRange(name,imgdir,start,num,fps,hold,repeat)
         blink.Add af.Wait((i-1)*delay)
         blink.Add af.Show(True)
         blink.Add af.Wait(delay*1.2)    ' Slightly longer than one frame length to ensure no flicker
-        if i=end And hold > 0 Then blink.Add af.Wait(hold)
-        if repeat > 1 or i<end Then 
+        if i=e And hold > 0 Then blink.Add af.Wait(hold)
+        if repeat > 1 or i<e Then 
             blink.Add af.Show(False)
-            blink.Add af.Wait((end-i)*delay)
+            blink.Add af.Wait((e-i)*delay)
         End If
         If repeat > 1 Then actor.AddAction af.Repeat(blink,repeat) Else actor.AddAction blink
         scene.AddActor actor
     Next
-    Set NewSceneFromImageSequence = scene
+    Set NewSceneFromImageSequenceRange = scene
 End Function
 
 
@@ -1866,13 +1866,12 @@ Sub GiEffect(n)
 End Sub
 
 Sub GiIntensity(i)
-    Dim FlasherOpacity = 1000
     Dim bulb
     For each bulb in aGiLights
         bulb.IntensityScale = i
     Next
     For each bulb in aFiLights
-        bulb.Opacity = FlasherOpacity * i
+        bulb.IntensityScale = i
     Next
 End Sub
 
@@ -2616,6 +2615,7 @@ Class cHouse
     Dim UPFShotMask         ' Lit shots on the Upper PF
     Dim UPFCastleShotMask   ' Saved shot mask state for standard mode
     Dim UPFMultiplier
+    Dim UPFSJP
     Dim WiCValue            ' Current WiC HurryUp Value
     Dim WiCTotal            ' Total accumulated WiC HurryUp
     Dim WiCShots            ' Completed Iced Over shots
@@ -2879,7 +2879,7 @@ Class cHouse
                 ' TODO: Start Winter Has Come Multiball
                 WiCMask = 255
             End If
-            'TODO: Scene for finishing HurryUp?            
+            'TODO: Scene for finishing HurryUp            
             Exit Sub
         End if
 
@@ -2961,7 +2961,7 @@ Class cHouse
                 If combo = 0 then combo = 1
                 AddScore 50000*combo
                 AddBonus 25000
-                WiCMask = WiCMask Or 2^h
+                'WiCMask = WiCMask Or 2^h
                 If WiCValue = 0 Then
                     If HouseSelected = Stark Then WiCValue = 14075000 Else WiCValue = 4075000
                 Else
@@ -2972,6 +2972,7 @@ Class cHouse
                     CurrentWiCShot = h
                     CurrentWiCShotCombo = combo
                     StartWICHurryUp WiCValue,h
+                    WiCShots = 0
                     'Start WiC HurryUp : Exit Sub
                     ' Make sure that LockBall still gets handled - multiball can be stacked with a WiC HurryUp
                 Else
@@ -4109,7 +4110,7 @@ Class cBattleState
                 Case Stark,Baratheon: line3 = "VALUE = "&FormatScore(HouseValue) : x3 = 40: x4 = 40: y4 = 22
                 Case Lannister,Greyjoy: line3 = "SHOTS = " & 5-CompletedShots : x3 = 20: x4 = 56
                 Case Tyrell: x4 = 40
-                Case Martell: line3 = "SHOOT ORBITS":x3=28:x4 = 56
+                Case Martell: line3 = "SHOOT ORBITS":x3=25:x4 = 60
             End Select
 
             BattleScene.AddActor FlexDMD.NewLabel("obj",tinyfont,BattleObjectivesShort(MyHouse))
@@ -6963,9 +6964,9 @@ Sub tmrWiCLightning_Timer
     If step > 7 then step = 0
     Select Case step
         Case 0,1,3: i = 0
-        Case 2,5: 0.3
-        Case 4: 1.5
-        Case 6,7: 0.6
+        Case 2,5: i = 0.3
+        Case 4: i = 1.5
+        Case 6,7: i = 0.6
     End Select
     GiIntensity i
     step = step + 1
@@ -8878,13 +8879,12 @@ End Class
 ' √? need to reset drop targets for Baratheon mode
 ' √? final post-multiball scene score is being converted to scientific notation
 ' √? In dual battle mode , there's a '0' in the top left corner of the right-hand battle
-' - When Martell HurryUp ends, goes back to Battle mode with timer negative
-' - Martell battle mode has "shoot orbits" and score (or hurryUp?) on top of each other
-' √? "Shoot orbits" still overlaps timer
 ' √? top right gate doesn't close. top left does
 ' √ Need the "> <" characters in the Skinny10x12 font
 ' √? UFP targets got reset, maybe by "pass for now"?
 ' √? if you press "start" during end-of-game sequence, it'll start a new game but then go into attract mode
+' - At end of Martell mode, without scoring HurryUp, too many points were awarded. BattleTotal said 144M
+' - fix "gotfx-upfbackground" at line 3195
 
 
 ' Targaryen battle mode:
@@ -8893,7 +8893,6 @@ End Class
 ' √? In Targaryen mode, final hit of each level doesn’t register. Score isn’t included and doesn’t register. Oh, it probably executes too early. 
 ' √? Targaryen level 3 lights too many shots. 
 ' √? Match screen is missing score. 
-' √? Mystery middle box is too expensive 
 ' - diverter doesn’t always close. 
 ' √ high score entry has 13 blank letters  (need to update skinny10x12 font file)
 ' √ match win plays coin instead of knocker
@@ -8903,9 +8902,6 @@ End Class
 ' √? in Battle mode, UPF shots don't turn off when hit (they used to!)
 ' √ UPF needs a down deflector on back exit ramp so ball can't bounce back into playfield
 ' - Elevator kickers are visible on UPF but are unfinished
-' √? DMD sometimes plays scenes twice, producing an echo of sound too
-'    - This is caused by another lower priority scene being queued ahead of the scene that plays twice.
-
 
 ' √? combo multiplier, or score, doesn't update until ball is back in play
 ''
