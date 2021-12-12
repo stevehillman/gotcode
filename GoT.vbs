@@ -1589,7 +1589,7 @@ Function NewSceneFromImageSequenceRange(name,imgdir,start,num,fps,hold,repeat)
         actor.Visible = 0
         Set af = actor.ActionFactory
         Set blink = af.Sequence()
-        blink.Add af.Wait((i-1)*delay)
+        blink.Add af.Wait((i-start)*delay)
         blink.Add af.Show(True)
         blink.Add af.Wait(delay*1.2)    ' Slightly longer than one frame length to ensure no flicker
         if i=e And hold > 0 Then blink.Add af.Wait(hold)
@@ -2879,7 +2879,7 @@ Class cHouse
                 ' TODO: Start Winter Has Come Multiball
                 WiCMask = 255
             End If
-            DMDPlayHitScene "got-wiccomplete","got-wiccomplete",0,"WINTER IS COMING",FormatScore(HurryUpValue*CurrentWiCShotCombo*PlayfieldMultiplierVal),"",CurrentWiCShotCombo,7
+            DMDPlayHitScene "got-wiccomplete","gotfx-wiccomplete",0,"WINTER IS COMING",FormatScore(HurryUpValue*CurrentWiCShotCombo*PlayfieldMultiplierVal),"",CurrentWiCShotCombo,7
             Exit Sub
         End if
 
@@ -7026,6 +7026,7 @@ Sub StartWICHurryUp(value,shot)
         WICHurryUpScene.GetLabel("HurryUp").SetAlignedPosition 4,21,FlexDMD_Align_TopLeft
     End if
     DMDFlush
+    DMDEnqueueScene WICHurryUpScene,0,4000,6000,500,""
     DMDSetAlternateScoreScene WICHurryUpScene,16
     StartHurryUp value,WICHurryUpScene,10
     PlayModeSong
@@ -7040,9 +7041,9 @@ Sub tmrWiCLightning_Timer
     If step > 7 then step = 0
     Select Case step
         Case 0,1,3: i = 0
-        Case 2,5: i = 0.3
-        Case 4: i = 1.5
-        Case 6,7: i = 0.6
+        Case 2,5: i = 0.05
+        Case 4: i = 4
+        Case 6,7: i = 0.15
     End Select
     GiIntensity i
     step = step + 1
@@ -8185,6 +8186,7 @@ End Sub
 '           7 - same text layout as 3, but video runs in the background at the same time
 Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo,format)
     Dim scene,scenevid,font1,font2,font3,x,y1,y2,y3,combotxt,pri
+    Set scenevid = Nothing
     If bUseFlexDMD Then
         If format = 6 Then
             Set scene = FlexDMD.NewGroup("hitscene")
@@ -8968,6 +8970,7 @@ End Class
 ' √? after wic scored, shield didn’t change color right away
 ' √? after SJP ran out, didn’t relight shields of jackpots but was in that mode - Alter IncreaseBWJackpotLevel to set shield lights
 ' - instant info should not activate in battle or multi ball mode. 
+' - testing for color=0 in flasher doesn't work
 
 ' Targaryen battle mode:
 ' - tmrhurryup is sometimes getting turned off during Targaryen
