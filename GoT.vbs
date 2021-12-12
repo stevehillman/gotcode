@@ -1440,16 +1440,7 @@ Sub tmrDMDUpdate_Timer
     Dim i,j,bHigher,bEqual
     tmrDMDUpdate.Enabled = False
     DMDtimestamp = DMDtimestamp + 100   ' Set this to whatever frequency the timer uses
-    If DMDqTail = 0 Then ' Queue is empty - show default scene
-        ' Exit fast if defaultscene is already showing
-        if bDefaultScene or IsEmpty(DefaultScene) then tmrDMDUpdate.Enabled = True : Exit Sub
-        bDefaultScene = True
-        If TypeName(DefaultScene) = "Object" Then
-            DMDDisplayScene DefaultScene
-        Else
-            debug.print "DefaultScene is not an object!"
-        End If
-    Else
+    If DMDqTail <> 0 Then
         ' Process queue
         ' Check to see if queue is idle (default scene on). If so, immediately play first item
         If bDefaultScene or (IsEmpty(DisplayingScene) And DMDqHead = 0) Then
@@ -1462,7 +1453,7 @@ Sub tmrDMDUpdate_Timer
             ' Note, code below is game-specific - triggers the SuperJackpot scene update timer as soon as the scene plays
             ElseIf DMDSceneQueue(DMDqHead,0).Name = "bwsjp" Then
                 tmrSJPScene.UserValue = 0
-                tmrSJPScene.Interval = 600
+                tmrSJPScene.Interval = 300
                 tmrSJPScene.Enabled = True
             End If
         Else
@@ -1486,34 +1477,41 @@ Sub tmrDMDUpdate_Timer
                     debug.print "DMDSceneQueue too big! Resetting"
                     DMDqHead = 0:DMDqTail = 0
                     tmrDMDUpdate.Enabled = True
-                    Exit Sub
-                End If
-                If DMDqHead = DMDqTail Then ' queue is empty
+                ElseIf DMDqHead = DMDqTail Then ' queue is empty
                     DMDqHead = 0:DMDqTail = 0
                     tmrDMDUpdate.Enabled = True
-                    Exit Sub
-                End If
+                Else
+                    ' Find the next scene with the highest priority
+                    j = DMDqHead
+                    For i = DMDqHead to DMDqTail-1
+                        If DMDSceneQueue(i,1) < DMDSceneQueue(j,1) Then j=i:DMDqHead=i
+                    Next
 
-                ' Find the next scene with the highest priority
-                j = DMDqHead
-                For i = DMDqHead to DMDqTail-1
-                    If DMDSceneQueue(i,1) < DMDSceneQueue(j,1) Then j=i:DMDqHead=i
-                Next
-
-                ' Play the scene, and a sound if there's one to accompany it
-                bDefaultScene = False
-                debug.print "Displaying scene at " &j & " name: "&DMDSceneQueue(j,0).Name & " Head: "&DMDqHead & " Tail: "&DMDqTail
-                DMDSceneQueue(j,6) = DMDtimestamp
-                DMDDisplayScene DMDSceneQueue(j,0)
-                If DMDSceneQueue(j,5) <> ""  Then 
-                    PlaySoundVol DMDSceneQueue(j,5),VolDef
-                ' Note, code below is game-specific - triggers the SuperJackpot scene update timer as soon as the scene plays
-                ElseIf DMDSceneQueue(j,0).Name = "bwsjp" Then
-                    tmrSJPScene.UserValue = 0
-                    tmrSJPScene.Interval = 600
-                    tmrSJPScene.Enabled = True
+                    ' Play the scene, and a sound if there's one to accompany it
+                    bDefaultScene = False
+                    debug.print "Displaying scene at " &j & " name: "&DMDSceneQueue(j,0).Name & " Head: "&DMDqHead & " Tail: "&DMDqTail
+                    DMDSceneQueue(j,6) = DMDtimestamp
+                    DMDDisplayScene DMDSceneQueue(j,0)
+                    If DMDSceneQueue(j,5) <> ""  Then 
+                        PlaySoundVol DMDSceneQueue(j,5),VolDef
+                    ' Note, code below is game-specific - triggers the SuperJackpot scene update timer as soon as the scene plays
+                    ElseIf DMDSceneQueue(j,0).Name = "bwsjp" Then
+                        tmrSJPScene.UserValue = 0
+                        tmrSJPScene.Interval = 600
+                        tmrSJPScene.Enabled = True
+                    End If
                 End If
             End If
+        End If
+    End If
+    If DMDqTail = 0 Then ' Queue is empty
+        ' Exit fast if defaultscene is already showing
+        if bDefaultScene or IsEmpty(DefaultScene) then tmrDMDUpdate.Enabled = True : Exit Sub
+        bDefaultScene = True
+        If TypeName(DefaultScene) = "Object" Then
+            DMDDisplayScene DefaultScene
+        Else
+            debug.print "DefaultScene is not an object!"
         End If
     End If
     tmrDMDUpdate.Enabled = True
@@ -2824,6 +2822,7 @@ Class cHouse
             If i <> Baratheon and i <> Tyrell Then BWJackpotShots(i) = BWJackpotLevel
         Next
         UpdateBWMBScene
+        SetModeLights
     End Sub
 
     Public Sub UpdateBWMBScene
@@ -2875,11 +2874,12 @@ Class cHouse
             WiCTotal = WiCTotal + HurryUpValue*CurrentWiCShotCombo
             WiCMask = WiCMask Or 2^h
             WiCs = WiCs + 1
+            SetLightColor HouseShield(h),HouseColor(SelectedHouse),1
             If WiCs = 4 Then
                 ' TODO: Start Winter Has Come Multiball
                 WiCMask = 255
             End If
-            'TODO: Scene for finishing HurryUp            
+            DMDPlayHitScene "got-wiccomplete","got-wiccomplete",0,"WINTER IS COMING",FormatScore(HurryUpValue*CurrentWiCShotCombo*PlayfieldMultiplierVal),"",CurrentWiCShotCombo,7
             Exit Sub
         End if
 
@@ -2894,6 +2894,13 @@ Class cHouse
                 DMDPlayHitScene "got-bwexplosion"&i-1,"gotfx-bwexplosion",BWExplosionTimes(i-1), _
                                 BWJackpotLevel&"X BLACKWATER JACKPOT",BWJackpotValue*combo*BWJackpotLevel,"",combo,3
                 LightEffect 3
+                GiEffect 3
+                i = RndNbr(3)
+                If i < 3 Then
+                    PlaySoundVol "say-jackpot",VolDef
+                Else
+                    'TODO: Say atta-boy
+                End If
                 SetModeLights   ' Update shield light colors
 
                 'Check to see if all jackpot shots have been made the required number of times
@@ -2915,6 +2922,7 @@ Class cHouse
 
         if PlayerMode = 0 And bMultiBallMode = False Then
             Dim cbtimer: cbtimer=1000
+            Dim fmt
             
             if QualifyCount(h) < 3 Then
                 QualifyCount(h) = QualifyCount(h) + 1
@@ -2941,7 +2949,8 @@ Class cHouse
                     vpmtimer.addtimer delay*1000, "PlaySoundVol """&qsound&""","&VolDef&" '"
                     qsound = "gotfx-"&HouseToString(h)&"qualify"&QualifyCount(h)
                 End If
-                DMDPlayHitScene "got-"&HouseToString(h)&"qualify"&QualifyCount(h),qsound,delay,line0,line1,line2,combo,0
+                if h = Targaryen then fmt = 6 else fmt = 0
+                DMDPlayHitScene "got-"&HouseToString(h)&"qualify"&QualifyCount(h),qsound,delay,line0,line1,line2,combo,fmt
 
                  ' Increase Qualify value for next shot. Lots of randomness seems to factor in here
                 if QualifyValue = 100000 Then
@@ -3131,10 +3140,13 @@ Class cHouse
         Dim i
         If bBWMultiballActive Then
             UPFState = 2 : UPFShotMask = 42
+            SetUPFFlashers 2,green
         ElseIf PlayerMode = 1 Or PlayerMode = -2.1 Then
             UPFState = 1 : UPFShotMask = 42
+            SetUPFFlashers 1,amber
         Else ' PlayerMode 0
             UPFState = 0
+            SetUPFFlashers 1,amber
             If reset then UPFShotMask = 42 Else UPFShotMask = UPFCastleShotMask
         End If
     End Sub
@@ -3193,7 +3205,7 @@ Class cHouse
                             If (UPFShotMask And 254) = 0 Then
                                 UPFShotMask = UPFShotMask Or 20 ' Light outlanes
                                 PlaySoundVol "gotfx-upfdone",VolDef
-                                DMDPlayHitScene "gotfx-upfbackground","",0,"CASTLE AWARD",3000000*UPFMultiplier,"",UPFMultiplier,5
+                                DMDPlayHitScene "got-upfbackground","",0,"CASTLE AWARD",3000000*UPFMultiplier,"",UPFMultiplier,5
                             Else
                                 AddScore 250000*UPFMultiplier
                             End If
@@ -3644,6 +3656,7 @@ Class cBattleState
                         State = 2
                         UpdateBattleScene
                         StartHurryUp ScoredValue,MyBattleScene,0
+                        HouseValue = 0
                         SetModeLights
                     Else
                         If HouseValue = 0 Then HouseValue = 19250000 Else HouseValue = HouseValue + 500000 + RndNbr(25)*125000:
@@ -5206,6 +5219,68 @@ Sub SetPFMLights
     Next
 End Sub
 
+' Set an effect on the Upper Playfield flashers
+' fx : one of a number of flasher effects
+'    0 = off, 1=on, 2=flash indefinitely, 3=flash 5 times fast, 4=flash 10 times fast
+' col : colour const to use for the colour
+Dim UPFFlasherState(2)
+Sub SetUPFFlashers(fx,col)
+    dim times,interval,i,fl
+    Select Case fx
+        Case 0: UPFFlasher001.visible = 0 : UPFFlasher002.visible = 0 : Exit Sub
+        Case 1: times = 0
+        Case 2: times = -1 : interval = 100 ' blink indefinitely
+        Case 3: times = 5 : interval = 50 ' flash 5 times rapidly (half second flash)
+        Case 4: times = 10 : interval= 50 ' flash 10 times rapidly (1 second)
+    End Select
+    i = 0
+    For each fl in Array(UPFFlasher001,UPFFlasher002)
+        ' Save current state
+        If fl.visible = 0 then UPFFlasherState(i) = 0 Else UPFFlasherState(i) = fl.color
+        ' Turn flasher on and set colour
+        SetFlashColor fl,col,1
+        If times = 0 Then
+            fl.TimerEnabled = 0
+        Else
+            ' Set up a timer on the flasher with a subroutine that we define. Sub 
+            fl.TimerInterval = interval
+            fl.UserValue = times * 2
+            fl.TimerEnabled = 0
+            fl.TimerEnabled = 1
+        End If
+        i = i + 1
+    Next
+End Sub
+
+Sub UPFFlasher001_Timer
+    Dim tmp
+    tmp=me.UserValue
+    tmp=tmp-1
+    Me.Visible = tmp MOD 2
+    me.UserValue = tmp
+    If tmp = 0 Then
+        Me.Visible = 1
+        Me.TimerEnabled=0
+        me.color=UPFFlasherState(0)
+        If me.color=0 then me.visible=0
+    End if
+End Sub
+
+Sub UPFFlasher002_Timer
+    Dim tmp
+    tmp=me.UserValue
+    tmp=tmp-1
+    Me.Visible = tmp MOD 2
+    me.UserValue = tmp
+    If tmp = 0 Then
+        Me.Visible = 1
+        Me.TimerEnabled=0
+        me.color=UPFFlasherState(1)
+        If me.color=0 then me.visible=0
+    End if
+End Sub
+    
+
 ' During Battle mode, Shield lights may be in one of several states
 ' They may also alternate colour. To deal with this, create an array of
 ' light states and set a timer on each light to cycle through its states
@@ -5882,6 +5957,7 @@ Sub ElevatorKick(f)
             KickerUPF.CreateBall
             KickerUPF.Kick 180,5
             PlaySoundVol "gotfx-elevatorupf",VolDef
+            SetUPFFlashers 3,red
         Case 2
             KickerTopFloor.CreateBall
             KickerTopFloor.Kick 90,3
@@ -6946,7 +7022,7 @@ Sub StartWICHurryUp(value,shot)
     SetPlayfieldLights
     If bUseFlexDMD Then
         Set WICHurryUpScene = NewSceneWithVideo("wic","got-wichurryup")
-        WICHurryUpScene.AddActor FlexDMD.NewLabel("HurryUp",FlexDMD.NewFont("udmd-f6by8.fnt",vbWhite,vbWhite,0),value)
+        WICHurryUpScene.AddActor FlexDMD.NewLabel("HurryUp",FlexDMD.NewFont("udmd-f6by8.fnt",vbWhite,vbWhite,0),"")
         WICHurryUpScene.GetLabel("HurryUp").SetAlignedPosition 4,21,FlexDMD_Align_TopLeft
     End if
     DMDFlush
@@ -6981,7 +7057,7 @@ End Sub
 
 Sub IncreaseWallJackpot
     If WallJPValue < 1500000 Then WallJPValue = WallJPValue + 3000000 Else WallJPValue = WallJPValue + 500000 + RndNbr(100)*5000
-    DMDPlayHitScene "got-increasewalljp","gotfx-increeasewalljp",1000,"BATTLE FOR WALL INCREASES","VALUE="&FormatScore(WallJPValue),"",0,3
+    DMDPlayHitScene "got-increasewalljp","gotfx-increasewalljp",1000,"BATTLE FOR WALL INCREASES","VALUE="&FormatScore(WallJPValue),"",0,3
 End Sub
 
 Sub AdvanceWallMultiball(n)
@@ -7005,10 +7081,10 @@ Sub AdvanceWallMultiball(n)
 
     if bUseFlexDMD Then
         Set scene = NewSceneFromImageSequenceRange("clock","wallclock",start,num,25,0,1)
-        DMDEnqueueScene scene,1,800*n+400,800*n+400,3000,"gotfx-wallclock"
+        DMDEnqueueScene scene,1,800*n+400,800*n+400,3000,"gotfx-wallcountdown"
     Else
         DisplayDMDText "WALL MULTIBALL","LEVEL "&WallMBLevel,1000
-        PlaySoundVol,"gotfx-wallclock"
+        PlaySoundVol,"gotfx-wallcountdown"
     End If
 End Sub
 
@@ -7084,7 +7160,7 @@ Sub DoAwardExtraBall
 End Sub
 
 Sub DMDDoWiCScene(value,shots)
-    Dim scene,line3
+    Dim scene,line3,i
     If bUseFlexDMD Then
         Set scene = NewSceneWithVideo("wic","got-winterstorm")
         If shots = 1 Then line3 = "2 MORE SHOTS" Else line3 = "1 MORE SHOT"
@@ -7099,6 +7175,10 @@ Sub DMDDoWiCScene(value,shots)
         DisplayDMDText "WIC VALUE GROWS",value,1000
         PlaySoundVol "gotfx-wind-blowing",VolDef
     End if
+    If shots = 2 then
+        i = RndNbr(3)
+        PlaySoundVol "say-winter-is-coming"&i,VolDef
+    End If
 End Sub
 
 
@@ -7994,7 +8074,7 @@ Sub DMDBlackwaterSJPScene(score)
         End With
         BWSJPScene.GetImage("blank").Visible = 0
 
-        DMDEnqueueScene BWSJPScene,0,2500,5000,1500,""
+        DMDEnqueueScene BWSJPScene,0,2600,5000,1500,""
     Else
         DisplayDMDText "SUPER JACKPOT",score,2000
         PlaySoundVol "say-super-jackpot",VolDef
@@ -8102,6 +8182,7 @@ End Sub
 '           4 - 2 lines of Skinny font. Used for Castle Multiball start
 '           5 - 2 lines of text, same as 3, but no video, just a framed text scene and combo text. Used for UPF awards
 '           6 - same layout as 0, but video is made using image sequence, and runs at same time as text. used for Targaryen qualify hits
+'           7 - same text layout as 3, but video runs in the background at the same time
 Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo,format)
     Dim scene,scenevid,font1,font2,font3,x,y1,y2,y3,combotxt,pri
     If bUseFlexDMD Then
@@ -8126,7 +8207,7 @@ Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo,format)
                 Set font1 = FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbWhite, 0)
                 Set font2 = font1
                 Set font3 = font1
-            Case 3,5
+            Case 3,5,7
                 Set font1 = FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbWhite, 0)
                 Set font2 = FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbWhite, 0)
                 Set font3 = font1
@@ -8829,18 +8910,18 @@ Sub DMDDoMatchScene(m)
         End With
         DelayActor scene.GetLabel("match1"),4.2,False
         DelayActor scene.GetLabel("match2"),4.2,True
-        scene.AddActor FlexDMD.NewLabel("Score1", FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0),Score(1))
+        scene.AddActor FlexDMD.NewLabel("Score1", FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0),FormatScore(Score(1)))
         scene.GetLabel("Score1").SetAlignedPosition 1,1,FlexDMD_Align_TopLeft
         If PlayersPlayingGame > 1 Then 
-            scene.AddActor FlexDMD.NewLabel("Score2", FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0),Score(2))
+            scene.AddActor FlexDMD.NewLabel("Score2", FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0),FormatScore(Score(2)))
             scene.GetLabel("Score2").SetAlignedPosition 1,30,FlexDMD_Align_BottomLeft
         End If
         If PlayersPlayingGame > 2 Then
-            scene.AddActor FlexDMD.NewLabel("Score3", FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0),Score(3))
+            scene.AddActor FlexDMD.NewLabel("Score3", FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0),FormatScore(Score(3)))
             scene.GetLabel("Score3").SetAlignedPosition 126,1,FlexDMD_Align_TopRight
         End If
         If PlayersPlayingGame > 3 Then
-            scene.AddActor FlexDMD.NewLabel("Score4", FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0),Score(4))
+            scene.AddActor FlexDMD.NewLabel("Score4", FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0),FormatScore(Score(4)))
             scene.GetLabel("Score4").SetAlignedPosition 126,30,FlexDMD_Align_BottomRight
         End If
 
@@ -8877,24 +8958,24 @@ End Class
 
 ' √? Baratheon didn't light as qualified until LOL targets had been completed 4 times
 ' √? need to reset drop targets for Baratheon mode
-' √? final post-multiball scene score is being converted to scientific notation
-' √? In dual battle mode , there's a '0' in the top left corner of the right-hand battle
 ' √? top right gate doesn't close. top left does
-' √ Need the "> <" characters in the Skinny10x12 font
 ' √? UFP targets got reset, maybe by "pass for now"?
 ' √? if you press "start" during end-of-game sequence, it'll start a new game but then go into attract mode
-' - At end of Martell mode, without scoring HurryUp, too many points were awarded. BattleTotal said 144M
-' - fix "gotfx-upfbackground" at line 3195
-
+' √? At end of Martell mode, without scoring HurryUp, too many points were awarded. BattleTotal said 144M
+' √? under some circumstances, last scene stays on indefinitely instead of returning to score or next scene
+' - wrong top gate is left open after multi ball
+' - no super jackpot said during SJP award
+' √? after wic scored, shield didn’t change color right away
+' √? after SJP ran out, didn’t relight shields of jackpots but was in that mode - Alter IncreaseBWJackpotLevel to set shield lights
+' - instant info should not activate in battle or multi ball mode. 
 
 ' Targaryen battle mode:
 ' - tmrhurryup is sometimes getting turned off during Targaryen
 ' - tmrhurryup didn't get started when mode was restarted
 ' √? In Targaryen mode, final hit of each level doesn’t register. Score isn’t included and doesn’t register. Oh, it probably executes too early. 
 ' √? Targaryen level 3 lights too many shots. 
-' √? Match screen is missing score. 
+' √? Match screen score font is too small. 
 ' - diverter doesn’t always close. 
-' √ high score entry has 13 blank letters  (need to update skinny10x12 font file)
 ' √ match win plays coin instead of knocker
 ' √? in attract mode, 11x18 score font is gigantic
 ' √ left ramp needs roof. 
