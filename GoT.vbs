@@ -2080,6 +2080,7 @@ Sub TurnOffPlayfieldLights()
     For each a in aLights
         a.State = 0
     Next
+    UPFFlasher001.visible = 0 : UPFFlasher002.visible = 0
 End Sub
 
 ' Not used for GoT table. See GameStartAttractMode()
@@ -7224,7 +7225,7 @@ Sub DMDDoWiCScene(value,shots)
         PlaySoundVol "gotfx-wind-blowing",VolDef
     End if
     If left = 1 then
-        i = RndNbr(3)
+        i = RndNbr(4)
         PlaySoundVol "say-winter-is-coming"&i,VolDef
     End If
 End Sub
