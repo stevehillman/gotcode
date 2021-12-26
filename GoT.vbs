@@ -3122,7 +3122,7 @@ Class cHouse
         If UPFState <> 1 Or HouseBattle2 = 0 Then ' normal single flashing colour
             For i = 1 to 8
                 If (UPFShotMask And 2^(i-1)) > 0 Then
-                    If UPFState = 3 And (i = 3 or i = 5) ' CastleMB Super Jackpot shots
+                    If UPFState = 3 And (i = 3 or i = 5) Then ' CastleMB Super Jackpot shots
                         SetLightColor UPFLights(i),amber,2
                     Else
                         SetLightColor UPFLights(i),clr,2
@@ -3238,9 +3238,7 @@ Class cHouse
                             myBattleState(hc).RegisterCastleComplete
                             ' TODO find sound for Castle Collected
                             DMDPlayHitScene "got-castlecollected","gotfx-castlecollected",0,"CASTLE COLLECTED","HOUSE "&HouseToUCString(hc), _
-                                    ForamtScore(25000000*CastlesCollected*UPFMultiplier),UPFMultiplier,
-                            
-
+                                    ForamtScore(25000000*CastlesCollected*UPFMultiplier),UPFMultiplier,10
                         Case 2 ' BWMB state - does nothing?
                     End Select
                     SetUPFLights
@@ -8354,7 +8352,7 @@ Sub DMDCastleMBCompleteScene
     If bUseFlexDMD Then
         If CastleMBScore > 0 Then
             Set scene = FlexDMD.NewGroup("cmbcomplete")
-            scene.AddActor FlexDMD.NewLabel("txt",FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbBlack, 0),"CASTLE MULTIBALL"&vbLf"TOTAL")
+            scene.AddActor FlexDMD.NewLabel("txt",FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbBlack, 0),"CASTLE MULTIBALL"&vbLf&"TOTAL")
             scene.GetLabel("txt").SetAlignedPosition 64,10,FlexDMD_Align_Center
             scene.AddActor FlexDMD.NewLabel("score",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbBlack, 0),FormatScore(CastleMBScore))
             scene.GetLabel("score").SetAlignedPosition 64,25,FlexDMD_Align_Center
