@@ -443,7 +443,7 @@ End Sub
 Dim InfoPage
 Sub InstantInfoTimer_Timer
     InstantInfoTimer.Enabled = False
-    If NOT hsbModeActive Then
+    If NOT (hsbModeActive Or bMultiBallMode) Then
         bInstantInfo = True
         tmrDMDUpdate.Enabled = False
         DMDFlush
@@ -2810,14 +2810,14 @@ Class cHouse
         SetModeLights
     End Sub
 
-    'From 1-5 WF, ~100,000 per WF. From 5-25, ~50K per WF, 25-45 ~45K per WF, 45-55, 30K per, and 55+, 10k per. Max is 3M
+    'From 1-5 WF, ~100,000 per WF. From 6-25, ~50K per WF, 25-45 ~45K per WF, 45-55, 30K per, and 55+, 10k per. Max is 3M
     Public Sub AddWildfire(wf)
         Dim i,j,k
-        k = 1000
+        k = 1000 ' k = random range, in 10s (1000=10K); j=base value, in 10s
         If BWJackpotValue >= 3000000 Then CurrentWildfire = CurrentWildfire + wf: Exit Sub
         For i = 1 to wf
             CurrentWildfire = CurrentWildfire + 1
-            If CurrentWildfire < 5 Then
+            If CurrentWildfire < 6 Then
                 j=9500
             Elseif CurrentWildfire < 25 Then
                 j = 4500
@@ -2904,7 +2904,7 @@ Class cHouse
             Exit Sub
         End if
 
-        If bBWMultiballActive And PlayerMode <> 2 And (BWState MOD 2) <> 0 Then
+        If bMultiBallMode And PlayerMode <> 2 And ((BWState MOD 2) <> 0 Or Not bBWMultiballActive) Then
             'Handle Jackpot hits for BW & Castle Multiball
             If BWJackpotShots(h) > 0 Then
                 BWJackpotShots(h) = BWJackpotShots(h) - 1
@@ -3021,7 +3021,7 @@ Class cHouse
                 FreezeAllGameTimers
                 If BallsInLock < 2 And bLockIsLit Then ' Multiball not about to start, lock the ball first
                     vpmtimer.addtimer 400, "LockBall '"     ' Slight delay to give ball time to settle
-                    cbtimer = cbtimer + 400
+                    cbtimer = cbtimer + 2400
                 End If
                 vpmtimer.addtimer cbtimer, "StartChooseBattle '"
             End If
@@ -3238,9 +3238,7 @@ Class cHouse
                             myBattleState(hc).RegisterCastleComplete
                             ' TODO find sound for Castle Collected
                             DMDPlayHitScene "got-castlecollected","gotfx-castlecollected",0,"CASTLE COLLECTED","HOUSE "&HouseToUCString(hc), _
-                                    ForamtScore(25000000*CastlesCollected*UPFMultiplier),UPFMultiplier,
-                            
-
+                                    FormatScore(25000000*CastlesCollected*UPFMultiplier),UPFMultiplier,10
                         Case 2 ' BWMB state - does nothing?
                     End Select
                     SetUPFLights
@@ -4467,6 +4465,8 @@ Sub ResetForNewGame()
     StopAttractMode
     GiOn
 
+    ChooseHouseScene = Empty
+
     ' Just in case
     BallsOnPlayfield = 0
 	RealBallsInLock=0
@@ -4632,6 +4632,7 @@ Sub SetPlayfieldLights
     SetTopLaneLights
     SetWildfireLights
     SetPFMLights
+    SetShootAgainLight
     If PlayerMode = 2 Then Exit Sub
 
     ' Lights below here stay off during a WiC HurryUp
@@ -4640,6 +4641,7 @@ Sub SetPlayfieldLights
     SetComboLights
     SetTargetLights
     SetBatteringRamLights
+    setEBLight
 End Sub
 
 ' Create a new ball on the Playfield
@@ -5175,7 +5177,7 @@ Sub PlayYouMatched
 	'PlaySoundVol "YouMatchedPlayAgain", VolDef
 	DOF 140, DOFOn
 	DMDFlush
-	DMD "_", CL(1, "CREDITS: " & Credits), "", eNone, eNone, eNone, 500, True, "fx_kicker"
+	DMD "_", CL(1, "CREDITS: " & Credits), "", eNone, eNone, eNone, 500, True, "fx_knocker"
 End Sub 
 
 ' Plays the right song for the current situation
@@ -5861,14 +5863,15 @@ Sub doWFTargetHit(t)
 
     debug.print "wftarget " & t & " hit"
     debug.print "prev hitstate 0: " & bWildfireTargets(0) & " 1: " & bWildfireTargets(1)
+    If (BWMultiballsCompleted = 0 or bWildfireTargets(t1)) And Not bMultiBallMode Then LightLock
     if bWildfireTargets(t) then Exit Sub
     bWildfireTargets(t) = True
+    If Not bBWMultiballActive Then House(CurrentPlayer).AddWildfire 1
     If PlayerMode = 1 Then
         If HouseBattle1 > 0 Then House(CurrentPlayer).BattleState(HouseBattle1).RegisterTargetHit 1
         If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).RegisterTargetHit 1
     End If
 
-    If (BWMultiballsCompleted = 0 or bWildfireTargets(t1)) And Not bMultiBallMode Then LightLock
     if bWildfireTargets(t1) Then
         'Target bank completed
         AddBonus 100000
@@ -6291,6 +6294,7 @@ Sub BatteringRam_Hit
     PlaySoundVol "gotfx-battering-ram",Voldef
     If bWildfireLit = 2 Then ' Mini-mode hit
         House(CurrentPlayer).AddWildfire 10
+        TotalWildfire = TotalWildfire + 10
         If bUseFlexDMD And Not bBlackwaterSJPMode Then
             ' Do Scene for Wildfire Mini Mode
             Set scene = NewSceneWithVideo("wfmm","got-wildfiremode")
@@ -6859,10 +6863,12 @@ End Sub
 
 Sub StartBWMultiball
     bMultiBallMode = True
+    bBWMultiballActive = True
     WildfireModeTimer   ' Stop Wildfire Minimode if it happened to be running
     bWildfireLit = False : SetWildfireLights
 debug.print "Score at start of BW: "&Score(CurrentPlayer)
     BlackwaterScore = 0
+    CurrentWildfire = 0
     Dim scene
     If bUseFlexDMD Then
         Set scene = NewSceneWithVideo("bwmb","got-blackwatermb")
@@ -6877,7 +6883,6 @@ debug.print "Score at start of BW: "&Score(CurrentPlayer)
     DoBWMultiballSeq
   	tmrBWmultiballRelease.Interval = 5000	' Long initial delay to give sequence time to complete
     tmrBWmultiballRelease.Enabled = True
-    bBWMultiballActive = True
     House(CurrentPlayer).SetBWJackpots
     DMDCreateBWMBScoreScene
     EnableBallSaver 30  ' 20 seconds plus the 5 second delay before MB starts plus 5 second grace
@@ -6895,7 +6900,7 @@ Sub StartCastleMultiball
     Dim scene
     If bUseFlexDMD Then
         Set scene = FlexDMD.NewGroup("castlemb")
-        scene.AddActor FlexDMD.NewLabel("txt",FlexDMD.NewFont("udmd-f6by8",vbWhite,vbWhite,0),"COMPLETE"&vbLf&"CASTLE DRAGON SHOTS"&vbLf&"TO LIGHT SUPER JACKPOT")
+        scene.AddActor FlexDMD.NewLabel("txt",FlexDMD.NewFont("udmd-f6by8.fnt",vbWhite,vbWhite,0),"COMPLETE"&vbLf&"CASTLE DRAGON SHOTS"&vbLf&"TO LIGHT SUPER JACKPOT")
         scene.GetLabel("txt").SetAlignedPosition 64,16,FlexDMD_Align_Center
         DMDEnqueueScene scene,1,3000,3000,3000,""
     End If
@@ -6960,9 +6965,8 @@ Sub tmrGame_Timer
     if bGameTimersEnabled = False Then Exit Sub
     bGameTimersEnabled = False
     For i = 1 to MaxTimers
-        If (TimerFlags(i) AND 2) = 2 And i > 5 Then ' Timers 1 - 5 can't be frozen. 
-            TimerTimestamp(i) = TimerTimestamp(i) + 1 ' "Frozen" timer - increase its expiry by 1 step
-        ElseIf (TimerFlags(i) AND 1) = 1 Then 
+        If (TimerFlags(i) AND 2) = 2 And i > 5 Then TimerTimestamp(i) = TimerTimestamp(i) + 1 ' "Frozen" timer - increase its expiry by 1 step (Timers 1 - 5 can't be frozen.)
+        If (TimerFlags(i) AND 1) = 1 Then 
             bGameTimersEnabled = True
             If TimerTimestamp(i) <= GameTimeStamp Then
                 TimerFlags(i) = TimerFlags(i) AND 254   ' Set bit0 to 0: Disable timer
@@ -7130,10 +7134,11 @@ Sub StopHurryUp
     if Not bTGHurryUpActive Then TimerFlags(tmrHurryUp) = TimerFlags(tmrHurryUp) And 254
     If PlayerMode = 2 Then
         PlayerMode = 0
+        StopSound "gotfx-long-wind-blowing"
         tmrWiCLightning.Enabled = False
         GiIntensity 1
         SetPlayfieldLights
-        DMDResetScoreScene
+        If bBWMultiballActive Then DMDCreateBWMBScoreScene Else DMDResetScoreScene
         DMDFlush
         AddScore 0
     End If
@@ -7291,7 +7296,7 @@ Sub DoLordOfLight
         Set Scene = FlexDMD.NewGroup("lol")
         Scene.AddActor FlexDMD.NewLabel("txt",FlexDMD.NewFont("udmd-f3by7.fnt",vbWhite,vbWhite,0),"LORD OF LIGHT"&vbLf&"OUTLANE BALL-SAVE LIT")
         Scene.GetLabel("txt").SetAlignedPosition 64,16,FlexDMD_Align_Center
-        DMDEnqueueScene Scene,2,750,750,1500,"gotx-lolsave"
+        DMDEnqueueScene Scene,2,750,750,1500,"gotfx-lolsave"
     Else
         'TODO LoL display without FlexDMD
         PlaySoundVol "gotfx-lolsave",VolDef
@@ -7670,9 +7675,19 @@ End Sub
 
 Sub setEBLight
     if bEBisLit Then
-        SetLightColor li150,amber,1
+        SetLightColor li150,amber,2
     Else
         SetLightColor li150,white,0
+    End If
+End Sub
+
+Sub SetShootAgainLight
+    If bBallSaverActive Then
+        LightShootAgain.State = 2
+    ElseIf ExtraBallsAwards(CurrentPlayer) > 0 Then
+        LightShootAgain.State = 1
+    Else
+        LightShootAgain.State = 0
     End If
 End Sub
 
@@ -9232,21 +9247,34 @@ End Class
 ' √? During multiball mode, BattleReady was lit, but shots up there wouldnt start it. After MB, a shot up the ramp started it, but lockwall
 '   wasn't up, so ball came down immediately.
 ' - Wall was then collidable later so when a ball was shot up there, it got "stuck"
-' - tweak UPF flipper strength to 3000 and lower flippers to 0.8 elasticity
-' - another extra ball orch spike can be heard at 2:28:04 in Dead Flip
 
-' √? When starting a new game after finishing a previous one, ballsinlock was wrong
-'   √? And after sending another ball up the ramp, it got stuck there, presumably because it was stuck behind the swordwall
-' - swordwall.collidable and lockball.collidable were 0, yet balls were stuck there. Setting them to 1 and back to 0 worked. Needs looking at
+' √? somehow we got an extra ball. Sound never played and ShootAgain never lit.
+' - on second game, shot to right orbit went to iron throne and then just stayed there
+
+' - In BW multiball, after battle modes timed out, scene went to default scene instead of BWmultiball scene. 
+'   May have happened independently of battle mode ending
+
+' - BWcomplete enqueued at scene 0 with no scenes showing, but didn't play
+
+' - During BWMB, with LoL lit, losing one ball down the side didn't save the ball
+'  - in real game, this re-lights ball saver for a few seconds and says "keep shooting"
+
+' - During Castle MB, Lock was lit, and shooting up there caused the ball to be released, then set the lock walls wrong so that
+'   when CMB was over and a ball was shot up there to lock for real, it didn't lock. Sending another ball up there did hold it though.
+'
+' - During CMB, in alt score scene, score was off the right
+' - during jackpots, wording was off the top
+
+' - During Lannister battle restart, SetUPFLights didn't get called. We had locked a ball, so battle started with a fresh ball
+'    - probably caused by LightSeq ending, which restore playfield colours to their default
+
+' - During Baratheon, only left gate was open
 
 ' Targaryen battle mode:
 ' √? in Level 3, a shot on the dragon doesn't register and move to the next State, but restarting the mode does
-' √? In Targaryen, shots to the Baratheon target banks count after 1 target, but shots to Tyrell need both
 ' - At State 7, after exiting it, the BattleReady light wasn't lit. Wasn't repeatable
 ' - Targaryen battle end may award total twice because final shot is on targaryen
-' √? Winter Is Coming HurryUp total was not combo-multiplied
 ' √ match win plays coin instead of knocker
-' √ in Battle mode, UPF shots don't turn off when hit (they used to!)
 ' - Elevator kickers are visible on UPF but are unfinished
 ''
 ' - gold targets need to be bouncier. 
@@ -9257,6 +9285,7 @@ End Class
 ' - "Wall multiball ready" tune can be heard at 1:25:40
 ' - Wall mutliball starts at 1:26:50
 ' - Need a "Shoot again" scene and sound
+' - need a "Ball Saved" scene and sound
 
 
 ' √? If playing as Greyjoy, BattleReady is lit at start, even though no houses are qualified
