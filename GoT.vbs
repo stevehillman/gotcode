@@ -926,6 +926,7 @@ End Sub
 Sub HighScoreEntryInit()
     hsbModeActive = True
     PlaySound "vo_enterinitials"
+    PlaySoundVol "got-track-highscore",VolDef/8
     hsLetterFlash = 0
 
     hsEnteredDigits(0) = " "
@@ -1058,6 +1059,7 @@ Sub HighScoreCommitName()
     HighScoreName(3) = hsEnteredName
     SortHighscore
     Savehs
+    StopSound "got-track-highscore"
     tmrDMDUpdate.Enabled = True
     EndOfBallComplete()
 End Sub
@@ -2919,7 +2921,7 @@ Class cHouse
                     AddScore(BWJackpotValue*combo*BWJackpotLevel)
                     BlackwaterScore = BlackwaterScore + (BWJackpotValue*combo*BWJackpotLevel*PlayfieldMultiplierVal)
                     DMDPlayHitScene "got-bwexplosion"&i-1,"gotfx-bwexplosion",BWExplosionTimes(i-1), _
-                                    BWJackpotLevel&"X BLACKWATER JACKPOT",BWJackpotValue*combo*BWJackpotLevel,"",combo,3
+                                    BWJackpotLevel&"X BLACKWATER JACKPOT",FormatScore(BWJackpotValue*combo*BWJackpotLevel),"",combo,3
                     debug.print "jackpot hit. BWJackpotvalue: "&BWJackpotValue&"  New BWScore: "&BlackwaterScore
                     LightEffect 3
                     GiEffect 3
@@ -3024,6 +3026,12 @@ Class cHouse
                     cbtimer = cbtimer + 2400
                 End If
                 vpmtimer.addtimer cbtimer, "StartChooseBattle '"
+            Else
+                ' Play a tickle sound
+                If h = Lannister Or h = Stark or h = Martell Then 
+                    PlaySoundVol "gotfx-tickle",VolDef 
+                Else PlaySoundVol "gotfx-tickle"&HouseToString(h),VolDef
+                End If
             End If
         ElseIf PlayerMode = 1 Then
             If HouseBattle1 > 0 Then MyBattleState(HouseBattle1).RegisterHit(h)
@@ -3084,7 +3092,7 @@ Class cHouse
             End If
             If MyHouse = Greyjoy Then ActionAbility = h : ActionButtonUsed = False
         End If
-        ' TODO Add support for Greyjoy gaining other houses' abilities
+        ' TODO Add support for Greyjoy gaining other houses' persistent abilities
     End Sub
 
     '***************************
@@ -3296,7 +3304,7 @@ Class cHouse
                                     Score(CurrentPlayer) = Score(CurrentPlayer) + jpscore
                                     BlackwaterScore = BlackwaterScore + jpscore
                                     DMDPlayHitScene "got-bwexplosion5","gotfx-bwexplosion",BWExplosionTimes(5), _
-                                            BWJackpotLevel&"X BLACKWATER JACKPOT",BWJackpotValue*UPFMultiplier*BWJackpotLevel,"",UPFMultiplier,3
+                                            BWJackpotLevel&"X BLACKWATER JACKPOT",FormatScore(BWJackpotValue*UPFMultiplier*BWJackpotLevel),"",UPFMultiplier,3
                                     LightEffect 3
                                     If UPFShotMask = 0 Then UPFShotMask = 8 : UPFSJP = True
                                 End If
@@ -3439,6 +3447,7 @@ Class cHouse
             Case Martell
                 If ActionButtonUsed Or Not bMultiBallMode Then Exit Sub
                 AddMultiballFast 1
+                PlaySoundVol "say-add-a-ball",VolDef
                 DMD "","ADD A BALL","",eNone,eNone,eNone,1000,True,""
                 EnableBallSaver 7
                 ActionButtonUsed = True
@@ -4463,6 +4472,7 @@ Sub ResetForNewGame()
     GameTimeStamp = 0
     'resets the score display, and turn off attract mode
     StopAttractMode
+    StopSound "got-track-gameover"
     GiOn
 
     ChooseHouseScene = Empty
@@ -4683,8 +4693,10 @@ Sub DoBallSaved(l)
         bLoLLit = False
     Else
         ' TODO: Add ball-saved animation and sound
-        DMD "", CL(1, "BALL SAVED"), "", eNone, eNone, eNone, 1000, True, ""
-        if Not bMultiBallMode Then BallSaveTimer
+        if Not bMultiBallMode Then 
+            BallSaveTimer
+            DMDDoBallSaved
+        End If
     End If
 End Sub
 
@@ -4993,8 +5005,6 @@ Sub EndOfBall2()
 
     ' has the player won an extra-ball ? (might be multiple outstanding)
     If(ExtraBallsAwards(CurrentPlayer) <> 0) and bBallInPlungerLane=False Then	' Save Extra ball for later if there is a ball in the plunger lane
-        debug.print "Extra Ball"
-
         ' yep got to give it to them
         ExtraBallsAwards(CurrentPlayer) = ExtraBallsAwards(CurrentPlayer)- 1
 
@@ -5003,10 +5013,14 @@ Sub EndOfBall2()
             LightShootAgain.State = 0
         End If
 
-        ' You may wish to do a bit of a song AND dance at this point
-        DMD "_", CL(1, ("EXTRA BALL")), "_", eNone, eBlink, eNone, 1000, True, "vo_extraball"
-
-        'TODO: Extra ball song and dance
+        If bUseFlexDMD Then
+            Dim Scene
+            Set Scene = NewSceneWithVideo "shootagain","got-shootagain"
+            DMDSceneQueue Scene,0,4000,8000,2000,"gotfx-dragonroar1"
+            vpmTimer.addTimer 1500,"PlaySoundVol ""say-shoot-again"",VolDef '"
+        Else
+            DMD "_", CL(1, ("EXTRA BALL")), "_", eNone, eBlink, eNone, 1000, True, "say-shoot-again"
+        End if
 
          ' Save the current player's state - needed so that when it's restored in a moment, it won't screw everything up
         PlayerState(CurrentPlayer).Save
@@ -5152,6 +5166,7 @@ Sub EndOfGame()
 	SwordWall.collidable = False
     LockWall.collidable = False
 
+    PlaySoundVol "got-track-gameover",VolDef/8
     ' TODO: Add an end-of-game pithy quote
     DMD "_", "GAME OVER", "",eNone,eNone,eNone,6000,true,""
 
@@ -5771,7 +5786,7 @@ Sub GameDoBallLaunched
         ' TODO: Display additional text about house chosen on ball launch
         DMDLocalScore
     End If
-    If bBallSaved = False Then  PlaySoundVol "gotfx-balllaunch",VolDef
+    If Not bMultiBallMode Then  PlaySoundVol "gotfx-balllaunch",VolDef
 End Sub
 
 
@@ -5786,7 +5801,7 @@ Sub ChooseBattle(ByVal keycode)
             CurrentBattleChoice = CurrentBattleChoice + 1
             if CurrentBattleChoice >= TotalBattleChoices Then CurrentBattleChoice = 0
         End If
-        UpdateChooseBattle
+        If bBattleInstructionsDone Then UpdateChooseBattle Else tmrBattleInstructions_Timer 
     End If
 End Sub
 
@@ -5990,7 +6005,17 @@ Sub Outlane_Hit
     AddBonus 25000
     PlaySoundVol "gotfx-outlanelost",VolDef
     LastSwitchHit = "OutlaneSW"
-    If bMultiBallMode Then Exit Sub
+    If bMultiBallMode Then 
+        If bBallSaverActive Then Exit Sub
+        If bLoLLit Then
+            bLolUsed = True
+            EnableBallSaver 5
+            SetOutlaneLights
+            bLoLLit = False
+            ' TODO: Do a "Keep Shooting!!" scene
+        End If
+        Exit Sub
+    End If
     If bBallSaverActive Then
         bEarlyEject = True
         CreateMultiballTimer.Interval = 100
@@ -6289,6 +6314,12 @@ End Sub
 Sub BatteringRam_Hit
     If Tilted Then Exit Sub
     Dim scene,line1,i
+
+    If ActiveBall.AngMomY < 20 Then Exit Sub ' Not hit hard enough
+    ' Slow the ball down, to simular hitting a big battering ram
+    ActiveBall.AngMomY = ActiveBall.AngMomY / 1+(Rnd*1.5)
+    ' TODO: Start a timer that moves the 3D battering ram primitive
+
     AddScore 1130
     AddBonus 5000
     PlaySoundVol "gotfx-battering-ram",Voldef
@@ -6938,7 +6969,7 @@ End Sub
 ' next ball through
 Sub SwordWall_Timer
     Me.TimerEnabled = False
-    If RealBallsInLock > 0 Then LockWall.Collidable = True
+    If RealBallsInLock > 0 Or bLockIsLit or House(CurrentPlayer).BattleReady Then LockWall.Collidable = True
     SwordWall.Collidable = False
     'TODO move the actuator primitive back up
     'ActuatorPrimitive.TransZ = 0
@@ -7358,6 +7389,22 @@ Sub DoAwardExtraBall
     End if
 End Sub
 
+Sub DMDDoBallSaved
+    Dim scene,i
+    If bUseFlexDMD Then
+        Set scene = NewSceneWithVideo("ballsave","got-ballsaved")
+        scene.AddActor FlexDMD.NewLabel("txt",FlexDMD.NewFont("skinny10x12",vbWhite,vbWhite,0),"BALL SAVED")
+        scene.GetLabel("txt").SetAlignedPosition 64,16,FlexDMD_Align_Center
+        DelayActor scene.GetLabel("txt"),1.5,true
+        BlinkActor scene.GetLabel("txt"),0.1,10
+        DMDEnqueueScene scene,0,2500,3500,2000,""
+    Else
+        DisplayDMDText "","BALL SAVED",2000
+    End If
+    i = RndNbr(3)
+    PlaySoundVol "say-ballsaved"&i,VolDef
+End Sub
+
 Sub DMDDoWiCScene(value,shots)
     Dim scene,line3,i,left
     left = 3 - shots : If SelectedHouse = Greyjoy then left = left + 1
@@ -7447,10 +7494,17 @@ Sub StartChooseBattle
         UpdateChooseBattle
     Else    
         ' Set up the update timer to update after instructions have been displayed for 1.5 seconds
-        vpmTimer.AddTimer 1500, "UpdateChooseBattle() '"
-        bBattleInstructionsDone = True
+        tmrBattleInstructions.Interval = 1500
+        tmrBattleInstructions.Enabled = 1
     End If
     PlayModeSong
+End Sub
+
+Sub tmrBattleInstructions_Timer
+    tmrBattleInstructions.Enabled = 0
+    DMDFlush
+    UpdateChooseBattle
+    bBattleInstructionsDone = True
 End Sub
 
 ' UpdateChooseBattle
@@ -7968,6 +8022,7 @@ Dim ChampionNames
 ChampionNames = Array("STARK","BARATHEON","LANNISTER","GREYJOY","TYRELL","MARTELL","TARGARYEN","WINTER IS COMING","WINTER HAS COME","HAND OF THE KING","IRON THRONE")
 
 Sub GameStartAttractMode
+    If bGameInPLay Then GameStopAttractMode : Exit Sub
     tmrDMDUpdate.Enabled = False
     bAttractMode = True
     tmrAttractModeScene.UserValue = 0
@@ -7981,13 +8036,13 @@ Sub GameStartAttractMode
 End Sub
 
 Sub GameStopAttractMode
+    bAttractMode = False
     tmrAttractModeScene.Enabled = False
     tmrAttractModeLighting.Enabled = False
     LightSeqAttract.StopPlay
     RestorePlayfieldLightState True
     DMDClearQueue
     tmrDMDUpdate.Enabled = True
-    bAttractMode = False
 End Sub
 
 ' To launch attract mode, disable DMDUpdateTimer and enble tmrAttractModeScene
@@ -8022,6 +8077,7 @@ Sub tmrAttractModeScene_Timer
     Dim font1,font2,font3
     skip = False
     tmrAttractModeScene.Enabled = False
+    If bGameInPLay Or Not bAttractMode Then GameStopAttractMode : Exit Sub
     delay = 2000
     skipifnoflex = True  ' Most scenes won't render without FlexDMD
     scrolltime = 0
@@ -8455,7 +8511,7 @@ Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo,format)
                 Set font1 = FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbWhite, 0)
                 Set font2 = FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbWhite, 0)
                 Set font3 = font1
-                If format = 8 or format = 9 then y2=23
+                If format = 8 or format = 9 then y1=10 : y2=23
             Case 4
                 Set font1 = FlexDMD.NewFont("skinny10x12.fnt", vbWhite, vbWhite, 0)
                 Set font2 = font1
@@ -9006,7 +9062,7 @@ Sub DMDCreateCastleMBScoreScene
     Set font = FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0)
     scene.AddActor FlexDMD.NewLabel("line1", font,"CASTLE MULTIBALL")
     scene.AddActor FlexDMD.NewLabel("Score", font,Score(CurrentPlayer))
-    scene.GetLabel("Score").SetAlignedPosition 127,0,FlexDMD_Align_TopRight
+    scene.GetLabel("Score").SetAlignedPosition 80,0,FlexDMD_Align_TopLeft
     scene.AddActor FlexDMD.NewLabel("obj", font,"SHOOT CASTLE DRAGON SHOTS"&vbLf&"SUPER JACKPOT VALUE")
     scene.GetLabel("obj").SetAlignedPosition 64,13,FlexDMD_Align_Center
     scene.AddActor FlexDMD.NewLabel("sjpval", font,FormatScore(20000000))
@@ -9119,7 +9175,7 @@ Sub DMDLocalScore
             ScoreScene.AddActor FlexDMD.NewLabel("Credit", ComboFont, "CREDITS 0")
             If bFreePlay Then ScoreScene.GetLabel("Credit").Text = "Free Play"
             ' Align them 
-            ScoreScene.GetLabel("Score").SetAlignedPosition 80,0, FlexDMD_Align_TopRight
+            ScoreScene.GetLabel("Score").SetAlignedPosition 88,0, FlexDMD_Align_TopRight
             ScoreScene.GetLabel("Ball").SetAlignedPosition 32,20, FlexDMD_Align_Center
             ScoreScene.GetLabel("Credit").SetAlignedPosition 96,20, FlexDMD_Align_Center
             ' Divider
@@ -9234,41 +9290,23 @@ End Class
 ' - Implement playfield lighting effects
 ' - Implement Flashers
 
-' √? if you press "start" during end-of-game sequence, it'll start a new game but then go into attract mode
-' √? At end of Martell mode, without scoring HurryUp, too many points were awarded. BattleTotal said 144M
-' √? When score went past 1B, it went off the screen to the left. 
 ' - In Battle mode on the UPF, hitting the Castle didn't finish the mode. - Not written yet!!
-' - Also in Baratheon battle mode, on UPF, targets stayed cyan, but shield did change colour. Targets changed colour after a switch hit
-' √? Ball Save timer started during Choose Battle and timed out before ball had been plunged
-' √? during Tyrell battle, target lights weren't reset, and we had to hit the unlit one to move to next stage. 
-'   - may be possible if Tyrell battle restarts in state 2, 4 or 6.
-' - When doing a battle and going straight into BW multiball, after multiball, shields all stayed on colour of house that was battling,
-'   including Castle target lights. After a hit up top, Castle targets changed to right colour, but shields stayed red.
 ' √? During multiball mode, BattleReady was lit, but shots up there wouldnt start it. After MB, a shot up the ramp started it, but lockwall
 '   wasn't up, so ball came down immediately.
 ' - Wall was then collidable later so when a ball was shot up there, it got "stuck"
 
 ' √? somehow we got an extra ball. Sound never played and ShootAgain never lit.
-' - on second game, shot to right orbit went to iron throne and then just stayed there
 
-' - In BW multiball, after battle modes timed out, scene went to default scene instead of BWmultiball scene. 
-'   May have happened independently of battle mode ending
-
-' - BWcomplete enqueued at scene 0 with no scenes showing, but didn't play
-
-' - During BWMB, with LoL lit, losing one ball down the side didn't save the ball
-'  - in real game, this re-lights ball saver for a few seconds and says "keep shooting"
-
-' - During Castle MB, Lock was lit, and shooting up there caused the ball to be released, then set the lock walls wrong so that
-'   when CMB was over and a ball was shot up there to lock for real, it didn't lock. Sending another ball up there did hold it though.
-'
-' - During CMB, in alt score scene, score was off the right
-' - during jackpots, wording was off the top
+' √? During BWMB, with LoL lit, losing one ball down the side didn't save the ball
+'    - in real game, this re-lights ball saver for a few seconds and says "keep shooting"
+' √? During Castle MB, Lock was lit, and shooting up there caused the ball to be released, then set the lock walls wrong so that
+'     when CMB was over and a ball was shot up there to lock for real, it didn't lock. Sending another ball up there did hold it though.
+' √? During CMB, in alt score scene, score was off the right
+' √? during jackpots, wording was off the top
 
 ' - During Lannister battle restart, SetUPFLights didn't get called. We had locked a ball, so battle started with a fresh ball
 '    - probably caused by LightSeq ending, which restore playfield colours to their default
-
-' - During Baratheon, only left gate was open
+'    - Also in Baratheon battle mode, on UPF, targets stayed cyan, but shield did change colour. Targets changed colour after a switch hit
 
 ' Targaryen battle mode:
 ' √? in Level 3, a shot on the dragon doesn't register and move to the next State, but restarting the mode does
@@ -9278,19 +9316,28 @@ End Class
 ' - Elevator kickers are visible on UPF but are unfinished
 ''
 ' - gold targets need to be bouncier. 
-' - battering ram needs to be less bouncy and more scattery
+' √? battering ram needs to be less bouncy and more scattery
 ' - need more things awarding bonus
 ' - UPF can't handle multiball and battle at the same time - does it need to?
 
 ' - "Wall multiball ready" tune can be heard at 1:25:40
 ' - Wall mutliball starts at 1:26:50
-' - Need a "Shoot again" scene and sound
-' - need a "Ball Saved" scene and sound
+' √ Need a "Shoot again" scene and sound
+' √ need a "Ball Saved" scene and sound
 
 
 ' √? If playing as Greyjoy, BattleReady is lit at start, even though no houses are qualified
 
 ' - Import DMD code for non FlexDMD. Use JP's Deadpool charset for now
+
+' UNRESOLVED ISSUES
+' - In BW multiball, after battle modes timed out, scene went to default scene instead of BWmultiball scene. 
+'   May have happened independently of battle mode ending
+' - BWcomplete enqueued at scene 0 with no scenes showing, but didn't play
+' - When doing a battle and going straight into BW multiball, after multiball, shields all stayed on colour of house that was battling,
+'   including Castle target lights. After a hit up top, Castle targets changed to right colour, but shields stayed red.
+' - on second game, shot to right orbit went to iron throne and then just stayed there
+
 
 
 
