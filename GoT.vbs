@@ -357,17 +357,17 @@ Sub Table1_KeyDown(ByVal Keycode)
                 If(bFreePlay = True)Then
                     PlayersPlayingGame = PlayersPlayingGame + 1
                     TotalGamesPlayed = TotalGamesPlayed + 1
-                    DMD "_", CL(1, PlayersPlayingGame & " PLAYERS"), "", eNone, eBlink, eNone, 1000, True, ""
+                    DMD "_", CL(1, PlayersPlayingGame & " PLAYERS"), "", eNone, eBlink, eNone, 1000, False, ""
                 Else
                     If(Credits> 0)then
                         PlayersPlayingGame = PlayersPlayingGame + 1
                         TotalGamesPlayed = TotalGamesPlayed + 1
                         Credits = Credits - 1
-                        DMD "_", CL(1, PlayersPlayingGame & " PLAYERS"), "", eNone, eBlink, eNone, 1000, True, ""
+                        DMD "_", CL(1, PlayersPlayingGame & " PLAYERS"), "", eNone, eBlink, eNone, 1000, False, ""
                         If Credits <1 And bFreePlay = False Then DOF 125, DOFOff
                     Else
                         ' Not Enough Credits to start a game.
-                        DMD CL(0, "CREDITS " & Credits), CL(1, "INSERT COIN"), "", eNone, eBlink, eNone, 1000, True, "vo_nocredits"
+                        DMD CL(0, "CREDITS " & Credits), CL(1, "INSERT COIN"), "", eNone, eBlink, eNone, 1000, False, "vo_nocredits"
                     End If
                 End If
             End If
@@ -389,7 +389,7 @@ Sub Table1_KeyDown(ByVal Keycode)
                 Else
                     ' Not Enough Credits to start a game.
                     DMDFlush
-                    DMD CL(0, "CREDITS " & Credits), CL(1, "INSERT COIN"), "", eNone, eBlink, eNone, 1000, True, "vo_nocredits"
+                    DMD CL(0, "CREDITS " & Credits), CL(1, "INSERT COIN"), "", eNone, eBlink, eNone, 1000, False, "vo_nocredits"
                     ShowTableInfo
                 End If
             End If
@@ -1887,9 +1887,9 @@ Sub SavePlayfieldLightNames
     i = 0
     On Error Resume Next
     For each a in aPlayfieldLights
-        If Left(a.Name,2) = "Li" Then      
+        If Left(a.Name,2) = "li" Then      
             j = CInt(Mid(a.Name,3))
-            If Not Err Then LightNames(j) = i
+            If j > 0 And Not Err Then LightNames(j) = i
         End If
         i = i + 1
     Next
@@ -1898,9 +1898,9 @@ End Sub
 
 Sub SavePlayfieldLightColor(a,col,colf)
     On Error Resume Next
-    If Left(a.Name,2) = "Li" Then      
+    If Left(a.Name,2) = "li" Then      
         j = CInt(Mid(a.Name,3))
-        If Not Err Then LightSaveState(LightNames(j),1) = col : LightSaveState(LightNames(j),2) = colf
+        If j > 0 And Not Err Then LightSaveState(LightNames(j),1) = col : LightSaveState(LightNames(j),2) = colf
     End If
     On Error Goto 0
 End Sub
@@ -2268,7 +2268,6 @@ End Sub
 ' The ball is released from the plunger turn off some flags and check for skillshot
 
 Sub swPlungerRest_UnHit()
-    lighteffect 6
     bBallInPlungerLane = False
     swPlungerRest.TimerEnabled = 0 'stop the launch ball timer if active
     If bSkillShotReady Then
@@ -2712,7 +2711,8 @@ Class cHouse
         '  √ Martell: Add-A-Ball
         '  - Targaryen: Freeze timers for 15s (except ball save timer). Timers started during freeze don't start until after
         If h = Lannister Then AddGold 750 Else TotalGold = 100 : CurrentGold = 100
-        If h = Baratheon Then AdvanceWallMultiball 2 : WallJPValue = 925000 Else WallJPValue = 400000
+        ' For testing, bumped Baratheon to 5 advances
+        If h = Baratheon Then AdvanceWallMultiball 5 : WallJPValue = 925000 Else WallJPValue = 400000
         PlaySoundVol "say-"&HouseToString(h)&"motto",VolDef
     End Property
 	Public Property Get MyHouse : MyHouse = HouseSelected : End Property
@@ -3456,7 +3456,7 @@ Class cHouse
         AddScore score
         CastleMBScore = CastleMBScore + (score*PlayfieldMultiplierVal)
         DMDPlayHitScene jpname,sound,dly,"CASTLE MULTIBALL"&vbLf&line2,FormatScore(score*PlayfieldMultiplierVal),"",combo,fmt
-        FlashPlayfieldLights cyan,5,50
+        FlashPlayfieldLights cyan,5,25
     End Sub
 
     Public Sub ScoreWallJP(h,combo)
@@ -3478,7 +3478,7 @@ Class cHouse
             score = WallJPValue*combo
         End If
         DMDPlayHitScene vid,snd,delay,"BATTLE FOR THE WALL",FormatScore(score*PlayfieldMultiplierVal),"AWARD",combo,0
-        FlashPlayfieldLights purple,5,50
+        DoWallMBJackpotSeq
         AddScore score
         WallMBScore = WallMBScore + (score*PlayfieldMultiplierVal)
         WallJPValue = WallJPValue + WallJPIncr
@@ -3776,7 +3776,7 @@ Class cBattleState
                         ScoredValue = HouseValue
                         ' TODO: Figure out if there's a better pattern to capture Lannister mode value increases
                         HouseValue = HouseValue + (CompletedShots * 200000)+RndNbr(12)*25000
-                        FlashPlayfieldLights red,5,50
+                        FlashPlayfieldLights red,5,25
                     End If
                 End If
             
@@ -3801,7 +3801,7 @@ Class cBattleState
                         SetModeLights
                         ' Reset mode timer
                         If MyHouse = HouseBattle2 Then SetGameTimer tmrBattleMode2,150 Else SetGameTimer tmrBattleMode1,150
-                        FlashPlayfieldLights purple,5,50
+                        FlashPlayfieldLights purple,5,25
                     End If
                 End If
 
@@ -3844,7 +3844,7 @@ Class cBattleState
                         HouseValue = HouseValue + 900000 + (325000*(State-1))
                         If HouseValue > 18000000 Then HouseValue = 18000000
                         SetModeLights
-                        FlashPlayfieldLights green,5,50
+                        FlashPlayfieldLights green,5,25
                     End If
                 End If
 
@@ -5395,6 +5395,7 @@ Sub StopMBmodes
     bBWMultiballActive = False
     bCastleMBActive = False
     BlackwaterSJPTimer
+    SwordWall_Timer ' Ensure the lock walls are set correctly
     If PlayerMode = 0 Then TimerFlags(tmrUpdateBattleMode) = 0
     PlayModeSong
     If PlayerMode = 1 Then 
@@ -5421,7 +5422,7 @@ Sub CloseTopGates: SetTopGates : End Sub
 Sub SetTopGates
     Dim lstate,rstate
     lstate=False:rstate=False
-    If HouseBattle1 = Baratheon or HouseBattle2 = Baratheon or HouseBattle1 = Martell or HouseBattle2 = Martell or HouseBattle1=Greyjoy or HouseBattle2 = Greyjoy Then
+    If PlayerMode = 2 Or HouseBattle1 = Baratheon or HouseBattle2 = Baratheon or HouseBattle1 = Martell or HouseBattle2 = Martell or HouseBattle1=Greyjoy or HouseBattle2 = Greyjoy Then
         lstate=True:rstate=True
     End If
     If bEBisLit or bElevatorShotUsed = False or bCastleMBActive or (bWallMBReady And Not bMultiBallMode) Or (bMysteryLit And Not bMultiBallMode And PlayerMode = 0) Then
@@ -5875,7 +5876,7 @@ Sub ChooseHouse(ByVal keycode)
         FlashShields SelectedHouse,True
         House(CurrentPlayer).Say(SelectedHouse)
     End If
-    DMDChooseScene1 "choose your house",HouseToString(SelectedHouse), HouseAbility(SelectedHouse),"got-sigil-" & HouseToString(SelectedHouse)
+    DMDChooseScene1 "CHOOSE YOUR HOUSE",HouseToUCString(SelectedHouse), HouseAbility(SelectedHouse),"got-sigil-" & HouseToString(SelectedHouse)
 End Sub
 
 ' Turn on the flashing shield sigils when choosing a house
@@ -6302,13 +6303,9 @@ Sub sw48_Hit
     sw48.UserValue = ""
 
     if bMultiBallMode Then
-        If bBWMultiballActive Then
-            BallsInLock = BallsInLock + 1
-            RealBallsInLock = RealBallsInLock + 1
-            tmrBWmultiballRelease.Enabled = True
-        Else
-            ReleaseLockedBall 1
-        End If
+        If bBWMultiballActive Then BallsInLock = BallsInLock + 1
+        RealBallsInLock = RealBallsInLock + 1
+        tmrBWmultiballRelease.Enabled = True
         Exit Sub
     End If
 
@@ -7051,15 +7048,27 @@ Sub StartCastleMultiball
         scene.GetLabel("txt").SetAlignedPosition 64,16,FlexDMD_Align_Center
         DMDEnqueueScene scene,1,3000,3000,3000,""
     End If
+    SetPlayfieldLights
     House(CurrentPlayer).SetUPFState true
     House(CurrentPlayer).SetJackpots
-    SetPlayfieldLights
     PlaySound "gotfx-dragonwings",-1,VolDef/4
     DoCastleMBSeq ' light seq
     DMDCreateCastleMBScoreScene ' alternate scoring scene
     EnableBallSaver 25
     SetTopGates ' all shots go to upper PF
-    AddMultiball 2 ' add the balls
+    StartNonBWMB 2
+End Sub
+
+Sub StartNonBWMB(balls)
+    If RealBallsInLock > 0 Then
+        tmrBWmultiballRelease.Interval = 1500    
+        tmrBWmultiballRelease.Enabled = True
+        If RealBallsInLock = 1 Then 
+            AddMultiball balls-1
+        ElseIf balls > 2 Then AddMultiball balls-2 : End If
+    Else
+        AddMultiball balls ' add the balls
+    End If
 End Sub
 
 Sub StartWallMB
@@ -7067,7 +7076,7 @@ Sub StartWallMB
     bWallMBActive = True
     bWallMBReady = False
     WallMBScore = 0
-    vpmTimer.AddTimer 9000, "AddMultiball 2 : IronThroneKickout '"
+    vpmTimer.AddTimer 9000, "StartNonBWMB 2 : IronThroneKickout '"
     If bUseFlexDMD Then
         Dim Scene
         Set scene = NewSceneWithVideo("wallmb","got-wallmbintro")
@@ -7075,9 +7084,9 @@ Sub StartWallMB
     End If
     PlaySoundVol "say-wallmb-start1",VolDef
     EnableBallSaver 34
+    SetPlayfieldLights
     House(CurrentPlayer).SetUPFState true
     House(CurrentPlayer).ResetForWallMB
-    SetPlayfieldLights
     DMDCreateWallMBScoreScene
     DoWallMBSeq
 End Sub
@@ -7104,7 +7113,7 @@ End Sub
 ' next ball through
 Sub SwordWall_Timer
     Me.TimerEnabled = False
-    If RealBallsInLock > 0 Or bLockIsLit or House(CurrentPlayer).bBattleReady Then LockWall.Collidable = True
+    If RealBallsInLock > 0 or ((House(CurrentPlayer).bBattleReady Or bLockIsLit) And Not bMultiBallMode) Then LockWall.Collidable = True
     SwordWall.Collidable = False
     'TODO move the actuator primitive back up
     'ActuatorPrimitive.TransZ = 0
@@ -7119,10 +7128,10 @@ Sub tmrBWmultiballRelease_Timer
     tmrBWmultiballRelease.Enabled = False
     tmrBWmultiballRelease.Interval = 1000
     ReleaseLockedBall 1
-    BallsInLock = BallsInLock - 1
+    If bBWMultiballActive Then BallsInLock = BallsInLock - 1
     RealBallsInLock = RealBallsInLock - 1
     If RealBallsInLock > 0 Then tmrBWmultiballRelease.Enabled = True: Exit Sub
-    If BallsInLock > 0 Then AddMultiball BallsInLock
+    If bBWMultiballActive And BallsInLock > 0 Then AddMultiball BallsInLock
 End Sub
 
 Sub tmrGame_Timer
@@ -7310,6 +7319,7 @@ Sub StopHurryUp
         tmrWiCLightning.Enabled = False
         GiIntensity 1
         SetPlayfieldLights
+        SetTopGates
         If bBWMultiballActive Then DMDCreateBWMBScoreScene : Else DMDResetScoreScene
         DMDFlush
         AddScore 0
@@ -7385,6 +7395,7 @@ End Sub
 Dim WICHurryUpScene
 Sub StartWICHurryUp(value,shot)
     PlayerMode = 2
+    SetTopGates
     SetPlayfieldLights
     If bUseFlexDMD Then
         Set WICHurryUpScene = NewSceneWithVideo("wic","got-wichurryup")
@@ -7980,6 +7991,16 @@ Sub DoWallMBSeq
     LightSeqPlayfield.UserValue = 1
     LightSeqPlayfield.UpdateInterval = 10
     LightSeqPlayfield.Play SeqBlinking,,4,250
+    LightSeqPlayfield.Play SeqAllOff
+End Sub
+
+Sub DoWallMBJackpotSeq
+    If LightSeqPlayfield.UserValue > 0 Then Exit Sub ' Already running a sequence
+    SavePlayfieldLightState
+    PlayfieldSlowFade white,5
+    LightSeqPlayfield.UserValue = 1
+    LightSeqPlayfield.UpdateInterval = 5
+    If RndNbr(2) = 2 Then LightSeqAttract.Play SeqRightOn, 25, 1 : Else LightSeqAttract.Play SeqLeftOn, 25, 1
     LightSeqPlayfield.Play SeqAllOff
 End Sub
 
@@ -8908,10 +8929,10 @@ Sub DMDChooseScene1(line0,line1,line2,sigil)    ' sigil is an image name
             If Not (sigilimage Is Nothing) Then ChooseHouseScene.AddActor sigilimage
             ChooseHouseScene.AddActor FlexDMD.NewLabel("choosetxt", FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0) ,"CHOOSE YOUR HOUSE")
             ChooseHouseScene.AddActor FlexDMD.NewLabel("house", FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0) ,line1)
-            ChooseHouseScene.AddActor FlexDMD.NewLabel("action", FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0) ,line2)
-            ChooseHouseScene.GetLabel("choosetxt").SetAlignedPosition 72,5,FlexDMD_Align_Center
-            ChooseHouseScene.GetLabel("house").SetAlignedPosition 72,16,FlexDMD_Align_Center
-            ChooseHouseScene.GetLabel("action").SetAlignedPosition 72,27,FlexDMD_Align_Center
+            ChooseHouseScene.AddActor FlexDMD.NewLabel("action", FlexDMD.NewFont("tiny3by5.fnt", vbWhite, vbWhite, 0) ,line2)
+            ChooseHouseScene.GetLabel("choosetxt").SetAlignedPosition 127,5,FlexDMD_Align_Right
+            ChooseHouseScene.GetLabel("house").SetAlignedPosition 77,16,FlexDMD_Align_Center
+            ChooseHouseScene.GetLabel("action").SetAlignedPosition 77,27,FlexDMD_Align_Center
             Set DefaultScene = ChooseHouseScene
             DMDFlush
         Else
@@ -8922,8 +8943,8 @@ Sub DMDChooseScene1(line0,line1,line2,sigil)    ' sigil is an image name
             If Not (sigilimage Is Nothing) Then ChooseHouseScene.AddActor sigilimage
             ChooseHouseScene.GetLabel("house").Text = line1
             ChooseHouseScene.GetLabel("action").Text = line2
-            ChooseHouseScene.GetLabel("house").SetAlignedPosition 72,16,FlexDMD_Align_Center
-            ChooseHouseScene.GetLabel("action").SetAlignedPosition 72,27,FlexDMD_Align_Center
+            ChooseHouseScene.GetLabel("house").SetAlignedPosition 77,16,FlexDMD_Align_Center
+            ChooseHouseScene.GetLabel("action").SetAlignedPosition 77,27,FlexDMD_Align_Center
             Set DefaultScene = ChooseHouseScene
             FlexDMD.UnlockRenderThread
         End If
@@ -9624,6 +9645,11 @@ End Class
 ' - In Attract mode:
 '   - highscore 1 & 2 have no names, where they did before
 
+' - forgot to add tmrMultiballCompleteScene
+' - trim the size of the plastic under the right ramp
+' √? now, during WallMB, if a BW ball is locked and you shoot balls up the center ramp, there's a chance they'll get stuck behind the locked ball.
+'   Most of the time it worked, but once, one got stuck (maybe two shot too quickly together?)
+
 ' √ Need a "Shoot again" scene and sound
 
 ' - Import DMD code for non FlexDMD. Use JP's Deadpool charset for now
@@ -9631,7 +9657,6 @@ End Class
 ' UNRESOLVED ISSUES
 ' - In BW multiball, after battle modes timed out, scene went to default scene instead of BWmultiball scene. 
 '   May have happened independently of battle mode ending
-' - BWcomplete enqueued at scene 0 with no scenes showing, but didn't play
 ' - When doing a battle and going straight into BW multiball, after multiball, shields all stayed on colour of house that was battling,
 '   including Castle target lights. After a hit up top, Castle targets changed to right colour, but shields stayed red.
 ' - on second game, shot to right orbit went to iron throne and then just stayed there
