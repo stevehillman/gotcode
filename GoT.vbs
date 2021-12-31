@@ -125,6 +125,7 @@ Dim BallsInLock             ' Number of balls the current player has locked
 Dim BallSearchCnt
 Dim LastSwitchHit
 Dim LightSaveState(100,4)   ' Array for saving state of lights. We save state, colour, fade to restore after Sequences (sequences only save state)
+Dim LightNames(300)         ' Saves the mapping of light names (li<xxx>) to index into LightSaveState
 Dim TotalPlayfieldLights
 
 ' flags
@@ -203,6 +204,9 @@ Sub Table1_Init()
 
     ' Misc. VP table objects Initialisation, droptargets, animations...
     VPObjects_Init
+
+    ' Creat the array of light name indexes
+    SavePlayfieldLightNames
 
     'load saved values, highscore, names, jackpot
     Loadhs
@@ -1270,7 +1274,7 @@ Function FormatScore(ByVal Num) 'it returns a string with commas (as in Black's 
         Numstring = left(NumString,i-1)
         'Get rid of the period between the first and second digit
         NumString = Replace(NumString,".","")
-        NumString = Replace(NumString,"e","")
+        NumString = Replace(NumString,"E","")
         ' And add 0s to the right length
         For i = Len(NumString) to exp : NumString = NumString & "0" : Next
     End If
@@ -1717,53 +1721,58 @@ Const teal = 0
 ' colors: red, orange, yellow, green, blue, white, purple, amber
 ' Note: Colors tweaked slightly to match GoT color scheme
 '******************************************
-
+' Modified to handle changing light colors while LightSeqPlayfield is running
+' If it's running then
+'  - If state is "-1", or sequence isn't running a coloured sequence, then change the colour right on the light
+'  - Otherwise, save the colour change in the LightSaveState table and let it be restored once the sequence ends
 
 Sub SetLightColor(n, col, stat) 'stat 0 = off, 1 = on, 2 = blink, -1= no change
+    Dim color,colorfull
     Select Case col
         Case cyan
-            n.color = RGB(0,18,18)
-            n.colorfull = RGB(0, 224, 240)
+            color = RGB(0,18,18)
+            colorfull = RGB(0, 224, 240)
         Case midblue
-            n.color = RGB(0,0,18)
-            n.colorfull = RGB(0,0,255)
+            color = RGB(0,0,18)
+            colorfull = RGB(0,0,255)
         Case ice
-            n.color = RGB(0, 18, 18)
-            n.colorfull = RGB(192, 255, 255)
+            color = RGB(0, 18, 18)
+            colorfull = RGB(192, 255, 255)
         Case red
-            n.color = RGB(18, 0, 0)
-            n.colorfull = RGB(255, 0, 0)
+            color = RGB(18, 0, 0)
+            colorfull = RGB(255, 0, 0)
         Case orange
-            n.color = RGB(18, 3, 0)
-            n.colorfull = RGB(255, 64, 0)
+            color = RGB(18, 3, 0)
+            colorfull = RGB(255, 64, 0)
         Case amber
-            n.color = RGB(193, 49, 0)
-            n.colorfull = RGB(255, 153, 0)
+            color = RGB(193, 49, 0)
+            colorfull = RGB(255, 153, 0)
         Case yellow
-            n.color = RGB(18, 18, 0)
-            n.colorfull = RGB(255, 255, 0)
+            color = RGB(18, 18, 0)
+            colorfull = RGB(255, 255, 0)
         Case darkgreen
-            n.color = RGB(0, 8, 0)
-            n.colorfull = RGB(0, 64, 0)
+            color = RGB(0, 8, 0)
+            colorfull = RGB(0, 64, 0)
         Case green
-            n.color = RGB(0, 16, 0)
-            n.colorfull = RGB(0, 192, 0)
+            color = RGB(0, 16, 0)
+            colorfull = RGB(0, 192, 0)
         Case blue
-            n.color = RGB(0, 18, 18)
-            n.colorfull = RGB(0, 160, 255)
+            color = RGB(0, 18, 18)
+            colorfull = RGB(0, 160, 255)
         Case darkblue
-            n.color = RGB(0, 8, 8)
-            n.colorfull = RGB(0, 64, 64)
+            color = RGB(0, 8, 8)
+            colorfull = RGB(0, 64, 64)
         Case purple
-            n.color = RGB(64, 0, 96)
-            n.colorfull = RGB(128, 0, 192)
+            color = RGB(64, 0, 96)
+            colorfull = RGB(128, 0, 192)
         Case white
-            n.color = RGB(255, 197, 143)
-            n.colorfull = RGB(255, 252, 224)
+            color = RGB(255, 197, 143)
+            colorfull = RGB(255, 252, 224)
         Case teal
-            n.color = RGB(1, 64, 62)
-            n.colorfull = RGB(2, 128, 126)
+            color = RGB(1, 64, 62)
+            colorfull = RGB(2, 128, 126)
     End Select
+    If stat = -1 Or LightSeqPlayfield.UserValue = 0 Then n.color = color : n.colorfull = colorfull Else SavePlayfieldLightColor n,color,colorfull
     If stat <> -1 Then
         n.State = 0
         n.State = stat
@@ -1873,6 +1882,29 @@ Sub SavePlayfieldLightState
     Next
 End Sub
 
+Sub SavePlayfieldLightNames
+    Dim i,j,a
+    i = 0
+    On Error Resume Next
+    For each a in aPlayfieldLights
+        If Left(a.Name,2) = "Li" Then      
+            j = CInt(Mid(a.Name,3))
+            If Not Err Then LightNames(j) = i
+        End If
+        i = i + 1
+    Next
+    On Error Goto 0
+End Sub
+
+Sub SavePlayfieldLightColor(a,col,colf)
+    On Error Resume Next
+    If Left(a.Name,2) = "Li" Then      
+        j = CInt(Mid(a.Name,3))
+        If Not Err Then LightSaveState(LightNames(j),1) = col : LightSaveState(LightNames(j),2) = colf
+    End If
+    On Error Goto 0
+End Sub
+
 Sub RestorePlayfieldLightState(state)
     Dim i,a
     i = 0
@@ -1890,7 +1922,7 @@ End Sub
 Sub PlayfieldSlowFade(color,fadespeed)
     Dim a
     For each a in aPlayfieldLights
-        SetLightColor a,color,-1
+        If color >= 0 Then SetLightColor a,color,-1
         a.FadeSpeedUp = fadespeed
         a.FadeSpeedDown = fadespeed
     Next
@@ -2059,6 +2091,11 @@ Sub LightSeqSkillshot_PlayDone()
     LightSeqSkillshot.Play SeqAllOff
 End Sub
 
+Sub LightSeqPlayfield_PlayDone()
+    If Me.UserValue <> 0 Then RestorePlayfieldLightState False
+    Me.UserValue = 0
+End Sub
+
 Sub TurnOffPlayfieldLights()
     Dim a
     For each a in aLights
@@ -2170,22 +2207,20 @@ Sub Drain_Hit()
         Else
         	bEarlyEject = False
             ' cancel any multiball if on last ball (ie. lost all other balls)
-            If(BallsOnPlayfield-RealBallsInLock = 1)Then
-                ' AND in a multi-ball??
-                If(bMultiBallMode = True)then
-                    ' not in multiball mode any more
-                    bMultiBallMode = False
-                    ' you may wish to change any music over at this point and
+            ' NOTE: This is GoT-specific. Remove tmrBWMultiBallRelease check for other tables
+            If BallsOnPlayfield-RealBallsInLock < 2 And bMultiBallMode And Not tmrBWmultiballRelease.Enabled Then 
+                ' not in multiball mode any more
+                bMultiBallMode = False
+                ' you may wish to change any music over at this point and
 
-                    ' turn off any multiball specific lights
-                    ChangeGi white
-                    'stop any multiball modes
-                    StopMBmodes
-                End If
+                ' turn off any multiball specific lights
+                ChangeGi white
+                'stop any multiball modes
+                StopMBmodes
             End If
 
             ' was that the last ball on the playfield
-            If(BallsOnPlayfield-RealBallsInLock = 0)Then
+            If(BallsOnPlayfield-RealBallsInLock = 0 And Not tmrBWmultiballRelease.Enabled)Then
                 ' End Mode and timers
 
                 ChangeGi white
@@ -2765,11 +2800,12 @@ Class cHouse
         If bBWMultiballActive Then 
             clr = green 
         Elseif bCastleMBActive Then clr = cyan
+        ElseIf bWallMBActive Then clr = purple
         End If
         For i = 1 to 7
             ModeLightState(i,0) = 1
             ModeLightState(i,1) = 0
-            if (bBWMultiballActive Or bCastleMBActive) And BWJackpotShots(i) > 0 Then
+            if (bBWMultiballActive Or bCastleMBActive or bWallMBActive) And BWJackpotShots(i) > 0 Then
                 ModeLightState(i,1) = clr
                 ModeLightState(i,2) = 0
                 ModeLightState(i,0) = 2
@@ -2793,12 +2829,13 @@ Class cHouse
 
     Public Sub SetJackpots
         Dim i
+        For i = 1 to 7 : BWJackpotShots(i) = 0 : Next
         If bWallMBActive Then
             WallMBShotCount = 0
-            Select Case (WallMBState MOD 3)
+            Select Case (WallMBState MOD 4)
                 Case 0: BWJackpotShots(lannister) = 3 : BWJackpotShots(Stark) = 3
-                Case 1: BWJackpotShots(Greyjoy) = 3 : BWJackpotShots(Martell) = 3
-                Case 2: BWJackpotShots(Targaryen) = 1
+                Case 2: BWJackpotShots(Greyjoy) = 3 : BWJackpotShots(Martell) = 3
+                Case 1,3: BWJackpotShots(Targaryen) = 1
             End Select
         Else
             For i = 1 to 7
@@ -2909,6 +2946,9 @@ Class cHouse
             Exit Sub
         End if
 
+        If ComboLaneMap(h) Then combo = ComboMultiplier(ComboLaneMap(h))
+        If h = Martell Then ROrbitsw31.UserValue = combo
+
         If bMultiBallMode And PlayerMode <> 2 And ((BWState MOD 2) <> 0 Or Not bBWMultiballActive) Then
             'Handle Jackpot hits for Blackwater, Wall, and Castle Multiball
             If BWJackpotShots(h) > 0 Then
@@ -2920,8 +2960,6 @@ Class cHouse
                     If BWJackpotShots(i) > 0 Then t=False:Exit For
                 Next
 
-                i = ComboLaneMap(h)
-                combo = ComboMultiplier(i)
                 If bBWMultiballActive Then
                     AddScore(BWJackpotValue*combo*BWJackpotLevel)
                     BlackwaterScore = BlackwaterScore + (BWJackpotValue*combo*BWJackpotLevel*PlayfieldMultiplierVal)
@@ -2946,8 +2984,8 @@ Class cHouse
                     End If
                 ElseIf bCastleMBActive Then
                     ScoreCJP False,combo
-                    If t Then SetJackpots
-                ElseIf bWallMBActive
+                    If t Then SetJackpots : Else SetModeLights
+                ElseIf bWallMBActive Then
                     WallMBShotCount = WallMBShotCount + 1
                     If WallMBShotCount = 3 Or h = Targaryen Then WallMBState = WallMBState + 1 : SetJackpots
                     ScoreWallJP h,combo
@@ -2965,7 +3003,7 @@ Class cHouse
                 QualifyCount(h) = QualifyCount(h) + 1
                 If h <> Baratheon and h <> Tyrell Then AddBonus 100000
 
-                If ComboLaneMap(h) Then combo = ComboMultiplier(ComboLaneMap(h))
+                If h = Martell Then ROrbitsw31.UserValue = combo + 10
 
                 line0 = "HOUSE " & HouseToUCString(h)
                 if QualifyCount(h) = 3 Then
@@ -3003,8 +3041,6 @@ Class cHouse
                     End If
                 End If
             ElseIf (WiCMask And 2^h) = 0 Then
-                combo = ComboMultiplier(ComboLaneMap(h))
-                If combo = 0 then combo = 1
                 AddScore 50000*combo
                 AddBonus 25000
                 'WiCMask = WiCMask Or 2^h
@@ -3032,7 +3068,7 @@ Class cHouse
                 FreezeAllGameTimers
                 If BallsInLock < 2 And bLockIsLit Then ' Multiball not about to start, lock the ball first
                     vpmtimer.addtimer 400, "LockBall '"     ' Slight delay to give ball time to settle
-                    cbtimer = cbtimer + 2400
+                    cbtimer = cbtimer + 800
                 End If
                 vpmtimer.addtimer cbtimer, "StartChooseBattle '"
             Else
@@ -3193,7 +3229,7 @@ Class cHouse
         If bWallMBActive Then
             UPFState = 4 : UPFShotMask = 0
             SetUPFFlashers 1,cyan
-        If bCastleMBActive Then
+        ElseIf bCastleMBActive Then
             UPFState = 3 : UPFShotMask = 42
             SetUPFFlashers 1,cyan
         ElseIf bBWMultiballActive Then
@@ -3420,6 +3456,7 @@ Class cHouse
         AddScore score
         CastleMBScore = CastleMBScore + (score*PlayfieldMultiplierVal)
         DMDPlayHitScene jpname,sound,dly,"CASTLE MULTIBALL"&vbLf&line2,FormatScore(score*PlayfieldMultiplierVal),"",combo,fmt
+        FlashPlayfieldLights cyan,5,50
     End Sub
 
     Public Sub ScoreWallJP(h,combo)
@@ -3430,26 +3467,29 @@ Class cHouse
             snd = "gotfx-wallmbsjp"
             delay = 8
             score = (10000000 + WallJPValue)*combo
+            i = RndNbr(3)
+            if i = 1 Then PlaySoundVol "say-superjackpot",VolDef
         Else 
             i =  WallMBShotCount
-            If (WallMBState MOD 3) = 1 Then i = i + 3
+            If (WallMBState MOD 4) = 2 Then i = i + 3
             vid = "got-wallmbhit"&i
             snd = "gotfx-increasewalljp"
             If i = 2 or i = 5 then delay = 1 else delay = 2
             score = WallJPValue*combo
         End If
         DMDPlayHitScene vid,snd,delay,"BATTLE FOR THE WALL",FormatScore(score*PlayfieldMultiplierVal),"AWARD",combo,0
+        FlashPlayfieldLights purple,5,50
         AddScore score
         WallMBScore = WallMBScore + (score*PlayfieldMultiplierVal)
         WallJPValue = WallJPValue + WallJPIncr
         WallJPIncr = WallJPIncr + 5000 : If HouseSelected = Baratheon Then WallJPIncr = WallJPIncr + 45000
-        If ScoreScene.Name = "wallmb" Then
+        If ScoreScene.Name = "wallscore" Then
             If WallMBShotCount < 2 then i = "S" Else i = ""
             FlexDMD.LockRenderThread
-            Select Case (WallMBState MOD 3)
+            Select Case (WallMBState MOD 4)
                 Case 0: ScoreScene.GetLabel("obj").Text = 3-WallMBShotCount & " MORE RAMP"&i
-                Case 1: ScoreScene.GetLabel("obj").Text = 3-WallMBShotCount & " MORE ORBIT"&i
-                Case 2: ScoreScene.GetLabel("obj").Text = "SHOOT SUPER JACKPOT"
+                Case 2: ScoreScene.GetLabel("obj").Text = 3-WallMBShotCount & " MORE ORBIT"&i
+                Case 1,3: ScoreScene.GetLabel("obj").Text = "SHOOT SUPER JACKPOT"
             End Select
             FlexDMD.UnlockRenderThread
         End if
@@ -3485,7 +3525,7 @@ Class cHouse
                 SetPFMLights
                 ActionButtonUsed = ActionButtonUsed + 1
                 CurrentGold = CurrentGold - ((PlayfieldMultiplierVal+1) * 600)
-                'TODO: Do Playfield Multiplier buy scene
+                DoBuyMultiplierScene  ((PlayfieldMultiplierVal+1) * 600),12-ActionButtonUsed
             ' Greyjoy has no Action Button functionality
             Case Tyrell
                 If ActionButtonUsed Then Exit Sub
@@ -3736,6 +3776,7 @@ Class cBattleState
                         ScoredValue = HouseValue
                         ' TODO: Figure out if there's a better pattern to capture Lannister mode value increases
                         HouseValue = HouseValue + (CompletedShots * 200000)+RndNbr(12)*25000
+                        FlashPlayfieldLights red,5,50
                     End If
                 End If
             
@@ -3760,6 +3801,7 @@ Class cBattleState
                         SetModeLights
                         ' Reset mode timer
                         If MyHouse = HouseBattle2 Then SetGameTimer tmrBattleMode2,150 Else SetGameTimer tmrBattleMode1,150
+                        FlashPlayfieldLights purple,5,50
                     End If
                 End If
 
@@ -3802,6 +3844,7 @@ Class cBattleState
                         HouseValue = HouseValue + 900000 + (325000*(State-1))
                         If HouseValue > 18000000 Then HouseValue = 18000000
                         SetModeLights
+                        FlashPlayfieldLights green,5,50
                     End If
                 End If
 
@@ -4440,7 +4483,7 @@ Class cBattleState
         scene.AddActor FlexDMD.NewLabel("bscore",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbBlack, 0),FormatScore(TotalScore))
         scene.GetLabel("ttl").SetAlignedPosition 0,10,FlexDMD_Align_Left
         scene.GetLabel("bscore").SetAlignedPosition 40,20,FlexDMD_Align_Center
-        DMDEnqueueScene scene,0,3000,3000,4000,"gotfx-battletotal"
+        DMDEnqueueScene scene,0,2000,3000,4000,"gotfx-battletotal"
     End Sub
 
 End Class
@@ -4890,13 +4933,14 @@ End Sub
 Dim tmpBonusTotal
 dim bonusCnt
 Sub tmrEndOfBallBonus_Timer()
-    Dim scene,line1,line2,ol,skip,font
+    Dim scene,line1,line2,ol,skip,font,i,incr
     ol = False
     skip = False
+    incr = 1
     tmrEndOfBallBonus.Enabled = False
     tmrEndOfBallBonus.Interval = 500
     ' State machine based on GoTG line 2549 onwards
-    Select Case tmrEndOfBallBonus.UserValue
+    Select Case Int(tmrEndOfBallBonus.UserValue)
         Case 0
             bonusCnt = 0
             StopSound Song
@@ -4947,8 +4991,16 @@ Sub tmrEndOfBallBonus_Timer()
                 Skip = True
             End If
         Case 8
-            line1 = BonusMultiplier(CurrentPlayer)&"X" : line2 = FormatScore(BonusCnt)
-            tmrEndOfBallBonus.Interval = 1200
+            i = Int(tmrEndOfBallBonus.UserValue)*100 - 799  
+            line1 = i&"X" : line2 = FormatScore(i*BonusCnt)
+            If i = BonusMultiplier(CurrentPlayer) Then 
+                tmrEndOfBallBonus.Interval = 1200
+                incr = 0
+                tmrEndOfBallBonus.UserValue = 9
+            Else
+                tmrEndOfBallBonus.Interval = 100
+                incr = 0.01
+            End If
         Case 9
             line1 = "TOTAL BONUS" : line2 = FormatScore(BonusCnt * BonusMultiplier(CurrentPlayer))
             PlayfieldMultiplierVal = 1
@@ -4981,14 +5033,14 @@ Sub tmrEndOfBallBonus_Timer()
             scene.AddActor FlexDMD.NewLabel("line1",font,line1)
             scene.GetLabel("line1").SetAlignedPosition 64,16,FlexDMD_Align_CENTER
             DMDClearQueue
-            DMDEnqueueScene scene,0,1400,1400,10,"gotfx-spike-count"&tmrEndOfBallBonus.UserValue
+            DMDEnqueueScene scene,0,1400,1400,10,"gotfx-spike-count"&Int(tmrEndOfBallBonus.UserValue)
         Else
             If ol Then 
                 DisplayDMDText "",line1,tmrEndOfBallBonus.Interval
             Else
                 DisplayDMDText line1,line2,tmrEndOfBallBonus.Interval
             End If
-            PlaySoundVol "gotfx-spike-count"&tmrEndOfBallBonus.UserValue, VolDef
+            PlaySoundVol "gotfx-spike-count"&Int(tmrEndOfBallBonus.UserValue), VolDef
         End If
     End If
 
@@ -5018,10 +5070,15 @@ Sub EndOfBall()
         DMDflush
 
         delay = 0
+        If tmrMultiballCompleteScene.Enabled = 1 Then
+            delay=delay+2000
+            tmrMultiballCompleteScene_Timer
+        End If
         If tmrBattleCompleteScene.Enabled = 1 Then
-            delay=3000
+            delay=delay+3000
             tmrBattleCompleteScene_Timer
         End If
+        
         ' Delay for a Battle Total screen to be shown
         tmrEndOfBallBonus.Interval = delay + 400
         ' Start the Bonus timer - this timer calls the Bonus Display code when it runs down
@@ -5183,7 +5240,7 @@ Sub EndOfBallComplete()
 
         ' play a sound if more than 1 player
         If PlayersPlayingGame > 1 Then
-            Dim i : i = RndNbr(2)
+            i = RndNbr(2)
             PlaySoundVol "say-player" &CurrentPlayer&"-youre-up"&i, VolDef
             DMD "", CL(1, "PLAYER " &CurrentPlayer), "", eNone, eNone, eNone, 800, True, ""
         End If
@@ -5316,21 +5373,23 @@ End Sub
 
 ' Called when the last ball of multiball is lost
 Sub StopMBmodes
+    tmrMultiballCompleteScene.Interval = 1000
+    tmrMultiballCompleteScene.Enabled = 1
     if bBWMultiballActive Then
         debug.print "Score at end of BW: "&Score(CurrentPlayer)
         debug.print "Blackwater Total: "&BlackwaterScore
         BWMultiballsCompleted = BWMultiballsCompleted + 1
-        DMDBlackwaterCompleteScene
+        tmrMultiballCompleteScene.UserValue = "DMDBlackwaterCompleteScene"
         House(CurrentPlayer).BWJackpot = 0
     End If
     If bCastleMBActive Then
-        DMDCastleMBCompleteScene
+        tmrMultiballCompleteScene.UserValue = "DMDCastleMBCompleteScene"
         StopSound "gotfx-dragonwings"
     End If
     If bWallMBActive Then
-        DMDWallMBCompleteScene
+        tmrMultiballCompleteScene.UserValue = "DMDWallMBCompleteScene"
         'TODO: Find out whether Wall JP Value resets after Wall Multiball
-        If h = Baratheon Then WallJPValue = 925000 Else WallJPValue = 400000
+        If SelectedHouse = Baratheon Then WallJPValue = 925000 Else WallJPValue = 400000
     End If
     bWallMBActive = False
     bBWMultiballActive = False
@@ -6140,6 +6199,7 @@ End Sub
 
 Sub ROrbitsw31_Hit
     If Tilted then Exit Sub
+    Me.UserValue = 0
     If LastSwitchHit <> "swPlungerRest" Then 
         AddScore 1000
         If LastSwitchHit <> "sw30b" And Not bJustPlunged Then House(CurrentPlayer).RegisterHit(Martell)
@@ -6178,9 +6238,11 @@ End Sub
 Sub KickerFloor_Hit
     Me.DestroyBall
     MoveDiverter(0)
+    Dim delay : delay = 500
     ' TODO Add logic for any other modes that kick the ball to the Iron Throne
+    If ROrbitsw31.UserValue > 10 Then delay = 3000 ' A qualifying hit on the Right orbit was made, so give time for callout to finish
     If ((((bMysteryLit And PlayerMode = 0) Or bWallMBReady And PlayerMode < 2) And Not bMultiBallMode) or bEBisLit) And Not bJustPlunged Then
-        vpmTimer.AddTimer 500,"ElevatorKick 2 '"
+        vpmTimer.AddTimer delay,"ElevatorKick 2 '"
         If Not bMultiBallMode Then FreezeAllGameTimers
     Else
         If Not bElevatorShotUsed Then bElevatorShotUsed = True : bCastleShotAvailable = True
@@ -6214,10 +6276,10 @@ Sub KickerIT_Hit
     If bEBisLit Then
         bEBisLit = False : setEBLight
         DoAwardExtraBall
-        delay = 5000
+        delay = 6500
     End If
     If bWallMBReady And PlayerMode < 2 And Not bMultiBallMode Then
-        vmpTimer.AddTimer delay,"StartWallMB '"
+        vpmTimer.AddTimer delay,"StartWallMB '"
     ElseIf bMysteryLit And PlayerMode = 0 And Not bMultiBallMode Then
         vpmTimer.AddTimer delay,"DoMysteryAward '"
     Else
@@ -6240,9 +6302,13 @@ Sub sw48_Hit
     sw48.UserValue = ""
 
     if bMultiBallMode Then
-        BallsInLock = BallsInLock + 1
-        RealBallsInLock = RealBallsInLock + 1
-        tmrBWmultiballRelease.Enabled = True
+        If bBWMultiballActive Then
+            BallsInLock = BallsInLock + 1
+            RealBallsInLock = RealBallsInLock + 1
+            tmrBWmultiballRelease.Enabled = True
+        Else
+            ReleaseLockedBall 1
+        End If
         Exit Sub
     End If
 
@@ -6371,9 +6437,9 @@ Sub BatteringRam_Hit
     If Tilted Then Exit Sub
     Dim scene,line1,i
 
-    If ActiveBall.AngMomY < 20 Then Exit Sub ' Not hit hard enough
-    ' Slow the ball down, to simular hitting a big battering ram
-    ActiveBall.AngMomY = ActiveBall.AngMomY / 1+(Rnd*1.5)
+    If ABS(ActiveBall.AngMomY) < 19 Then Exit Sub ' Not hit hard enough
+    ' Slow the ball down, to simulate hitting a big battering ram
+    ActiveBall.AngMomY = ActiveBall.AngMomY / 1+(Rnd*3)
     ' TODO: Start a timer that moves the 3D battering ram primitive
 
     AddScore 1130
@@ -6937,7 +7003,7 @@ Sub LockBall
             scene.GetLabel("wf").SetAlignedPosition 2,25,FlexDMD_Align_BottomLeft
             scene.AddActor FlexDMD.NewLabel("gold", FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0) ,"+"&g&" GOLD")
             scene.GetLabel("gold").SetAlignedPosition 2,31,FlexDMD_Align_BottomLeft
-            DMDEnqueueScene scene,0,2000,3000,500,""
+            DMDEnqueueScene scene,0,1000,2000,500,""
         End If
     End If
 End Sub
@@ -7013,6 +7079,7 @@ Sub StartWallMB
     House(CurrentPlayer).ResetForWallMB
     SetPlayfieldLights
     DMDCreateWallMBScoreScene
+    DoWallMBSeq
 End Sub
 
 ' Handle physically releasing a locked ball, as well as any sound effects needed
@@ -7144,6 +7211,12 @@ Sub tmrBattleCompleteScene_Timer
     tmrBattleCompleteScene.Enabled = 0
     If tmrBattleCompleteScene.UserValue > 0 Then House(CurrentPlayer).BattleState(tmrBattleCompleteScene.UserValue).DoBattleCompleteScene
     tmrBattleCompleteScene.UserValue = 0
+End Sub
+
+Sub tmrMultiballCompleteScene_Timer
+    tmrMultiballCompleteScene.Enabled = 0
+    If Me.UserValue <> 0 And Me.UserValue <> "" Then Execute(Me.UserValue)
+    Me.UserValue = ""
 End Sub
 
 '*********************
@@ -7465,7 +7538,7 @@ Sub DMDDoBallSaved
     Dim scene,i
     If bUseFlexDMD Then
         Set scene = NewSceneWithVideo("ballsave","got-ballsaved")
-        scene.AddActor FlexDMD.NewLabel("txt",FlexDMD.NewFont("skinny10x12",vbWhite,vbWhite,0),"BALL SAVED")
+        scene.AddActor FlexDMD.NewLabel("txt",FlexDMD.NewFont("skinny10x12.fnt",vbWhite,vbWhite,0),"BALL SAVED")
         scene.GetLabel("txt").SetAlignedPosition 64,16,FlexDMD_Align_Center
         DelayActor scene.GetLabel("txt"),1.5,true
         BlinkActor scene.GetLabel("txt"),0.1,10
@@ -7514,6 +7587,26 @@ Sub DoAddABall
             EnableBallSaver ((TimerTimestamp(tmrBallSaveSpeedUp)-GameTimeStamp)/10)+7
         End If
     Else EnableBallSaver 7
+    End If
+End Sub
+
+Sub DoBuyMultiplierScene(gold,remain)
+    Dim Scene,font
+    If bUseFlexDMD Then
+        Set Scene = FlexDMD.NewGroup("xbuy")
+        Set font = FlexDMD.NewFont("udmd-f3by7.fnt",vbWhite,vbWhite,0)
+        Scene.AddActor FlexDMD.NewLabel("txt",font,"BUY MULTIPLIER FOR "&gold&" GOLD")
+        Scene.GetLabel("txt").SetAlignedPosition 64,1,FlexDMD_Align_Top
+        Scene.AddActor FlexDMD.NewLabel("txt2",font,"NEW GOLD TOTAL: "&CurrentGold)
+        Scene.GetLabel("txt2").SetAlignedPosition 0,31,FlexDMD_Align_BottomLeft
+        Scene.AddActor FlexDMD.NewLabel("txt3",font,remain & " MORE")
+        Scene.GetLabel("txt3").SetAlignedPosition 127,31,FlexDMD_Align_BottomRight
+        Scene.AddActor FlexDMD.NewLabel("mult",FlexDMD.NewFont("udmd-f7by10.fnt",vbWhite,vbWhite,0),"MULTIPLIER: "&PlayfieldMultiplierVal&"X")
+        Scene.GetLabel("mult").SetAlignedPosition 64,16,FlexDMD_Align_Center
+        'TODO Buying multplier probably has a sound effect
+        DMDEnqueueScene Scene,0,1000,2000,1500,""
+    Else
+        DisplayDMDText remain&" MORE. NEW GOLD: " & CurrentGold,PlayfieldMultiplierVal & "X",1000
     End If
 End Sub
 
@@ -7765,7 +7858,7 @@ Sub li162_Timer
 End Sub
 
 Sub SetLockLight
-    If bLockIsLit Then
+    If bLockIsLit And Not bMultiBallMode Then
         ' Flash the lock light
         li111.BlinkInterval = 300
         SetLightColor li111,darkgreen,2
@@ -7869,26 +7962,50 @@ Sub SetDefaultPlayfieldLights
 
 End Sub
 
-'TODO May need a separate sequencer for in-game effects so we can have a separate _playdone sub
+' flash all lights on the playfield a single colour
+Sub FlashPlayfieldLights(color,blinks,interval)
+    If LightSeqPlayfield.UserValue > 0 Then Exit Sub ' Already running a sequence
+    SavePlayfieldLightState
+    PlayfieldSlowFade color,2
+    LightSeqPlayfield.UserValue = 1
+    LightSeqPlayfield.UpdateInterval = 10
+    LightSeqPlayfield.Play SeqBlinking,,blinks,interval
+    LightSeqPlayfield.Play SeqAllOff
+End Sub
+
+Sub DoWallMBSeq
+    If LightSeqPlayfield.UserValue > 0 Then Exit Sub ' Already running a sequence
+    SavePlayfieldLightState
+    PlayfieldSlowFade -1,0.02
+    LightSeqPlayfield.UserValue = 1
+    LightSeqPlayfield.UpdateInterval = 10
+    LightSeqPlayfield.Play SeqBlinking,,4,250
+    LightSeqPlayfield.Play SeqAllOff
+End Sub
+
 Sub DoLockBallSeq
+    If LightSeqPlayfield.UserValue > 0 Then Exit Sub ' Already running a sequence
     SavePlayfieldLightState
     PlayfieldSlowFade green,0.1
-    LightSeqAttract.UpdateInterval = 10
-    LightSeqAttract.Play SeqUpOn, 25, 1
-    LightSeqAttract.Play SeqBlinking,,2,250
-    LightSeqAttract.Play SeqAllOff
+    LightSeqPlayfield.UserValue = 1
+    LightSeqPlayfield.UpdateInterval = 10
+    LightSeqPlayfield.Play SeqUpOn, 25, 1
+    LightSeqPlayfield.Play SeqBlinking,,2,250
+    LightSeqPlayfield.Play SeqAllOff
 End Sub
 
 ' Do the light sequence for the start of BW Multiball
 Sub DoBWMultiballSeq
+    If LightSeqPlayfield.UserValue > 0 Then Exit Sub ' Already running a sequence
     SavePlayfieldLightState
     PlayfieldSlowFade green,0.1
-    LightSeqAttract.UpdateInterval = 10
-    LightSeqAttract.Play SeqBlinking,,2,250
-    LightSeqAttract.Play SeqDownOn,75,2
-    LightSeqAttract.Play SeqAllOff
-    LightSeqAttract.UpdateInterval = 25
-    LightSeqAttract.Play SeqBlinking,,60,25
+    LightSeqPlayfield.UserValue = 1
+    LightSeqPlayfield.UpdateInterval = 10
+    LightSeqPlayfield.Play SeqBlinking,,2,250
+    LightSeqPlayfield.Play SeqDownOn,75,2
+    LightSeqPlayfield.Play SeqAllOff
+    LightSeqPlayfield.UpdateInterval = 25
+    LightSeqPlayfield.Play SeqBlinking,,60,25
 
     tmrMultiballSequencer.Interval = 2500  ' Tune this value to ensure it starts just after the wave sequence ends
     tmrMultiballSequencer.UserValue = 0
@@ -7902,8 +8019,8 @@ Sub tmrMultiballSequencer_Timer
     tmrMultiballSequencer.Enabled = False
     tmrMultiballSequencer.UserValue = tmrMultiballSequencer.UserValue + 1
     if tmrMultiballSequencer.UserValue > 50 Then    ' We've run for 2.5 seconds
-        LightSeqAttract.StopPlay
-        RestorePlayfieldLightState False
+        LightSeqPlayfield.StopPlay
+        LightSeqPlayfield_PlayDone
         Exit Sub
     End If
     For each a in aPlayfieldLights
@@ -7919,10 +8036,11 @@ End Sub
 Sub DoCastleMBSeq
     SavePlayfieldLightState
     PlayfieldSlowFade cyan,0.1
-    LightSeqAttract.UpdateInterval = 10
-    LightSeqAttract.Play SeqBlinking,,2,250
-    LightSeqAttract.Play SeqDownOn,75,2
-    LightSeqAttract.Play SeqAllOff
+    LightSeqPlayfield.UserValue = 1
+    LightSeqPlayfield.UpdateInterval = 10
+    LightSeqPlayfield.Play SeqBlinking,,2,250
+    LightSeqPlayfield.Play SeqDownOn,75,2
+    LightSeqPlayfield.Play SeqAllOff
 End Sub
 
 '***************
@@ -8116,9 +8234,10 @@ End Sub
 Dim OathSeq
 OathSeq = Array("NIGHT GATHERS"&vbLf&"AND NOW"&vbLf&"MY WATCH"&vbLf&"BEGINS"&vbLf&"IT SHALL"&vbLf&"NOT END"&vbLf&"UNTIL"&vbLf&"MY DEATH",_
             "I SHALL"&vbLf&"TAKE NO WIFE"&vbLf&"HOLD"&vbLf&"NO LANDS"&vbLf&"FATHER"&vbLf&"NO CHILDREN", _
-            "I SHALL"&vbLf&"WEAR NO CROWNS"&vbLf&"AND WIN"&vbLf&"NO GLORY"&vbLf&"I SHALL"&vbLf&"LIVE AND DIE"&vbLf&"AT MY POST", _
+            "I SHALL"&vbLf&"WEAR"&vbLf&"NO CROWNS"&vbLf&"AND WIN"&vbLf&"NO GLORY"&vbLf&"I SHALL"&vbLf&"LIVE AND DIE"&vbLf&"AT MY POST", _
             "I AM"&vbLf&"THE SWORD"&vbLf&"IN THE"&vbLf&"DARKNESS"&vbLf&"I AM"&vbLf&"THE WATCHER"&vbLf&"ON THE WALLS", _
-            "I AM"&vbLf&"THE SHIELD"&vbLf&"THAT GUARDS"&vbLf&"THE REALMS"&vbLf&"OF MEN", _
+            "I AM"&vbLf&"THE FIRE"&vbLf&"THAT BURNS"&vbLf&"AGAINST"&vbLf&"THE COLD"&vbLf&"THE LIGHT"&vbLf&"THAT BRINGS"&vbLf&"THE DAWN", _ 
+            "THE HORN"&vbLf&"THAT WAKES"&vbLf&"THE SLEEPERS"&vbLf&"THE SHIELD"&vbLf&"THAT GUARDS"&vbLf&"THE REALMS"&vbLf&"OF MEN", _
             "I PLEDGE"&vbLf&"MY LIFE"&vbLf&"AND HONOR"&vbLf&"TO THE"&vbLf&"NIGHT'S WATCH"&vbLf&"FOR THIS NIGHT"&vbLf&"AND ALL"&vbLf&"THE NIGHTS"&vbLf&"TO COME")
 Dim OathCnt
 OathCnt = 0
@@ -8126,7 +8245,7 @@ OathCnt = 0
 Function GetNextOath()
     GetNextOath = OathSeq(OathCnt)
     OathCnt = OathCnt + 1
-    If OathCnt >= 6 then OathCnt = 0
+    If OathCnt >= 7 then OathCnt = 0
 End Function
 
 Dim ChampionNames
@@ -8219,10 +8338,10 @@ Sub tmrAttractModeScene_Timer
         Case 12:format=8:line1="HIGH SCORE #3":line2=HighScoreName(3):line3=FormatScore(HighScore(3)):font="udmd-f6by8.fnt":skipifnoflex=False
         Case 13:format=8:line1="HIGH SCORE #4":line2=HighScoreName(4):line3=FormatScore(HighScore(4)):font="udmd-f6by8.fnt":skipifnoflex=False
         Case 14,15,16,17,18,19,20,21,22,23,24
-            If HighScore(i-8) = 0 Then delay = 5
+            If HighScore(i-9) = 0 Then delay = 5
             format=3:skipifnoflex=False
             line1 = ChampionNames(i-14)&" CHAMPION"
-            line2 = HighScoreName(i-9):line3 = HighScore(i-9)
+            line2 = HighScoreName(i-9):line3 = FormatScore(HighScore(i-9))
     End Select
     If i = 24 Then tmrAttractModeScene.UserValue = 0 Else tmrAttractModeScene.UserValue = i + 1
     If bUseFlexDMD=False And skipifnoflex=True Then tmrAttractModeScene.Interval = 10 Else tmrAttractModeScene.Interval = delay
@@ -8540,7 +8659,7 @@ Sub DMDCastleMBCompleteScene
             scene.GetLabel("txt").SetAlignedPosition 64,10,FlexDMD_Align_Center
             scene.AddActor FlexDMD.NewLabel("score",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbBlack, 0),FormatScore(CastleMBScore))
             scene.GetLabel("score").SetAlignedPosition 64,25,FlexDMD_Align_Center
-            DMDEnqueueScene scene,0,5000,5000,2000,"gotfx-battletotal"
+            DMDEnqueueScene scene,0,3000,3000,2000,"gotfx-battletotal"
         End If
     Else
         DisplayDMDText "MULTIBALL TOTAL",FormatScore(CastleMBScore),4000
@@ -8557,7 +8676,7 @@ Dim scene
             scene.GetLabel("txt").SetAlignedPosition 64,10,FlexDMD_Align_Center
             scene.AddActor FlexDMD.NewLabel("score",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbBlack, 0),FormatScore(WallMBScore))
             scene.GetLabel("score").SetAlignedPosition 64,25,FlexDMD_Align_Center
-            DMDEnqueueScene scene,0,5000,5000,2000,"gotfx-wallmb-total"
+            DMDEnqueueScene scene,0,3000,3000,2000,"gotfx-wallmb-total"
         End If
     Else
         DisplayDMDText "MULTIBALL TOTAL",FormatScore(WallMBScore),4000
@@ -9460,7 +9579,6 @@ End Class
 ' - Implement playfield lighting effects
 ' - Implement Flashers
 
-' - In Battle mode on the UPF, hitting the Castle didn't finish the mode. - Not written yet!!
 ' √? During multiball mode, BattleReady was lit, but shots up there wouldnt start it. After MB, a shot up the ramp started it, but lockwall
 '   wasn't up, so ball came down immediately.
 ' - Wall was then collidable later so when a ball was shot up there, it got "stuck"
@@ -9474,7 +9592,7 @@ End Class
 ' √? During CMB, in alt score scene, score was off the right
 ' √? during jackpots, wording was off the top
 
-' - During Lannister battle restart, SetUPFLights didn't get called. We had locked a ball, so battle started with a fresh ball
+' √? During Lannister battle restart, SetUPFLights didn't get called. We had locked a ball, so battle started with a fresh ball
 '    - probably caused by LightSeq ending, which restore playfield colours to their default
 '    - Also in Baratheon battle mode, on UPF, targets stayed cyan, but shield did change colour. Targets changed colour after a switch hit
 '    - To fix this: 
@@ -9490,18 +9608,23 @@ End Class
 ' - Targaryen battle end may award total twice because final shot is on targaryen
 ' - Elevator kickers are visible on UPF but are unfinished - problem is actually lighting shining inside elevator
 
-' - fix spelling of ticklegrejoy
 ' - if you press action button during battle instructions, it goes straight to battle and bypasses intro music, but still sits on the ball for 5 seconds
-' √? fix high scores - HS 4 is always 0, and any score then counts, and gets entered as HS 3
 ''
-' √? battering ram needs to be less bouncy and more scattery
 ' - need more things awarding bonus
 ' - UPF can't handle multiball and battle at the same time - does it need to?
 
-' - "Wall multiball ready" tune can be heard at 1:25:40
-' - Wall mutliball starts at 1:26:50
+' √? Turn off BW lock light during other multiball modes
+' √? Drain_Hit needs to make sure that balls aren't briefly sitting in the lock during multiball when a ball drains, lest it thinks the ball has ended
+' - my fonts need to be on a transparent background, not black background.
+' √? enqueued scene wmbcomplete at 0 never played. DMDResetScoreScene is clearing the queue before it can be displayed. Need to fire it from a timer
+' √? during castlemb, lower jackpot shield lights never turned off, but they did stop earning JPs
+' √? during castlemb, a blackwater ball was locked. Shooting a ball up the left ramp caused both balls to be released.
+' √? At end of BWMB, total was "30,498,13E" when score was 3.049813E+07
+
+' - In Attract mode:
+'   - highscore 1 & 2 have no names, where they did before
+
 ' √ Need a "Shoot again" scene and sound
-' √ need a "Ball Saved" scene and sound
 
 ' - Import DMD code for non FlexDMD. Use JP's Deadpool charset for now
 
