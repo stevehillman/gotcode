@@ -372,7 +372,7 @@ Sub Table1_KeyDown(ByVal Keycode)
                         If Credits <1 And bFreePlay = False Then DOF 125, DOFOff
                     Else
                         ' Not Enough Credits to start a game.
-                        DMD CL(0, "CREDITS " & Credits), CL(1, "INSERT COIN"), "", eNone, eBlink, eNone, 1000, False, "vo_nocredits"
+                        DisplayDMDText "CREDITS 0", "INSERT COINS", 1000
                     End If
                 End If
             End If
@@ -393,9 +393,13 @@ Sub Table1_KeyDown(ByVal Keycode)
                     End If
                 Else
                     ' Not Enough Credits to start a game.
-                    DMDFlush
-                    DMD CL(0, "CREDITS " & Credits), CL(1, "INSERT COIN"), "", eNone, eBlink, eNone, 1000, False, "vo_nocredits"
-                    ShowTableInfo
+                    ' This is Table-specific:
+                    If bAttractMode Then
+                        tmrAttractModeScene.UserValue = 5
+                        tmrAttractModeScene_Timer
+                    Else
+                        DisplayDMDText "CREDITS 0","INSERT COINS",1000
+                    End If
                 End If
             End If
         End If
@@ -689,7 +693,7 @@ End Function
 
 Const tnob = 19   'total number of balls, 20 balls, from 0 to 19
 Const lob = 0     'number of locked balls
-Const maxvel = 60 'max ball velocity
+Const maxvel = 50 'max ball velocity
 ReDim rolling(tnob)
 InitRolling
 
@@ -2665,8 +2669,8 @@ Class cPState
         WallMBCompleted = myWallMBCompleted
         WallMBLevel = myWallMBLevel
         bWallMBReady = myWallMBReady
-        bHotkReady = myHotkMBReady
-        bHotkDone = myHotkMBDone
+        bHotkMBReady = myHotkMBReady
+        bHotkMBDone = myHotkMBDone
         WallJPValue = myWallJPValue
         BallsInLock = myBallsInLock
         SwordsCollected = mySwordsCollected
@@ -2761,7 +2765,7 @@ Class cHouse
         UPFCastleShotMask = 42
         WicTotal = 0
         WicShots = 0
-        WiCs = 0
+        WiCs = 3 ' For testing
         WiCMask = 0
         ActionButtonUsed = 0
         HotkMask = 0
@@ -2773,6 +2777,8 @@ Class cHouse
         QualifyCount(h) = 3
         ActionAbility = h
         If h = Greyjoy Then bCompleted(h) = True Else BattleReady = True
+        ' For testing HOTK:
+        If h = Stark Then bCompleted(Stark) = True : bCompleted(Baratheon) = True: bCompleted(Targaryen) = True : bQualified(Martell) = True
         ' For testing, let us test Targaryen battle mode by choosing Targ to start
         'If (h = Greyjoy or h = Targaryen) Then bCompleted(h) = True Else BattleReady = True
 
@@ -2866,8 +2872,9 @@ Class cHouse
     Public Sub ResetLights
         If HouseSelected = 0 Then Exit Sub       ' Do nothing if we're still in Choose House mode
         SetModeLights   ' If in regular mode, this disables the timers on the shield lights
-        If PlayerMode = 1 Then  Exit Sub
+        
         If PlayerMode = 2 Then SetLightColor HouseShield(CurrentWiCShot), ice, 2 : Exit Sub
+        If PlayerMode = 1 Or bMultiBallMode Then  Exit Sub
         Dim i
         Dim j
         j=0
@@ -2899,7 +2906,8 @@ Class cHouse
 
     Public Sub SetShieldLights
         Dim i,j,clr
-        If bBWMultiballActive Then clr = green 
+        If bBWMultiballActive Then 
+            clr = green 
         Elseif bCastleMBActive Then clr = cyan
         ElseIf bWallMBActive Then clr = purple
         ElseIf bWHCMBActive Then clr = ice
@@ -2955,9 +2963,11 @@ Class cHouse
                 Loop While j < 3
             End If
         ElseIf bHotkMBActive Then
+            If (HotkMask And 2^Martell) > 0 Then j=2 Else j=1
             For i = 1 to 7
-                If HotkState = 2 Then BWJackpotShots(i) = 99
-                ElseIf HotkState = 0 And ((HotkMask And 2^i) > 0 Or (HotkMask And 2^Baratheon) > 0 ) Then BWJackpotShots(i) = 1
+                If HotkState = 2 Then 
+                    BWJackpotShots(i) = 99
+                ElseIf HotkState = 0 And ((HotkMask And 2^i) > 0 Or (HotkMask And 2^Baratheon) > 0 ) Then BWJackpotShots(i) = j
                 End If
             Next
         Else
@@ -2998,7 +3008,7 @@ Class cHouse
     End Sub
 
     Public Sub ResetForHotkMB
-        HotkSJPValue = 0
+        If (HotkMask And 2^Tyrell) > 0 Then HotkSJPValue = 15000000 Else HotkSJPValue = 0
         If (HotkMask And 2^Targaryen) > 0 Then HotkShotValue = 3000000 Else HotkShotValue = 2500000
         If (HotkMask And 2^Greyjoy) > 0 Then HotkLevel = 2 Else HotkLevel = 1
         HotkState = 0
@@ -3336,7 +3346,7 @@ Class cHouse
 
     ' Called once per second during Winter-Has-Come
     Sub CheckWHCTimer
-        Dim i,j,k
+        Dim i,j,k,l
         If WHCMBState = 1 Then 
             'Horde mode. Check to see if we should start ticking, and whether to add back a shot
             If WHCHordeTimestamp < GameTimeStamp+200 Then
@@ -3356,7 +3366,7 @@ Class cHouse
         ElseIf WHCMBState = 2 Then
             'Lieutenant mode
             ' First see if any shots have timed out
-            j = False : k = False
+            j = False : k = False : l = False
             For i = 1 to 7
                 If BWJackpotShots(i) > 0 Then
                     If WHCShotTimestamp(i) < GameTimeStamp Then
@@ -3365,8 +3375,10 @@ Class cHouse
                     Else
                         j = True
                     End If
+                    If WHCShotTimestamp(i) < GameTimeStamp+100 Then l = True
                 End If
             Next
+            If l Then PlaySound "gotfx-ticktock", -1, VolDef, 0, 0, 0, 1, 0 Else StopSound "gotfx-ticktock"
             If k Then SetModeLights ' Yes, re-set the lights
             If Not j Then
                 ' All shots have timed out. Move to State 3 - frozen flipper, and light left ramp only
@@ -3859,6 +3871,10 @@ Class cHouse
         Dim score,t,i
         If sjp Then
             score = HurryUpValue
+            AddScore score
+            StopHurryUp
+            FlashPlayfieldLights white,10,15
+            SetSpotFlashers 3
             If (HotkMask And 2^Stark) > 0 Then 
                 HotkState = 2
                 SetGameTimer tmrBlackwaterSJP,200
@@ -3866,13 +3882,15 @@ Class cHouse
             Else 
                 HotkState = 0
                 HotkLevel = HotkLevel + 1
-                HotkSJPValue = 0
+                If (HotkMask And 2^Tyrell) > 0 Then HotkSJPValue = 15000000 Else HotkSJPValue = 0
                 If HotkLevel = 4 Then ResetForHotkMB
             End If
             SetJackpots
         Else
             score = HotkShotValue*combo
             AddScore score
+            FlashPlayfieldLights white,10,15
+            SetSpotFlashers 5
             If HotkLevel = 3 Then 
                 HotkSuperSJPValue = HotkSuperSJPValue + score*PlayfieldMultiplierVal
             Else
@@ -3899,7 +3917,7 @@ Class cHouse
     End Sub
 
     Sub UpdateHotkScoreScene
-        Dim line,obj2,a
+        Dim a
         If not bUseFlexDMD Then Exit Sub
         If ScoreScene.Name <> "hotkscore" Then Exit Sub ' This should never happen, but just in case
         FlexDMD.LockRenderThread
@@ -3910,12 +3928,9 @@ Class cHouse
                 ScoreScene.GetLabel("obj").Text = "COMPLETE ALL SHOTS"
                 If HotkLevel = 3 Then
                     ScoreScene.GetLabel("hurryup").Text = FormatScore(HotkSuperSJPValue)
-                Else
-                    ScoreScene.GetLabel("hurryup").Text = FormatScore(HotkSuperSJPValue)
-                End If
-                If HotkLevel = 3 Then 
                     ScoreScene.GetLabel("sets").Text = "1 SET"
                 Else
+                    ScoreScene.GetLabel("hurryup").Text = FormatScore(HotkSuperSJPValue)
                     ScoreScene.GetLabel("sets").Text = 4-HotkLevel & " SETS"
                 End If
             Case 1: ScoreScene.GetLabel("obj").Text = "HIT BATTERING RAM"
@@ -4216,7 +4231,7 @@ Class cBattleState
             ' Baratheon Battle mode. State 1 only involves the spinner. Once enough value is built, switch to State 2
             ' State 2: Shot to the Dragon, followed by a shot to the left bank.
             Case Baratheon
-                If SelectedHouse = Greyjoy And (GreyjoyMask And 2^h) > 0) Then
+                If SelectedHouse = Greyjoy And (GreyjoyMask And 2^h) > 0 Then
                     GreyjoyMask = GreyjoyMask And (2^h Xor 255)
                     hitscene = "hit2"
                     HouseValue = HouseValue + 750000
@@ -4244,7 +4259,7 @@ Class cBattleState
             ' some overlap in shots that they light, so some shots can be made twice to avoid harder shots. Greyjoy must
             ' shoot all 5 unique shots
             Case Lannister
-                If SelectedHouse = Greyjoy And (GreyjoyMask And 2^h) > 0) Then
+                If SelectedHouse = Greyjoy And (GreyjoyMask And 2^h) > 0 Then
                     GreyjoyMask = GreyjoyMask And (2^h Xor 255)
                     hitscene = "hit2"
                     SetModeLights
@@ -4298,7 +4313,7 @@ Class cBattleState
 
                 ' Are we playing as Greyjoy? If so, add value when Greyjoy shots are lit.
                 ' All Greyjoy shots must be completed before mode can be completed
-                If SelectedHouse = Greyjoy And (GreyjoyMask And 2^h) > 0) Then
+                If SelectedHouse = Greyjoy And (GreyjoyMask And 2^h) > 0 Then
                     GreyjoyMask = GreyjoyMask And (2^h Xor 255)
                     hitscene = "hit2"
                     SetModeLights
@@ -4355,7 +4370,7 @@ Class cBattleState
                 Dim huvalue
 
                 ' Are we playing as Greyjoy? If so, Greyjoy shots add value but aren't mandatory
-                If SelectedHouse = Greyjoy And (GreyjoyMask And 2^h) > 0) Then
+                If SelectedHouse = Greyjoy And (GreyjoyMask And 2^h) > 0 Then
                     GreyjoyMask = GreyjoyMask And (2^h Xor 255)
                     hitscene = "hit1"
                     SetModeLights
@@ -4612,6 +4627,8 @@ Class cBattleState
 
         If HouseBattle1 = 0 And HouseBattle2 = 0 Then  
             PlayerMode = 0
+
+            CheckForHotkReady
             
             House(CurrentPlayer).CheckBattleReady
 
@@ -5414,7 +5431,7 @@ End Sub
 dim BallSearchResetting:BallSearchResetting=False
 ' Renamed to disable - don't need a ball search timer in this game right now.
 ' May want to enable this later, but need a better way of determining for sure that no ball is on the playfield.
-Sub tmrBallSearcher_Timer()	' We timed out
+Sub tmrBallSearch_Timer()	' We timed out
 	' See if we are in mode select, a flipper is up that might be holding the ball or a ball is in the lane 
 
 	'debug.print "Ball Search"
@@ -5985,6 +6002,8 @@ Sub StopMBmodes
     End If
     If bHotkMBActive Then
         tmrMultiballCompleteScene.UserValue = "DMDHotkMBCompleteScene"
+        bInlanes(1) = 0
+        If House(CurrentPlayer).HasAbility(Tyrell) Then bInlanes(0) = True Else bInlanes(0) = False
     End If
     bHotkMBActive = False
     bWallMBActive = False
@@ -6191,7 +6210,63 @@ Sub LockbarFlasher_Timer
         me.Visible = 0
     End If
 End Sub
-    
+
+
+' Set an effect on the Playfield spotlight flashers
+' fx : one of a number of flasher effects
+'    0 = off, 1=on, 2=flash indefinitely, 3=flash 5 times fast, 4=flash 10 times fast
+' col : colour const to use for the colour
+Sub SetSpotFlashers(fx,col)
+    dim times,interval,fl
+    Select Case fx
+        Case 0: Spot1.visible = 0 : Spot2.visible = 0 : Exit Sub
+        Case 1: times = 0
+        Case 2: times = -1 : interval = 100 ' blink indefinitely
+        Case 3: times = 5 : interval = 50 ' flash 5 times rapidly (half second flash)
+        Case 4: times = 10 : interval= 50 ' flash 10 times rapidly (1 second)
+        Case 5: times = 5 : interval = 25 ' really fast flash 5 times
+    End Select
+    For each fl in Array(Spot1,Spot2)  
+        ' Turn flasher on and set colour
+        SetFlashColor fl,white,1
+        If times = 0 Then
+            fl.TimerEnabled = 0
+        Else
+            GiOff
+            ' Set up a timer on the flasher with a subroutine that we define. 
+            fl.TimerInterval = interval
+            fl.UserValue = times * 2
+            fl.TimerEnabled = 0
+            fl.TimerEnabled = 1
+        End If
+    Next
+End Sub
+
+Sub Spot1_Timer
+    Dim tmp
+    tmp=me.UserValue
+    tmp=tmp-1
+    Me.Visible = tmp MOD 2
+    me.UserValue = tmp
+    If tmp = 0 Then
+        Me.Visible = 0
+        Me.TimerEnabled=0
+        GiOn
+    End if
+End Sub
+
+Sub Spot2_Timer
+    Dim tmp
+    tmp=me.UserValue
+    tmp=tmp-1
+    Me.Visible = tmp MOD 2
+    me.UserValue = tmp
+    If tmp = 0 Then
+        Me.Visible = 0
+        Me.TimerEnabled=0
+        GiOn
+    End if
+End Sub
 
 ' During Battle mode, Shield lights may be in one of several states
 ' They may also alternate colour. To deal with this, create an array of
@@ -6399,7 +6474,7 @@ Sub IncreaseComboMultiplier(h)
     tmr = 150           ' Default combo rundown timer
     c = ComboLaneMap(h)
     If c = 0 And h <> 0 Then Exit Sub  ' Target bank was hit - they don't increase multipliers
-    If PlayerMode = 3 Then max = 6 Else max = 5 ' Max is 6X during HOTK
+    If bHotkMBActive Then max = 6 Else max = 5 ' Max is 6X during HOTK
     If max > 3+SwordsCollected Then max = 3+SwordsCollected
     If c = 0 Then 
         For i = 1 to 5
@@ -6808,7 +6883,8 @@ End Sub
 ' Left ramp
 Sub sw38_Hit
     If Tilted then Exit Sub
-    If bHotkMBReady Then PlaySoundVol "gotfx-ramp-hotk-ready",VolDef
+    If bHotkMBReady Then 
+        PlaySoundVol "gotfx-ramp-hotk-ready",VolDef
     ElseIf PlayerMode = 1 Then PlaySoundVol "gotfx-ramphit1",VolDef/4 
     Else PlaySoundVol "gotfx-swordswoosh",VolDef
     End If
@@ -7153,6 +7229,8 @@ Sub BatteringRam_Hit
     End If
     If bBlackwaterSJPMode Then House(CurrentPlayer).ScoreSJP 0    'Super Jackpot!!
 
+    If bHotkMBActive And House(CurrentPlayer).HotkState = 1 Then House(CurrentPlayer).ScoreHotkJackpot 1,1
+
     'Playfield Multiplier support
     'PFMState:
     ' 0 - all lights off
@@ -7268,6 +7346,11 @@ Sub SetBatteringRamLights
         li132.BlinkInterval = 66
         li129.BlinkInterval = 66
         SetLightColor li129,red,2
+    ElseIf bHotkMBActive And House(CurrentPlayer).HotkState = 1 Then
+        li132.BlinkInterval = 66
+        li129.BlinkInterval = 66
+        SetLightColor li129,white,2
+        SetLightColor li132,white,2
     Else 
         li132.BlinkInterval = 100
         li129.State = 0
@@ -7461,7 +7544,8 @@ Sub SelectMysteryAward
     DMDMysteryAwardScene
     TimerFlags(tmrMysteryAward) = 0
     PlaySoundVol "gotfx-mysteryselect",VolDef
-    combo = ROrbitsw31.UserValue : If combo = 0 then combo = 1
+    combo = ROrbitsw31.UserValue : if combo > 10 then combo = combo - 10
+    If combo = 0 then combo = 1
     Select Case MysteryVals(MysterySelected)
         Case 0: 'keep gold
         Case 1
@@ -7792,9 +7876,8 @@ Sub StartNonBWMB(balls)
     If RealBallsInLock > 0 Then
         tmrBWmultiballRelease.Interval = 1500    
         tmrBWmultiballRelease.Enabled = True
-        If RealBallsInLock = 1 Then 
-            AddMultiball balls-1
-        ElseIf balls > 2 Then AddMultiball balls-2 : End If
+        If balls > RealBallsInLock Then AddMultiball balls-RealBallsInLock
+        
     Else
         AddMultiball balls ' add the balls
     End If
@@ -7853,13 +7936,14 @@ Sub StartWHCMB(shot)
     House(CurrentPlayer).SetUPFState true
     House(CurrentPlayer).ResetForWHCMB
     DMDCreateWHCMBScoreScene
+    SetGameTimer tmrWinterHasCome,5
     tmrWiCLightning.Interval = 50
     tmrWiCLightning.Enabled = True
 End Sub
 
 Sub CheckForHotkReady
     Dim a
-    If CompletedHouses < 4 Or bMultiBallMode Or PlayerMode > 0 Or bHotkDone Then Exit Sub
+    If CompletedHouses < 4 Or bMultiBallMode Or PlayerMode > 0 Or bHotkMBDone Then Exit Sub
     bHotkMBReady = True
     If Lockwall.Uservalue = 0 Then
         LockWall.Collidable = True : Lockwall.Uservalue = 1
@@ -7875,7 +7959,9 @@ Sub CheckForHotkReady
     li117.BlinkPattern="0001"
     For each a in Array(li108,li111,li114,li117)
         SetLightColor a,white,2
+        a.blinkInterval = 100
     Next
+    PlayModeSong
 End Sub
 
 Sub ResetHotkLights
@@ -7900,12 +7986,7 @@ Sub StartHotkMBIntro
     Next
     ' Do the intro scene.
     ' Start with "HAND OF THE KING" in 6x8 displayed for one second
-    ' Then switches to an offset 4 line display. "HAND OF THE KING" in top right, then house name 4 lines down on the left
-    '  then what it brings to HOTK below on two lines. Each scene displays for ~2.4 seconds, with 0.25 seconds delay before
-    '  adding line 2 and then lines 3/4.
-    ' There are 4 scenes, one per house. 
-    ' Half way through the final scene, game says "You are now the hand of the king" in Kate's voice
-    ' 3/4 way through final scene, held ball is released and other balls are added. 
+    ' The rest is handled by tmrHotkIntro
     tmrHotkIntro.Interval = 1000
     tmrHotkIntro.Enabled = True
     tmrHotkIntro.UserValue = 0
@@ -7930,7 +8011,7 @@ End Sub
     ' 3/4 way through final scene, held ball is released and other balls are added. 
 Dim HotkAbility
 HotkAbility = Array("","BONUS ROUND"&vbLf&"20 SECONDS OF FREE SHOOTING","ALL 7 SHOTS"&vbLf&"INSTEAD OF 4 SHOTS","100,000,000"&vbLf&"ADDED TO HURRY UP", _
-                "ONE LESS SET NEEDED"&vbLf&"TO START HURRY UP","+15,000,000"&vbLf&"PER SUPER JACKPOT","EACH SHOT NEEDS TO"&vbLf&,"BE COMPLETED TWICE", _
+                "ONE LESS SET NEEDED"&vbLf&"TO START HURRY UP","+15,000,000"&vbLf&"PER SUPER JACKPOT","EACH SHOT NEEDS TO"&vbLf&"BE COMPLETED TWICE", _
                 "+500,000"&vbLf&"PER SHOT AWARD")
 Sub tmrHotkIntro_Timer
     Dim scene,font,i,j
@@ -8779,8 +8860,8 @@ Sub SetOutlaneLights
 End Sub
 
 Sub SetInlaneLights
-    SetLightColor li14,yellow,ABS(bInlanes(0))
-    SetLightColor li71,yellow,ABS(bInlanes(1))
+    If bInlanes(0) Then SetLightColor li14,yellow,2 Else SetLightColor li14,yellow,0
+    If bInlanes(1) Then SetLightColor li71,yellow,2 Else SetLightColor li71,yellow,0
 End Sub
 
 Sub li162_Timer
@@ -9218,7 +9299,7 @@ End Sub
 
 Sub GameAddCredit
     PlaySoundVol "fx_coin",VolDef
-    ' Jump the Attract Mode Scene to the "Credits" screen
+    ' Jump to the Attract Mode Scene to the "Credits" screen
     if bAttractMode Then
         DMDFlush
         tmrAttractModeScene.UserValue = 5
@@ -10194,7 +10275,8 @@ Sub DMDMysteryAwardScene
                 Select Case MysteryVals(i)
                     Case 0: line1 = "KEEP MY" & vbLf & CurrentGold & " GOLD"
                     Case 1,18,28
-                        Dim combo : combo = ROrbitsw31.UserValue : If combo = 0 then combo = 1
+                        Dim combo : combo = ROrbitsw31.UserValue : If combo > 9 Then combo = combo - 10
+                        If combo = 0 then combo = 1
                         line1 = CStr(MysteryAwards(MysteryVals(i))(0)*PlayfieldMultiplierVal*combo) & vblf & _
                              "MILLION" & vbLf & "POINTS" & vbLf & MysteryAwards(MysteryVals(i))(1) & " GOLD"
                 End Select
@@ -10221,7 +10303,11 @@ Sub DMDMysteryAwardScene
                 line1 = MysteryAwards(MysteryVals(i))(0) & vbLf & MysteryAwards(MysteryVals(i))(1) & " GOLD"
                 Select Case MysteryVals(i)
                     Case 0: line1 = "KEEP MY" & vbLf & CurrentGold & " GOLD"
-                    Case 1,18,28: line1 = CStr(MysteryAwards(MysteryVals(i))(0)*PlayfieldMultiplierVal) & vblf & "MILLION" & vbLf & "POINTS" & vbLf & MysteryAwards(MysteryVals(i))(1) & " GOLD"
+                    Case 1,18,28
+                        Dim combo : combo = ROrbitsw31.UserValue : If combo > 9 Then combo = combo - 10
+                        If combo = 0 then combo = 1
+                        line1 = CStr(MysteryAwards(MysteryVals(i))(0)*PlayfieldMultiplierVal*combo) & vblf & _
+                             "MILLION" & vbLf & "POINTS" & vbLf & MysteryAwards(MysteryVals(i))(1) & " GOLD"
                 End Select
                 Set poplabel = MysteryScene.GetLabel("pop"&i)
                 With poplabel
@@ -10495,7 +10581,7 @@ Sub DMDCreateHotkMBScoreScene
     scene.GetLabel("sets").SetAlignedPosition 127,19,FlexDMD_Align_TopRight
 
     For i = 1 to 5
-        scene.AddActor FlexDMD.NewLabel("combo"&i, ComboFont, "0")
+        scene.AddActor FlexDMD.NewLabel("combo"&i, FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0), "0")
     Next
     DMDSetAlternateScoreScene scene,265     ' Score, combos, SJP timer
 End Sub
@@ -10591,7 +10677,7 @@ Sub DMDLocalScore
         If IsEmpty(ScoreScene) And Not bAlternateScoreScene Then
             Set ScoreScene = FlexDMD.NewGroup("ScoreScene")
             Set ComboFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0)
-            If Score(CurrentPlayer) < 1000000000 Then font = "FlexDMD.Resources.udmd-f7by13.fnt" Else font = "udmd-f6by8"
+            If Score(CurrentPlayer) < 1000000000 Then font = "FlexDMD.Resources.udmd-f7by13.fnt" Else font = "udmd-f6by8.fnt"
             Set ScoreFont = FlexDMD.NewFont(font, vbWhite, vbWhite, 0) 
             ' Score text
             ScoreScene.AddActor FlexDMD.NewLabel("Score", ScoreFont, "0")
@@ -10732,23 +10818,17 @@ End Class
 ' - UPF can't handle multiball and battle at the same time - does it need to?
 
 ' - my fonts need to be on a transparent background, not black background.
-' √? now, during WallMB, if a BW ball is locked and you shoot balls up the center ramp, there's a chance they'll get stuck behind the locked ball.
-'   Most of the time it worked, but once, one got stuck (maybe two shot too quickly together?)
 
-' √? Lockwall.collidable can get into a state where it doesn't reflect reality. We'll need a variable to track it ourselves
 ' - Both Castle and Wall MB ended, but weren't recognized as over
-
-' √? No houses were unqualified, but BattleReady didn't re-light after a battle
 
 ' √? WIC mode needs to turn off UPF lights
 ' √? WHC needs to turn off UPF lights
-' √? should need to only hit one target to "complete" in WHC
-' √? WHC only adds 2 balls
 ' √? BattleReady was lit during Castle MB
 ' - In Greyjoy vs Targaryen, Level 3 ended after hitting the dragon target, rather than going back to the previous state
-' - In Greyjoy vs Baratheon, it wouldn't move to the next shot after hitting the dragon shot. Should have lit the Lannister shot too
 ' √? need to rewrite how Grejoy required shots work in Battle mode. Greyjoy shots all flash purple on top of whatever the battle color is.
 '   As Greyjoy shots are made, the purple goes away. Can't complete mode until all purple shots have been completed
+
+' √ "INSERT COINS" scene doesn't work
 
 ' - Import DMD code for non FlexDMD. Use JP's Deadpool charset for now
 
@@ -10759,20 +10839,13 @@ End Class
 ' √ Add logic to Mystery to not offer choices that don't currently make sense (e.g. light something that's already lit)
 ' - Implement Mystery SuperJackpot lighting
 ' - Implement Replay, Special
-' √ Implement additive persistent house abilities for Greyjoy to inherit
 ' √ Implement lockbar light to reflect possible Action button options
 '   - need works - doesn't stop flashing after Choose House
+' - Fix Score layout for multiplayer
 
 ' UNRESOLVED ISSUES
 ' - In BW multiball, after battle modes timed out, scene went to default scene instead of BWmultiball scene. 
 '   May have happened independently of battle mode ending
-' - When doing a battle and going straight into BW multiball, after multiball, shields all stayed on colour of house that was battling,
-'   including Castle target lights. After a hit up top, Castle targets changed to right colour, but shields stayed red.
-' - on second game, shot to right orbit went to iron throne and then just stayed there
-
-
-
-
 
 ' Nice-To-Haves
 ' - Change the timer for selecting which house mode to play. It will start at three seconds. Each button press will add eight seconds. The timer will max out at 20 seconds.
