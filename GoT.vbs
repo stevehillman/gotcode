@@ -2548,6 +2548,7 @@ Dim bCastleMBActive
 Dim bWallMBActive
 Dim bHotkMBActive
 Dim bWHCMBActive
+Dim bHotkIntroRunning
 Dim WHCMBScore
 Dim BlackwaterScore
 Dim CastleMBScore
@@ -2916,7 +2917,7 @@ Class cHouse
         For i = 1 to 7
             ModeLightState(i,0) = 1
             ModeLightState(i,1) = 0
-            if (bBWMultiballActive Or bCastleMBActive or bWallMBActive or bWHCMBActive) And BWJackpotShots(i) > 0 Then
+            if (bBWMultiballActive Or bCastleMBActive or bWallMBActive or bWHCMBActive or bHotkMBActive) And BWJackpotShots(i) > 0 Then
                 ModeLightState(i,1) = clr
                 ModeLightState(i,2) = 0
                 ModeLightState(i,0) = 2
@@ -3095,7 +3096,7 @@ Class cHouse
             Exit Sub
         End if
 
-        If bHotkMBReady Then StartHotkMBIntro : Exit Sub
+        If h = Lannister And bHotkMBReady Then StartHotkMBIntro : Exit Sub
 
         If ComboLaneMap(h) Then combo = ComboMultiplier(ComboLaneMap(h))
         If h = Martell Then ROrbitsw31.UserValue = combo
@@ -3159,7 +3160,9 @@ Class cHouse
                         PlaySoundVol "gotfx-whchit",VolDef
                     Else
                         ScoreWHCJP h,combo
-                    End If                
+                    End If
+                ElseIf bHotkMBActive Then
+                    ScoreHotkJackpot combo,false              
                 End If
             End If ' BWJackpotShots > 0
         End If 'bMultiballMode
@@ -3546,7 +3549,7 @@ Class cHouse
     ' If reset=true, reset to initial state for the mode its entering
     Public Sub SetUPFState(reset)
         Dim i
-        If bWallMBActive Or bWHCMBActive Or bHotkMBActive Or PlayerMode=2 Then
+        If bWallMBActive Or bWHCMBActive Or bHotkMBActive Or bHotkMBReady Or PlayerMode=2 Then
             UPFState = 4 : UPFShotMask = 0
             SetUPFFlashers 1,cyan
         ElseIf bCastleMBActive Then
@@ -3923,19 +3926,19 @@ Class cHouse
         FlexDMD.LockRenderThread
         Select Case HotkState
             Case 0
-                For each a in Array("obj","obj2","hurryup","sets") : ScoreScene.GetLabel(a).Visible = 1 : Next
+                For each a in Array("obj","obj2","HurryUp","sets") : ScoreScene.GetLabel(a).Visible = 1 : Next
                 For each a in Array("bonus","tmr1") : ScoreScene.GetLabel(a).Visible = 0 : Next
                 ScoreScene.GetLabel("obj").Text = "COMPLETE ALL SHOTS"
                 If HotkLevel = 3 Then
-                    ScoreScene.GetLabel("hurryup").Text = FormatScore(HotkSuperSJPValue)
+                    ScoreScene.GetLabel("HurryUp").Text = FormatScore(HotkSuperSJPValue)
                     ScoreScene.GetLabel("sets").Text = "1 SET"
                 Else
-                    ScoreScene.GetLabel("hurryup").Text = FormatScore(HotkSuperSJPValue)
+                    ScoreScene.GetLabel("HurryUp").Text = FormatScore(HotkSuperSJPValue)
                     ScoreScene.GetLabel("sets").Text = 4-HotkLevel & " SETS"
                 End If
             Case 1: ScoreScene.GetLabel("obj").Text = "HIT BATTERING RAM"
             Case 2
-                For each a in Array("obj","obj2","hurryup","sets") : ScoreScene.GetLabel(a).Visible = 0 : Next
+                For each a in Array("obj","obj2","HurryUp","sets") : ScoreScene.GetLabel(a).Visible = 0 : Next
                 For each a in Array("bonus","tmr1") : ScoreScene.GetLabel(a).Visible = 1 : Next
         End Select
         FlexDMD.UnlockRenderThread
@@ -3973,7 +3976,7 @@ Class cHouse
                 ActionButtonUsed = True
             Case Baratheon
                 If ActionButtonUsed Or bLoLLit Then Exit Sub
-                DoLordOfLight
+                DoLordOfLight False
                 ActionButtonUsed = True
                 'TODO: Start a LoL timer that turns off LoL after 10 seconds
             Case Lannister
@@ -5282,9 +5285,11 @@ Sub ResetNewBallVariables() 'reset variables for a new ball or player
     bWildfireLit = False
     bPlayfieldValidated = False
     bBattleCreateBall = False
+    bHotkIntroRunning = False
 End Sub
 
 Sub SetPlayfieldLights
+    If bHotkMBReady Then CheckForHotkReady : Exit Sub
     TurnOffPlayfieldLights
     If PlayerMode = 1 or PlayerMode = -2.1 Then
         SetModeLights       ' Set Sigils and Shields for battle, as well as UpperPF lights
@@ -5521,7 +5526,7 @@ Sub tmrEndOfBallBonus_Timer()
     Select Case j
         Case 0
             bonusCnt = 0
-            StopSound Song
+            StopSound Song : Song = ""
             line1 = "BONUS"
             ol = True
             'tmrEndOfBallBonus.Interval = 250
@@ -6216,7 +6221,7 @@ End Sub
 ' fx : one of a number of flasher effects
 '    0 = off, 1=on, 2=flash indefinitely, 3=flash 5 times fast, 4=flash 10 times fast
 ' col : colour const to use for the colour
-Sub SetSpotFlashers(fx,col)
+Sub SetSpotFlashers(fx)
     dim times,interval,fl
     Select Case fx
         Case 0: Spot1.visible = 0 : Spot2.visible = 0 : Exit Sub
@@ -6653,7 +6658,7 @@ Sub DoTargetsDropped
     If PlayerMode = 1 Then
         If HouseBattle1 > 0 Then House(CurrentPlayer).BattleState(HouseBattle1).RegisterTargetHit 0
         If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).RegisterTargetHit 0
-    ElseIf PlayerMode = 2 Or bWHCMBActive Then House(CurrentPlayer).RegisterHit(Baratheon) : tmp = True
+    ElseIf PlayerMode = 2 Or bWHCMBActive Or bHotkMBActive Then House(CurrentPlayer).RegisterHit(Baratheon) : tmp = True
     ElseIf PlayerMode = 0 Then ' Only increase Spinner Value and play target dropped sound in regular play mode
         PlaySoundVol "gotfx-loltarget-hit" & DroppedTargets, VolDef
         ' According to Chukwurt, Max spinner value per level are roughly 30k,60k,150k,250k,400k,500k,650k,800k
@@ -6667,7 +6672,7 @@ Sub DoTargetsDropped
         AddBonus 100000
         If PlayerMode = 0 And Not bMultiBallMode Then LoLTargetsCompleted = LoLTargetsCompleted + 1
         ResetDropTargets
-        If bLoLLit = False and bLoLUsed = False Then DoLordOfLight
+        If bLoLLit = False and bLoLUsed = False Then DoLordOfLight False
         For i = 0 to 2
             'TODO: Revisit this to see whether LoL lights that are on solid still flash when bank is completed
             FlashForMs LoLLights(i),500,100,2
@@ -6723,7 +6728,7 @@ Sub doWFTargetHit(t)
     AddScore 230
     PlayExistingSoundVol "gotfx-wftarget-hit", VolDef, 0
 
-    If PlayerMode = 2 Or bWHCMBActive Then House(CurrentPlayer).RegisterHit(Tyrell) : Exit Sub
+    If PlayerMode = 2 Or bWHCMBActive Or bHotkMBActive Then House(CurrentPlayer).RegisterHit(Tyrell) : Exit Sub
     If (BWMultiballsCompleted = 0 or bWildfireTargets(t1)) And Not bMultiBallMode Then LightLock
     if bWildfireTargets(t) then Exit Sub
     bWildfireTargets(t) = True
@@ -6858,8 +6863,7 @@ Sub Outlane_Hit
             EnableBallSaver 5
             bLoLLit = False
             SetOutlaneLights
-            
-            ' TODO: Do a "Keep Shooting!!" scene
+            DoLordOfLightSaved True
         End If
         Exit Sub
     End If
@@ -7039,7 +7043,7 @@ Sub sw48_Hit
     If sw48.UserValue <> "sw39" Then Exit Sub
     sw48.UserValue = ""
 
-    If bHotkMBReady Then Exit Sub ' StartHOTKMB will take care of releasing the ball
+    If bHotkIntroRunning Then Exit Sub ' StartHOTKMB will take care of releasing the ball
 
     if bMultiBallMode Then
         If bBWMultiballActive Then BallsInLock = BallsInLock + 1
@@ -7578,7 +7582,7 @@ Sub SelectMysteryAward
             AddScore 5000000*combo
             DMD "BIGGER POINTS",FormatScore(5000000*PlayfieldMultiplierVal*combo),"",eNone,eNone,eNone,1000,True,""
         Case 19: IncreaseBonusMultiplier 3
-        Case 20: DoLordOfLight
+        Case 20: DoLordOfLight False
         Case 21: House(CurrentPlayer).SetActionAbility Baratheon
         Case 22: House(CurrentPlayer).SetActionAbility Martell
         Case 23: House(CurrentPlayer).SetActionAbility Lannister
@@ -7714,7 +7718,7 @@ Sub doPictoPops(b)
         Case 11: If bMultiBallMode Then DoAddABall
         Case 12: AdvanceWallMultiball 1
         Case 13: DoEBisLit
-        Case 14: DoLordOfLight
+        Case 14: DoLordOfLight False
         Case 15: bMysteryLit = True : SetMystery
         Case 16
             ' TODO: This has a scene
@@ -7951,6 +7955,8 @@ Sub CheckForHotkReady
     End If
     DMDCreateReadyScene HotkMB
     SavePlayfieldLightState
+    House(CurrentPlayer).SetUPFState True
+    SetModeLights
     TurnOffPlayfieldLights
     SetLightColor li29,white,2
     li108.BlinkPattern="1000"
@@ -7969,11 +7975,12 @@ Sub ResetHotkLights
     For each a in Array(li108,li111,li114,li117)
         a.BlinkPattern = "10"
     Next
-    RestorePlayfieldLightState
+    RestorePlayfieldLightState False
 End Sub
 
 Sub StartHotkMBIntro
     Dim scene,a
+    bHotkIntroRunning = True    ' Tell sw48 to ignore the ball
     ' Set up the HOTK intro lighting
     ResetHotkLights
     TurnOffPlayfieldLights
@@ -8050,6 +8057,7 @@ Sub tmrHotkIntro_Timer
         DMDEnqueueScene scene,0,2400,2500,500,"gotfx-hotkdrumintro"
     Else
         PlaySoundVol "say-hotk-start",VolDef
+        bHotkIntroRunning = False
         vpmTimer.AddTimer 500,"StartHotkMB '"
     End If
 End Sub
@@ -8060,6 +8068,7 @@ Sub StartHotkMB
     bHotkMBDone = True
     bHotkMBReady = False
     HotkScore = 0
+    EnableBallSaver 30
     ReleaseLockedBall 1
     AddMultiball 3
     bInlanes(0) = True : bInlanes(1) = True
@@ -8472,12 +8481,14 @@ Sub AwardSpecial
     ' Knock Knocker
 End Sub
 
-Sub DoLordOfLight
-    Dim Scene
+Sub DoLordOfLight(saved)
+    Dim Scene,line
     If bUseFlexDMD Then
-        Set Scene = FlexDMD.NewGroup("lol")
-        Scene.AddActor FlexDMD.NewLabel("txt",FlexDMD.NewFont("udmd-f3by7.fnt",vbWhite,vbWhite,0),"LORD OF LIGHT"&vbLf&"OUTLANE BALL-SAVE LIT")
-        Scene.GetLabel("txt").SetAlignedPosition 64,16,FlexDMD_Align_Center
+        If saved then line = "KEEP SHOOTING" Else line = "LORD OF LIGHT"&vbLf&"OUTLANE BALL-SAVE LIT"
+        Set Scene = NewSceneWithVideo("lol","got-keepshooting")
+        Scene.AddActor FlexDMD.NewLabel("txt",FlexDMD.NewFont("udmd-f3by7.fnt",vbWhite,vbWhite,0),line)
+        Scene.GetLabel("txt").SetAlignedPosition 40,8,FlexDMD_Align_Center
+        If saved then BlinkActor Scene.GetLabel("txt"),100,15
         DMDEnqueueScene Scene,2,750,750,1500,"gotfx-lolsave"
     Else
         'TODO LoL display without FlexDMD
@@ -10255,7 +10266,7 @@ End Sub
 
 Dim MysteryScene
 Sub DMDMysteryAwardScene
-    Dim i
+    Dim i,combo
     Dim Frame(2),font,line1
     If bUseFlexDMD Then
         If IsEmpty(MysteryScene) Then
@@ -10275,7 +10286,7 @@ Sub DMDMysteryAwardScene
                 Select Case MysteryVals(i)
                     Case 0: line1 = "KEEP MY" & vbLf & CurrentGold & " GOLD"
                     Case 1,18,28
-                        Dim combo : combo = ROrbitsw31.UserValue : If combo > 9 Then combo = combo - 10
+                        combo = ROrbitsw31.UserValue : If combo > 9 Then combo = combo - 10
                         If combo = 0 then combo = 1
                         line1 = CStr(MysteryAwards(MysteryVals(i))(0)*PlayfieldMultiplierVal*combo) & vblf & _
                              "MILLION" & vbLf & "POINTS" & vbLf & MysteryAwards(MysteryVals(i))(1) & " GOLD"
@@ -10304,7 +10315,7 @@ Sub DMDMysteryAwardScene
                 Select Case MysteryVals(i)
                     Case 0: line1 = "KEEP MY" & vbLf & CurrentGold & " GOLD"
                     Case 1,18,28
-                        Dim combo : combo = ROrbitsw31.UserValue : If combo > 9 Then combo = combo - 10
+                        combo = ROrbitsw31.UserValue : If combo > 9 Then combo = combo - 10
                         If combo = 0 then combo = 1
                         line1 = CStr(MysteryAwards(MysteryVals(i))(0)*PlayfieldMultiplierVal*combo) & vblf & _
                              "MILLION" & vbLf & "POINTS" & vbLf & MysteryAwards(MysteryVals(i))(1) & " GOLD"
@@ -10547,8 +10558,8 @@ Sub DMDCreateHotkMBScoreScene
 
     scene.AddActor FlexDMD.NewLabel("hotk1",font,"HAND OF THE KING")
     scene.GetLabel("hotk1").SetAlignedPosition 127,0,FlexDMD_Align_TopRight
-    scene.AddActor FlexDMD.NewLabel("score",font,FormatScore(Score(CurrentPlayer)))
-    scene.GetLabel("score").SetAlignedPosition 54,0,FlexDMD_Align_TopRight
+    scene.AddActor FlexDMD.NewLabel("Score",font,FormatScore(Score(CurrentPlayer)))
+    scene.GetLabel("Score").SetAlignedPosition 54,0,FlexDMD_Align_TopRight
 
     ' Only used for Stark bonus round
     scene.AddActor FlexDMD.NewLabel("bonus",font,FormatScore(Score(CurrentPlayer)))
@@ -10573,8 +10584,8 @@ Sub DMDCreateHotkMBScoreScene
     Set font = FlexDMD.NewFont("tiny3by5.fnt",vbWhite,vbWhite,0)
     scene.AddActor FlexDMD.NewLabel("obj2",font,"HURRY UP: ")
     scene.GetLabel("obj2").SetAlignedPosition 0,19,FlexDMD_Align_TopLeft
-    scene.AddActor FlexDMD.NewLabel("hurryup",font,"00")
-    scene.GetLabel("hurryup").SetAlignedPosition 36,19,FlexDMD_Align_TopLeft
+    scene.AddActor FlexDMD.NewLabel("HurryUp",font,"00")
+    scene.GetLabel("HurryUp").SetAlignedPosition 36,19,FlexDMD_Align_TopLeft
 
     If (House(CurrentPlayer).HotkMask And 2^Greyjoy) > 0 Then line="2 SETS" Else line="3 SETS"
     scene.AddActor FlexDMD.NewLabel("sets",font,line)
@@ -10830,6 +10841,9 @@ End Class
 
 ' √ "INSERT COINS" scene doesn't work
 
+' √ HOTk light sequence gets overridden by combo timers and shield light timers
+' √ If Shooting the left ramp completes the mode (e.g. Martell) and the lockwall is up (e.g lock is lit), the ball gets stuck there.
+
 ' - Import DMD code for non FlexDMD. Use JP's Deadpool charset for now
 
 ' - Irone Throne starts at 1:39:20
@@ -10842,6 +10856,9 @@ End Class
 ' √ Implement lockbar light to reflect possible Action button options
 '   - need works - doesn't stop flashing after Choose House
 ' - Fix Score layout for multiplayer
+' - Add Keep Shooting scene for LoL save and add gif to the "outlanes lit" scene
+' - Add Swords Are Lit scene
+' - Add Wildfire Lit scene
 
 ' UNRESOLVED ISSUES
 ' - In BW multiball, after battle modes timed out, scene went to default scene instead of BWmultiball scene. 
