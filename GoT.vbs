@@ -8,13 +8,28 @@
 '107 Center Bumper
 '108 RIGHT Bumper
 '109 Left bumper
-'110
-'111 Dragon Kicker
+'110 Rear Elevator VUK
+'111 Iron Throne VUK
+'112 Dragon Kicker
 '118
 '119 Reset drop Targets
 '120 AutoFire
 '122 knocker
 '123 ballrelease
+'
+' Lamps
+' 140 Start button
+' 141 Action button white
+' 142 Action button yellow
+' 143  " " red
+' 144  " " purple
+' 145  " " orange
+' 146  " " green
+' 147  " " blue
+'
+' 151 action button blink white
+' 152 action button blink yellow
+'  <etc>
 
 Option Explicit
 Randomize
@@ -29,12 +44,21 @@ Const VolBGMusic = 0.15  ' Volume for table background music
 Const VolCallout = 0.9   ' Volume of voice callouts
 Const VolDef = 0.5		 ' Volume for callouts and sound effects
 Const VolSfx = 0.2		 ' Volume for table "physical" Sound effects 
+'*** Fleep ****
+'///////////////////////-----General Sound Options-----///////////////////////
+'// VolumeDial:
+'// VolumeDial is the actual global volume multiplier for the mechanical sounds.
+'// Values smaller than 1 will decrease mechanical sounds volume.
+'// Recommended values should be no greater than 1.
+Const VolumeDial = 0.8
 
 
-Const DMDMode = 1 ' Use Flex/UltraDMD (currently the only option supported)
+Const bHaveLockbarButton = False    ' Set to true if you have a lockdown bar button. Will disable the flasher on the apron
+Const DMDMode = 1 ' Use FlexDMD (currently the only option supported)
 Const UltraDMDVideos = True				'	ULTRA: Works on my DMDv3 but seems it causes issues on others. Not used by GoT
 Const bUsePlungerForSternKey = False    ' If true, use the plunger key for the Action/Select button. 
 Const bUseDragonFire = True             ' Whether to use dragon fire effect on the upper playfield. Looks cool but isn't true to real table
+
 
 ' Load the core.vbs for supporting Subs and functions
 LoadCoreFiles
@@ -58,6 +82,7 @@ Const MaxMultiplier = 5       ' limit playfield multiplier
 Const MaxBonusMultiplier = 50 'limit Bonus multiplier
 Const BallsPerGame = 3        ' usually 3 or 5
 Const MaxMultiballs = 5       ' max number of balls during multiballs
+Const TargaryenFreezeLength = 12 ' Length in seconds that Targaryen House can freeze timers for. This is a configurable value in the real table
 
 Const bDebug = True
 
@@ -274,11 +299,11 @@ End Sub
 
 Sub Table1_KeyDown(ByVal Keycode)
 
-    If keycode = LeftTiltKey Then Nudge 90, 8:PlaySound "fx_nudge", 0, 1, -0.1, 0.25
-    If keycode = RightTiltKey Then Nudge 270, 8:PlaySound "fx_nudge", 0, 1, 0.1, 0.25
-    If keycode = CenterTiltKey Then Nudge 0, 9:PlaySound "fx_nudge", 0, 1, 1, 0.25
+    If keycode = LeftTiltKey Then Nudge 90, 8:SoundNudgeLeft()
+    If keycode = RightTiltKey Then Nudge 270, 8:SoundNudgeRight()
+    If keycode = CenterTiltKey Then Nudge 0, 9:SoundNudgeCenter()
 
-    If keycode = LeftMagnaSave Then bLutActive = True : DoITMBJackpotSeq
+    If keycode = LeftMagnaSave Then bLutActive = True ': DoITMBJackpotSeq
     If keycode = RightMagnaSave Then
         If bLutActive Then
             NxtLUT
@@ -287,14 +312,11 @@ Sub Table1_KeyDown(ByVal Keycode)
 
     If Keycode = AddCreditKey Then
         Credits = Credits + 1
-        if bFreePlay = False Then DOF 125, DOFOn
+        if bFreePlay = False Then DOF 140, DOFOn
         If(Tilted = False)Then GameAddCredit
     End If
 
-    If keycode = PlungerKey Then
-        Plunger.Pullback
-        PlaySoundAt "fx_plungerpull", plunger
-    End If
+    If keycode = PlungerKey Then Plunger.Pullback : SoundPlungerPull()
 
     If hsbModeActive Then
         EnterHighScoreKey(keycode)
@@ -342,7 +364,6 @@ Sub Table1_KeyDown(ByVal Keycode)
 				plungerIM.Strength = 60
 				'plungerIM.InitImpulseP swplunger, 60, 0		' Change impulse power while we are here
 				PlungerIM.AutoFire
-				DOF 125, DOFPulse
 				DOF 112, DOFPulse
 				plungerIM.Strength = 45
 				'plungerIM.InitImpulseP swplunger, 45, 1.1
@@ -360,13 +381,15 @@ Sub Table1_KeyDown(ByVal Keycode)
                     PlayersPlayingGame = PlayersPlayingGame + 1
                     TotalGamesPlayed = TotalGamesPlayed + 1
                     DMD "_", CL(1, PlayersPlayingGame & " PLAYERS"), "", eNone, eBlink, eNone, 1000, False, ""
+                    ScoreScene = Empty
                 Else
                     If(Credits> 0)then
                         PlayersPlayingGame = PlayersPlayingGame + 1
                         TotalGamesPlayed = TotalGamesPlayed + 1
                         Credits = Credits - 1
                         DMD "_", CL(1, PlayersPlayingGame & " PLAYERS"), "", eNone, eBlink, eNone, 1000, False, ""
-                        If Credits <1 And bFreePlay = False Then DOF 125, DOFOff
+                        ScoreScene = Empty
+                        If Credits <1 And bFreePlay = False Then DOF 140, DOFOff
                     Else
                         ' Not Enough Credits to start a game.
                         DisplayDMDText "CREDITS 0", "INSERT COINS", 1000
@@ -385,7 +408,7 @@ Sub Table1_KeyDown(ByVal Keycode)
                 If(Credits> 0)Then
                     If(BallsOnPlayfield = 0)Then
                         Credits = Credits - 1
-                        If Credits <1 And bFreePlay = False Then DOF 125, DOFOff
+                        If Credits <1 And bFreePlay = False Then DOF 140, DOFOff
                         ResetForNewGame()
                     End If
                 Else
@@ -408,9 +431,9 @@ Sub Table1_KeyUp(ByVal keycode)
 
     If keycode = LeftMagnaSave Then bLutActive = False
 
-    If keycode = PlungerKey Then
+    If keycode = PlungerKey Then 
         Plunger.Fire
-        PlaySoundAt "fx_plunger", plunger
+        If bBallInPlungerLane Then SoundPlungerReleaseBall() Else SoundPlungerReleaseNoBall()
     End If
 
     If hsbModeActive Then
@@ -464,14 +487,34 @@ End Sub
 '     Flippers
 '********************
 
+Const ReflipAngle = 20
+
 Sub SolLFlipper(Enabled)
     If Enabled Then
-        PlaySoundAt SoundFXDOF("fx_flipperup", 101, DOFOn, DOFFlippers), LeftFlipper
+        'PlaySoundAt SoundFXDOF("fx_flipperup", 101, DOFOn, DOFFlippers), LeftFlipper
+
+        DOF 101, DOFOn
+        If leftflipper.currentangle < leftflipper.endangle + ReflipAngle Then 
+            RandomSoundReflipUpLeft LeftFlipper
+            RandomSoundReflipUpLeft LeftUFlipper
+        Else 
+            SoundFlipperUpAttackLeft LeftFlipper
+            RandomSoundFlipperUpLeft LeftFlipper
+            SoundFlipperUpAttackLeft LeftUFlipper
+            RandomSoundFlipperUpLeft LeftUFlipper
+        End If  
         LeftFlipper.EOSTorque = 0.75:LeftFlipper.RotateToEnd
         LeftUFlipper.EOSTorque = 0.75:LeftUFlipper.RotateToEnd
 
     Else
-        PlaySoundAt SoundFXDOF("fx_flipperdown", 101, DOFOff, DOFFlippers), LeftFlipper
+        'PlaySoundAt SoundFXDOF("fx_flipperdown", 101, DOFOff, DOFFlippers), LeftFlipper
+        DOF 101, DOFOff
+        LeftFlipper.RotateToStart
+		If LeftFlipper.currentangle < LeftFlipper.startAngle - 5 Then
+			RandomSoundFlipperDownLeft LeftFlipper
+            RandomSoundFlipperDownLeft LeftUFlipper
+		End If
+		FlipperLeftHitParm = FlipperUpSoundLevel
         LeftFlipper.EOSTorque = 0.2:LeftFlipper.RotateToStart
         LeftUFlipper.EOSTorque = 0.2:LeftUFlipper.RotateToStart
     End If
@@ -479,11 +522,27 @@ End Sub
 
 Sub SolRFlipper(Enabled)
     If Enabled Then
-        PlaySoundAt SoundFXDOF("fx_flipperup", 102, DOFOn, DOFFlippers), RightFlipper
+        'PlaySoundAt SoundFXDOF("fx_flipperup", 102, DOFOn, DOFFlippers), RightFlipper
+        DOF 102, DOFOn
+        If rightflipper.currentangle > leftflipper.endangle - ReflipAngle Then 
+            RandomSoundReflipUpRight RightFlipper
+            RandomSoundReflipUpRight RightUFlipper
+        Else 
+            SoundFlipperUpAttackRight RightFlipper
+            RandomSoundFlipperUpRight RightFlipper
+            SoundFlipperUpAttackRight RightUFlipper
+            RandomSoundFlipperUpRight RightUFlipper
+        End If  
         RightFlipper.EOSTorque = 0.75:RightFlipper.RotateToEnd
         RightUFlipper.EOSTorque = 0.75:RightUFlipper.RotateToEnd
     Else
-        PlaySoundAt SoundFXDOF("fx_flipperdown", 102, DOFOff, DOFFlippers), RightFlipper
+        'PlaySoundAt SoundFXDOF("fx_flipperdown", 102, DOFOff, DOFFlippers), RightFlipper
+        DOF 102, DOFOff
+        If RightFlipper.currentangle > RightFlipper.startAngle + 5 Then
+			RandomSoundFlipperDownRight RightFlipper
+            RandomSoundFlipperDownRight RightUFlipper
+		End If	
+		FlipperRightHitParm = FlipperUpSoundLevel
         RightFlipper.EOSTorque = 0.2:RightFlipper.RotateToStart
         RightUFlipper.EOSTorque = 0.2:RightUFlipper.RotateToStart
     End If
@@ -492,19 +551,23 @@ End Sub
 ' flippers hit Sound
 
 Sub LeftFlipper_Collide(parm)
-    PlaySound "fx_rubber_flipper", 0, parm / 60, pan(ActiveBall), 0, Pitch(ActiveBall), 0, 0, AudioFade(ActiveBall)
+    'PlaySound "fx_rubber_flipper", 0, parm / 60, pan(ActiveBall), 0, Pitch(ActiveBall), 0, 0, AudioFade(ActiveBall)
+    LeftFlipperCollide parm
 End Sub
 
 Sub RightFlipper_Collide(parm)
-    PlaySound "fx_rubber_flipper", 0, parm / 60, pan(ActiveBall), 0, Pitch(ActiveBall), 0, 0, AudioFade(ActiveBall)
+    'PlaySound "fx_rubber_flipper", 0, parm / 60, pan(ActiveBall), 0, Pitch(ActiveBall), 0, 0, AudioFade(ActiveBall)
+    RightFlipperCollide parm
 End Sub
 
 Sub LeftUFlipper_Collide(parm)
-    PlaySound "fx_rubber_flipper", 0, parm / 60, pan(ActiveBall), 0, Pitch(ActiveBall), 0, 0, AudioFade(ActiveBall)
+    'PlaySound "fx_rubber_flipper", 0, parm / 60, pan(ActiveBall), 0, Pitch(ActiveBall), 0, 0, AudioFade(ActiveBall)
+    LeftFlipperCollide parm
 End Sub
 
 Sub RightUFlipper_Collide(parm)
-    PlaySound "fx_rubber_flipper", 0, parm / 60, pan(ActiveBall), 0, Pitch(ActiveBall), 0, 0, AudioFade(ActiveBall)
+    'PlaySound "fx_rubber_flipper", 0, parm / 60, pan(ActiveBall), 0, Pitch(ActiveBall), 0, 0, AudioFade(ActiveBall)
+    RightFlipperCollide parm
 End Sub
 
 '*********
@@ -582,50 +645,32 @@ End Sub
 '  includes random pitch in PlaySoundAt and PlaySoundAtBall
 '***************************************************************
 
-Dim TableWidth, TableHeight
+' Dim TableWidth, TableHeight
 
-TableWidth = Table1.width
-TableHeight = Table1.height
+' TableWidth = Table1.width
+' TableHeight = Table1.height
 
-Function Vol(ball) ' Calculates the Volume of the sound based on the ball speed
-    Vol = Csng(BallVel(ball) ^2 / 2000)
-End Function
+' Function Vol(ball) ' Calculates the Volume of the sound based on the ball speed
+'     Vol = Csng(BallVel(ball) ^2 / 2000) * VolSfx
+' End Function
 
-Function Pan(ball) ' Calculates the pan for a ball based on the X position on the table. "table1" is the name of the table
-    Dim tmp
-    tmp = ball.x * 2 / TableWidth-1
-    If tmp> 0 Then
-        Pan = Csng(tmp ^10)
-    Else
-        Pan = Csng(-((- tmp) ^10))
-    End If
-End Function
+' Function Pan(ball) ' Calculates the pan for a ball based on the X position on the table. "table1" is the name of the table
+'     Dim tmp
+'     tmp = ball.x * 2 / TableWidth-1
+'     If tmp> 0 Then
+'         Pan = Csng(tmp ^10)
+'     Else
+'         Pan = Csng(-((- tmp) ^10))
+'     End If
+' End Function
 
-Function Pitch(ball) ' Calculates the pitch of the sound based on the ball speed
-    Pitch = BallVel(ball) * 20
-End Function
+' Function Pitch(ball) ' Calculates the pitch of the sound based on the ball speed
+'     Pitch = BallVel(ball) * 20
+' End Function
 
-Function BallVel(ball) 'Calculates the ball speed
-    BallVel = (SQR((ball.VelX ^2) + (ball.VelY ^2)))
-End Function
-
-Function AudioFade(ball) 'only on VPX 10.4 and newer
-    Dim tmp
-    tmp = ball.y * 2 / TableHeight-1
-    If tmp> 0 Then
-        AudioFade = Csng(tmp ^10)
-    Else
-        AudioFade = Csng(-((- tmp) ^10))
-    End If
-End Function
-
-Sub PlaySoundAt(soundname, tableobj) 'play sound at X and Y position of an object, mostly bumpers, flippers and other fast objects
-    PlaySound soundname, 0, 1, Pan(tableobj), 0.1, 0, 0, 0, AudioFade(tableobj)
-End Sub
-
-Sub PlaySoundAtBall(soundname) ' play a sound at the ball position, like rubbers, targets, metals, plastics
-    PlaySound soundname, 0, Vol(ActiveBall), pan(ActiveBall), 0.4, 0, 0, 0, AudioFade(ActiveBall)
-End Sub
+' Function BallVel(ball) 'Calculates the ball speed
+'     BallVel = (SQR((ball.VelX ^2) + (ball.VelY ^2)))
+' End Function
 
 Sub PlaySoundVol(soundname, Volume)
   PlaySound soundname, 1, Volume
@@ -684,65 +729,706 @@ Function RndNbr(n) 'returns a random number between 1 and n
     RndNbr = Int((n * Rnd) + 1)
 End Function
 
-'***********************************************
-'   JP's VP10 Rolling Sounds + Ballshadow v3.0
-'   uses a collection of shadows, aBallShadow
-'***********************************************
+'********* Fleep's mech sounds ***********
 
-Const tnob = 19   'total number of balls, 20 balls, from 0 to 19
-Const lob = 0     'number of locked balls
-Const maxvel = 50 'max ball velocity
+'////////////////////////////  MECHANICAL SOUNDS  ///////////////////////////
+'//  This part in the script is an entire block that is dedicated to the physics sound system.
+'//  Various scripts and sounds that may be pretty generic and could suit other WPC systems, but the most are tailored specifically for this table.
+
+'///////////////////////////////  SOUNDS PARAMETERS  //////////////////////////////
+Dim GlobalSoundLevel, CoinSoundLevel, PlungerReleaseSoundLevel, PlungerPullSoundLevel, NudgeLeftSoundLevel
+Dim NudgeRightSoundLevel, NudgeCenterSoundLevel, StartButtonSoundLevel, RollingSoundFactor
+
+CoinSoundLevel = 1                                                                                                                'volume level; range [0, 1]
+NudgeLeftSoundLevel = 1                                                                                                        'volume level; range [0, 1]
+NudgeRightSoundLevel = 1                                                                                                'volume level; range [0, 1]
+NudgeCenterSoundLevel = 1                                                                                                'volume level; range [0, 1]
+StartButtonSoundLevel = 0.1                                                                                                'volume level; range [0, 1]
+PlungerReleaseSoundLevel = 0.8 '1 wjr                                                                                        'volume level; range [0, 1]
+PlungerPullSoundLevel = 1                                                                                                'volume level; range [0, 1]
+RollingSoundFactor = 1.1/5                
+
+'///////////////////////-----Solenoids, Kickers and Flash Relays-----///////////////////////
+Dim FlipperUpAttackMinimumSoundLevel, FlipperUpAttackMaximumSoundLevel, FlipperUpAttackLeftSoundLevel, FlipperUpAttackRightSoundLevel
+Dim FlipperUpSoundLevel, FlipperDownSoundLevel, FlipperLeftHitParm, FlipperRightHitParm
+Dim SlingshotSoundLevel, BumperSoundFactor, KnockerSoundLevel
+
+FlipperUpAttackMinimumSoundLevel = 0.010                                                           'volume level; range [0, 1]
+FlipperUpAttackMaximumSoundLevel = 0.635                                                                'volume level; range [0, 1]
+FlipperUpSoundLevel = 1.0                                                                        'volume level; range [0, 1]
+FlipperDownSoundLevel = 0.45                                                                      'volume level; range [0, 1]
+FlipperLeftHitParm = FlipperUpSoundLevel                                                                'sound helper; not configurable
+FlipperRightHitParm = FlipperUpSoundLevel                                                                'sound helper; not configurable
+SlingshotSoundLevel = 0.95                                                                                                'volume level; range [0, 1]
+BumperSoundFactor = 4.25                                                                                                'volume multiplier; must not be zero
+KnockerSoundLevel = 1                                                                                                         'volume level; range [0, 1]
+
+'///////////////////////-----Ball Drops, Bumps and Collisions-----///////////////////////
+Dim RubberStrongSoundFactor, RubberWeakSoundFactor, RubberFlipperSoundFactor,BallWithBallCollisionSoundFactor
+Dim BallBouncePlayfieldSoftFactor, BallBouncePlayfieldHardFactor, PlasticRampDropToPlayfieldSoundLevel, WireRampDropToPlayfieldSoundLevel, DelayedBallDropOnPlayfieldSoundLevel
+Dim WallImpactSoundFactor, MetalImpactSoundFactor, SubwaySoundLevel, SubwayEntrySoundLevel, ScoopEntrySoundLevel
+Dim SaucerLockSoundLevel, SaucerKickSoundLevel
+
+BallWithBallCollisionSoundFactor = 3.2                                                                        'volume multiplier; must not be zero
+RubberStrongSoundFactor = 0.055/5                                                                                        'volume multiplier; must not be zero
+RubberWeakSoundFactor = 0.075/5                                                                                        'volume multiplier; must not be zero
+RubberFlipperSoundFactor = 0.075/5                                                                                'volume multiplier; must not be zero
+BallBouncePlayfieldSoftFactor = 0.025                                                                        'volume multiplier; must not be zero
+BallBouncePlayfieldHardFactor = 0.025                                                                        'volume multiplier; must not be zero
+DelayedBallDropOnPlayfieldSoundLevel = 0.8                                                                        'volume level; range [0, 1]
+WallImpactSoundFactor = 0.075                                                                                        'volume multiplier; must not be zero
+MetalImpactSoundFactor = 0.075/3
+SaucerLockSoundLevel = 0.8
+SaucerKickSoundLevel = 0.8
+
+'///////////////////////-----Gates, Spinners, Rollovers and Targets-----///////////////////////
+
+Dim GateSoundLevel, TargetSoundFactor, SpinnerSoundLevel, RolloverSoundLevel, DTSoundLevel
+
+GateSoundLevel = 0.5/5                                                                                                        'volume level; range [0, 1]
+TargetSoundFactor = 0.0025 * 10                                                                                        'volume multiplier; must not be zero
+DTSoundLevel = 0.25                                                                                                                'volume multiplier; must not be zero
+RolloverSoundLevel = 0.25                                                                      'volume level; range [0, 1]
+
+'///////////////////////-----Ball Release, Guides and Drain-----///////////////////////
+Dim DrainSoundLevel, BallReleaseSoundLevel, BottomArchBallGuideSoundFactor, FlipperBallGuideSoundFactor 
+
+DrainSoundLevel = 0.8                                                                                                                'volume level; range [0, 1]
+BallReleaseSoundLevel = 1                                                                                                'volume level; range [0, 1]
+BottomArchBallGuideSoundFactor = 0.2                                                                        'volume multiplier; must not be zero
+FlipperBallGuideSoundFactor = 0.015                                                                                'volume multiplier; must not be zero
+
+'///////////////////////-----Loops and Lanes-----///////////////////////
+Dim ArchSoundFactor
+ArchSoundFactor = 0.025/5                                                                                                        'volume multiplier; must not be zero
+
+
+'/////////////////////////////  SOUND PLAYBACK FUNCTIONS  ////////////////////////////
+'/////////////////////////////  POSITIONAL SOUND PLAYBACK METHODS  ////////////////////////////
+' Positional sound playback methods will play a sound, depending on the X,Y position of the table element or depending on ActiveBall object position
+' These are similar subroutines that are less complicated to use (e.g. simply use standard parameters for the PlaySound call)
+' For surround setup - positional sound playback functions will fade between front and rear surround channels and pan between left and right channels
+' For stereo setup - positional sound playback functions will only pan between left and right channels
+' For mono setup - positional sound playback functions will not pan between left and right channels and will not fade between front and rear channels
+
+' PlaySound full syntax - PlaySound(string, int loopcount, float volume, float pan, float randompitch, int pitch, bool useexisting, bool restart, float front_rear_fade)
+' Note - These functions will not work (currently) for walls/slingshots as these do not feature a simple, single X,Y position
+Sub PlaySoundAtLevelStatic(playsoundparams, aVol, tableobj)
+    PlaySound playsoundparams, 0, aVol * VolumeDial, AudioPan(tableobj), 0, 0, 0, 0, AudioFade(tableobj)
+End Sub
+
+Sub PlaySoundAtLevelExistingStatic(playsoundparams, aVol, tableobj)
+    PlaySound playsoundparams, 0, aVol * VolumeDial, AudioPan(tableobj), 0, 0, 1, 0, AudioFade(tableobj)
+End Sub
+
+Sub PlaySoundAtLevelStaticLoop(playsoundparams, aVol, tableobj)
+    PlaySound playsoundparams, -1, aVol * VolumeDial, AudioPan(tableobj), 0, 0, 0, 0, AudioFade(tableobj)
+End Sub
+
+Sub PlaySoundAtLevelStaticRandomPitch(playsoundparams, aVol, randomPitch, tableobj)
+    PlaySound playsoundparams, 0, aVol * VolumeDial, AudioPan(tableobj), randomPitch, 0, 0, 0, AudioFade(tableobj)
+End Sub
+
+Sub PlaySoundAtLevelActiveBall(playsoundparams, aVol)
+    PlaySound playsoundparams, 0, aVol * VolumeDial, AudioPan(ActiveBall), 0, 0, 0, 0, AudioFade(ActiveBall)
+End Sub
+
+Sub PlaySoundAtLevelExistingActiveBall(playsoundparams, aVol)
+    PlaySound playsoundparams, 0, aVol * VolumeDial, AudioPan(ActiveBall), 0, 0, 1, 0, AudioFade(ActiveBall)
+End Sub
+
+Sub PlaySoundAtLeveTimerActiveBall(playsoundparams, aVol, ballvariable)
+    PlaySound playsoundparams, 0, aVol * VolumeDial, AudioPan(ballvariable), 0, 0, 0, 0, AudioFade(ballvariable)
+End Sub
+
+Sub PlaySoundAtLevelTimerExistingActiveBall(playsoundparams, aVol, ballvariable)
+    PlaySound playsoundparams, 0, aVol * VolumeDial, AudioPan(ballvariable), 0, 0, 1, 0, AudioFade(ballvariable)
+End Sub
+
+Sub PlaySoundAtLevelRoll(playsoundparams, aVol, pitch)
+    PlaySound playsoundparams, -1, aVol * VolumeDial, AudioPan(tableobj), randomPitch, 0, 0, 0, AudioFade(tableobj)
+End Sub
+
+' Previous Positional Sound Subs
+
+Sub PlaySoundAt(soundname, tableobj)
+    PlaySound soundname, 1, 1 * VolumeDial, AudioPan(tableobj), 0,0,0, 1, AudioFade(tableobj)
+End Sub
+
+Sub PlaySoundAtVol(soundname, tableobj, aVol)
+    PlaySound soundname, 1, aVol * VolumeDial, AudioPan(tableobj), 0,0,0, 1, AudioFade(tableobj)
+End Sub
+
+Sub PlaySoundAtBall(soundname)
+    PlaySoundAt soundname, ActiveBall
+End Sub
+
+Sub PlaySoundAtBallVol (Soundname, aVol)
+    Playsound soundname, 1,aVol * VolumeDial, AudioPan(ActiveBall), 0,0,0, 1, AudioFade(ActiveBall)
+End Sub
+
+Sub PlaySoundAtBallVolM (Soundname, aVol)
+    Playsound soundname, 1,aVol * VolumeDial, AudioPan(ActiveBall), 0,0,0, 0, AudioFade(ActiveBall)
+End Sub
+
+Sub PlaySoundAtVolLoops(sound, tableobj, Vol, Loops)
+    PlaySound sound, Loops, Vol * VolumeDial, AudioPan(tableobj), 0,0,0, 1, AudioFade(tableobj)
+End Sub
+
+
+' *********************************************************************
+'                     Fleep  Supporting Ball & Sound Functions
+' *********************************************************************
+
+Dim tablewidth, tableheight : tablewidth = table1.width : tableheight = table1.height
+
+Function AudioFade(tableobj) ' Fades between front and back of the table (for surround systems or 2x2 speakers, etc), depending on the Y position on the table. "table1" is the name of the table
+	Dim tmp
+	tmp = tableobj.y * 2 / tableheight-1
+
+	if tmp > 7000 Then
+		tmp = 7000
+	elseif tmp < -7000 Then
+		tmp = -7000
+	end if
+
+    	If tmp > 0 Then
+		AudioFade = Csng(tmp ^10)
+	Else
+		AudioFade = Csng(-((- tmp) ^10) )
+	End If
+End Function
+
+Function AudioPan(tableobj) ' Calculates the pan for a tableobj based on the X position on the table. "table1" is the name of the table
+	Dim tmp
+	tmp = tableobj.x * 2 / tablewidth-1
+
+	if tmp > 7000 Then
+		tmp = 7000
+	elseif tmp < -7000 Then
+		tmp = -7000
+	end if
+
+	If tmp > 0 Then
+		AudioPan = Csng(tmp ^10)
+	Else
+		AudioPan = Csng(-((- tmp) ^10) )
+	End If
+End Function
+
+Function Vol(ball) ' Calculates the volume of the sound based on the ball speed
+    Vol = Csng(BallVel(ball) ^2)
+End Function
+
+Function Volz(ball) ' Calculates the volume of the sound based on the ball speed
+    Volz = Csng((ball.velz) ^2)
+End Function
+
+Function Pitch(ball) ' Calculates the pitch of the sound based on the ball speed
+    Pitch = BallVel(ball) * 20
+End Function
+
+Function BallVel(ball) 'Calculates the ball speed
+    BallVel = INT(SQR((ball.VelX ^2) + (ball.VelY ^2) ) )
+End Function
+
+Function VolPlayfieldRoll(ball) ' Calculates the roll volume of the sound based on the ball speed
+    VolPlayfieldRoll = RollingSoundFactor * 0.0005 * Csng(BallVel(ball) ^3)
+End Function
+
+Function PitchPlayfieldRoll(ball) ' Calculates the roll pitch of the sound based on the ball speed
+    PitchPlayfieldRoll = BallVel(ball) ^2 * 15
+End Function
+
+Function RndInt(min, max)
+    RndInt = Int(Rnd() * (max-min + 1) + min)' Sets a random number integer between min and max
+End Function
+
+Function RndNum(min, max)
+    RndNum = Rnd() * (max-min) + min' Sets a random number between min and max
+End Function
+
+'/////////////////////////////  GENERAL SOUND SUBROUTINES  ////////////////////////////
+Sub SoundStartButton()
+    PlaySound ("Start_Button"), 0, StartButtonSoundLevel, 0, 0.25
+End Sub
+
+Sub SoundNudgeLeft()
+    PlaySound ("Nudge_" & Int(Rnd*2)+1), 0, NudgeLeftSoundLevel * VolumeDial, -0.1, 0.25
+End Sub
+
+Sub SoundNudgeRight()
+    PlaySound ("Nudge_" & Int(Rnd*2)+1), 0, NudgeRightSoundLevel * VolumeDial, 0.1, 0.25
+End Sub
+
+Sub SoundNudgeCenter()
+    PlaySound ("Nudge_" & Int(Rnd*2)+1), 0, NudgeCenterSoundLevel * VolumeDial, 0, 0.25
+End Sub
+
+
+Sub SoundPlungerPull()
+    PlaySoundAtLevelStatic ("Plunger_Pull_1"), PlungerPullSoundLevel, Plunger
+End Sub
+
+Sub SoundPlungerReleaseBall()
+    PlaySoundAtLevelStatic ("Plunger_Release_Ball"), PlungerReleaseSoundLevel, Plunger        
+End Sub
+
+Sub SoundPlungerReleaseNoBall()
+    PlaySoundAtLevelStatic ("Plunger_Release_No_Ball"), PlungerReleaseSoundLevel, Plunger
+End Sub
+
+
+'/////////////////////////////  KNOCKER SOLENOID  ////////////////////////////
+Sub KnockerSolenoid()
+    PlaySoundAtLevelStatic SoundFX("Knocker_1",DOFKnocker), KnockerSoundLevel, KnockerPosition
+End Sub
+
+'/////////////////////////////  DRAIN SOUNDS  ////////////////////////////
+Sub RandomSoundDrain(drainswitch)
+    PlaySoundAtLevelStatic ("Drain_" & Int(Rnd*11)+1), DrainSoundLevel, drainswitch
+End Sub
+
+'/////////////////////////////  TROUGH BALL RELEASE SOLENOID SOUNDS  ////////////////////////////
+
+Sub RandomSoundBallRelease(drainswitch)
+    PlaySoundAtLevelStatic SoundFX("BallRelease" & Int(Rnd*7)+1,DOFContactors), BallReleaseSoundLevel, drainswitch
+End Sub
+
+'/////////////////////////////  SLINGSHOT SOLENOID SOUNDS  ////////////////////////////
+Sub RandomSoundSlingshotLeft(sling)
+    PlaySoundAtLevelStatic SoundFX("Sling_L" & Int(Rnd*10)+1,DOFContactors), SlingshotSoundLevel, Sling
+End Sub
+
+Sub RandomSoundSlingshotRight(sling)
+    PlaySoundAtLevelStatic SoundFX("Sling_R" & Int(Rnd*8)+1,DOFContactors), SlingshotSoundLevel, Sling
+End Sub
+
+'/////////////////////////////  BUMPER SOLENOID SOUNDS  ////////////////////////////
+Sub RandomSoundBumperTop(Bump)
+    PlaySoundAtLevelStatic SoundFX("Bumpers_Top_" & Int(Rnd*5)+1,DOFContactors), Vol(ActiveBall) * BumperSoundFactor, Bump
+End Sub
+
+Sub RandomSoundBumperMiddle(Bump)
+    PlaySoundAtLevelStatic SoundFX("Bumpers_Middle_" & Int(Rnd*5)+1,DOFContactors), Vol(ActiveBall) * BumperSoundFactor, Bump
+End Sub
+
+Sub RandomSoundBumperBottom(Bump)
+    PlaySoundAtLevelStatic SoundFX("Bumpers_Bottom_" & Int(Rnd*5)+1,DOFContactors), Vol(ActiveBall) * BumperSoundFactor, Bump
+End Sub
+
+'/////////////////////////////  FLIPPER BATS SOUND SUBROUTINES  ////////////////////////////
+'/////////////////////////////  FLIPPER BATS SOLENOID ATTACK SOUND  ////////////////////////////
+Sub SoundFlipperUpAttackLeft(flipper)
+    FlipperUpAttackLeftSoundLevel = RndNum(FlipperUpAttackMinimumSoundLevel, FlipperUpAttackMaximumSoundLevel)
+    PlaySoundAtLevelStatic ("Flipper_Attack-L01"), FlipperUpAttackLeftSoundLevel, flipper
+End Sub
+
+Sub SoundFlipperUpAttackRight(flipper)
+    FlipperUpAttackRightSoundLevel = RndNum(FlipperUpAttackMinimumSoundLevel, FlipperUpAttackMaximumSoundLevel)
+    PlaySoundAtLevelStatic ("Flipper_Attack-R01"), FlipperUpAttackLeftSoundLevel, flipper
+End Sub
+
+'/////////////////////////////  FLIPPER BATS SOLENOID CORE SOUND  ////////////////////////////
+Sub RandomSoundFlipperUpLeft(flipper)
+    PlaySoundAtLevelStatic SoundFX("Flipper_L0" & Int(Rnd*9)+1,DOFFlippers), FlipperLeftHitParm, Flipper
+End Sub
+
+Sub RandomSoundFlipperUpRight(flipper)
+    PlaySoundAtLevelStatic SoundFX("Flipper_R0" & Int(Rnd*9)+1,DOFFlippers), FlipperRightHitParm, Flipper
+End Sub
+
+Sub RandomSoundReflipUpLeft(flipper)
+    PlaySoundAtLevelStatic SoundFX("Flipper_ReFlip_L0" & Int(Rnd*3)+1,DOFFlippers), (RndNum(0.8, 1))*FlipperUpSoundLevel, Flipper
+End Sub
+
+Sub RandomSoundReflipUpRight(flipper)
+    PlaySoundAtLevelStatic SoundFX("Flipper_ReFlip_R0" & Int(Rnd*3)+1,DOFFlippers), (RndNum(0.8, 1))*FlipperUpSoundLevel, Flipper
+End Sub
+
+Sub RandomSoundFlipperDownLeft(flipper)
+    PlaySoundAtLevelStatic SoundFX("Flipper_Left_Down_" & Int(Rnd*7)+1,DOFFlippers), FlipperDownSoundLevel, Flipper
+End Sub
+
+Sub RandomSoundFlipperDownRight(flipper)
+    PlaySoundAtLevelStatic SoundFX("Flipper_Right_Down_" & Int(Rnd*8)+1,DOFFlippers), FlipperDownSoundLevel, Flipper
+End Sub
+
+'/////////////////////////////  FLIPPER BATS BALL COLLIDE SOUND  ////////////////////////////
+
+Sub LeftFlipperCollide(parm)
+    FlipperLeftHitParm = parm/10
+    If FlipperLeftHitParm > 1 Then FlipperLeftHitParm = 1
+    FlipperLeftHitParm = FlipperUpSoundLevel * FlipperLeftHitParm
+    RandomSoundRubberFlipper(parm)
+End Sub
+
+Sub RightFlipperCollide(parm)
+    FlipperRightHitParm = parm/10
+    If FlipperRightHitParm > 1 Then FlipperRightHitParm = 1
+    FlipperRightHitParm = FlipperUpSoundLevel * FlipperRightHitParm
+    RandomSoundRubberFlipper(parm)
+End Sub
+
+Sub RandomSoundRubberFlipper(parm)
+    PlaySoundAtLevelActiveBall ("Flipper_Rubber_" & Int(Rnd*7)+1), parm  * RubberFlipperSoundFactor
+End Sub
+
+'/////////////////////////////  ROLLOVER SOUNDS  ////////////////////////////
+Sub RandomSoundRollover()
+        PlaySoundAtLevelActiveBall ("Rollover_" & Int(Rnd*4)+1), RolloverSoundLevel
+End Sub
+
+Sub Rollovers_Hit(idx)
+        RandomSoundRollover
+End Sub
+
+'/////////////////////////////  VARIOUS PLAYFIELD SOUND SUBROUTINES  ////////////////////////////
+'/////////////////////////////  RUBBERS AND POSTS  ////////////////////////////
+'/////////////////////////////  RUBBERS - EVENTS  ////////////////////////////
+Sub Rubbers_Hit(idx)
+         dim finalspeed
+          finalspeed=SQR(activeball.velx * activeball.velx + activeball.vely * activeball.vely)
+         If finalspeed > 5 then                
+                 RandomSoundRubberStrong 1
+        End if
+        If finalspeed <= 5 then
+                 RandomSoundRubberWeak()
+         End If        
+End Sub
+
+'/////////////////////////////  RUBBERS AND POSTS - STRONG IMPACTS  ////////////////////////////
+Sub RandomSoundRubberStrong(voladj)
+    Select Case Int(Rnd*10)+1
+        Case 1 : PlaySoundAtLevelActiveBall ("Rubber_Strong_1"), Vol(ActiveBall) * RubberStrongSoundFactor*voladj
+        Case 2 : PlaySoundAtLevelActiveBall ("Rubber_Strong_2"), Vol(ActiveBall) * RubberStrongSoundFactor*voladj
+        Case 3 : PlaySoundAtLevelActiveBall ("Rubber_Strong_3"), Vol(ActiveBall) * RubberStrongSoundFactor*voladj
+        Case 4 : PlaySoundAtLevelActiveBall ("Rubber_Strong_4"), Vol(ActiveBall) * RubberStrongSoundFactor*voladj
+        Case 5 : PlaySoundAtLevelActiveBall ("Rubber_Strong_5"), Vol(ActiveBall) * RubberStrongSoundFactor*voladj
+        Case 6 : PlaySoundAtLevelActiveBall ("Rubber_Strong_6"), Vol(ActiveBall) * RubberStrongSoundFactor*voladj
+        Case 7 : PlaySoundAtLevelActiveBall ("Rubber_Strong_7"), Vol(ActiveBall) * RubberStrongSoundFactor*voladj
+        Case 8 : PlaySoundAtLevelActiveBall ("Rubber_Strong_8"), Vol(ActiveBall) * RubberStrongSoundFactor*voladj
+        Case 9 : PlaySoundAtLevelActiveBall ("Rubber_Strong_9"), Vol(ActiveBall) * RubberStrongSoundFactor*voladj
+        Case 10 : PlaySoundAtLevelActiveBall ("Rubber_1_Hard"), Vol(ActiveBall) * RubberStrongSoundFactor * 0.6*voladj
+    End Select
+End Sub
+
+'/////////////////////////////  RUBBERS AND POSTS - WEAK IMPACTS  ////////////////////////////
+Sub RandomSoundRubberWeak()
+    PlaySoundAtLevelActiveBall ("Rubber_" & Int(Rnd*9)+1), Vol(ActiveBall) * RubberWeakSoundFactor
+End Sub
+
+'/////////////////////////////  WALL IMPACTS  ////////////////////////////
+Sub Walls_Hit(idx)
+    dim finalspeed
+    finalspeed=SQR(activeball.velx * activeball.velx + activeball.vely * activeball.vely)
+    If finalspeed > 5 then RandomSoundRubberStrong 1 
+    If finalspeed <= 5 then RandomSoundRubberWeak()
+End Sub
+
+Sub RandomSoundWall()
+    dim finalspeed
+    finalspeed=SQR(activeball.velx * activeball.velx + activeball.vely * activeball.vely)
+    If finalspeed > 16 then 
+        Select Case Int(Rnd*5)+1
+                Case 1 : PlaySoundAtLevelExistingActiveBall ("Wall_Hit_1"), Vol(ActiveBall) * WallImpactSoundFactor
+                Case 2 : PlaySoundAtLevelExistingActiveBall ("Wall_Hit_2"), Vol(ActiveBall) * WallImpactSoundFactor
+                Case 3 : PlaySoundAtLevelExistingActiveBall ("Wall_Hit_5"), Vol(ActiveBall) * WallImpactSoundFactor
+                Case 4 : PlaySoundAtLevelExistingActiveBall ("Wall_Hit_7"), Vol(ActiveBall) * WallImpactSoundFactor
+                Case 5 : PlaySoundAtLevelExistingActiveBall ("Wall_Hit_9"), Vol(ActiveBall) * WallImpactSoundFactor
+        End Select
+    End if
+    If finalspeed >= 6 AND finalspeed <= 16 then
+        Select Case Int(Rnd*4)+1
+            Case 1 : PlaySoundAtLevelExistingActiveBall ("Wall_Hit_3"), Vol(ActiveBall) * WallImpactSoundFactor
+            Case 2 : PlaySoundAtLevelExistingActiveBall ("Wall_Hit_4"), Vol(ActiveBall) * WallImpactSoundFactor
+            Case 3 : PlaySoundAtLevelExistingActiveBall ("Wall_Hit_6"), Vol(ActiveBall) * WallImpactSoundFactor
+            Case 4 : PlaySoundAtLevelExistingActiveBall ("Wall_Hit_8"), Vol(ActiveBall) * WallImpactSoundFactor
+        End Select
+    End If
+    If finalspeed < 6 Then
+        Select Case Int(Rnd*3)+1
+            Case 1 : PlaySoundAtLevelExistingActiveBall ("Wall_Hit_4"), Vol(ActiveBall) * WallImpactSoundFactor
+            Case 2 : PlaySoundAtLevelExistingActiveBall ("Wall_Hit_6"), Vol(ActiveBall) * WallImpactSoundFactor
+            Case 3 : PlaySoundAtLevelExistingActiveBall ("Wall_Hit_8"), Vol(ActiveBall) * WallImpactSoundFactor
+        End Select
+    End if
+End Sub
+
+'/////////////////////////////  METAL TOUCH SOUNDS  ////////////////////////////
+Sub RandomSoundMetal()
+    PlaySoundAtLevelActiveBall ("Metal_Touch_" & Int(Rnd*13)+1), Vol(ActiveBall) * MetalImpactSoundFactor
+End Sub
+
+'/////////////////////////////  METAL - EVENTS  ////////////////////////////
+
+Sub Metals_Hit (idx)
+    RandomSoundMetal
+End Sub
+
+Sub ShooterDiverter_collide(idx)
+    RandomSoundMetal
+End Sub
+
+'/////////////////////////////  BOTTOM ARCH BALL GUIDE  ////////////////////////////
+'/////////////////////////////  BOTTOM ARCH BALL GUIDE - SOFT BOUNCES  ////////////////////////////
+Sub RandomSoundBottomArchBallGuide()
+    dim finalspeed
+    finalspeed=SQR(activeball.velx * activeball.velx + activeball.vely * activeball.vely)
+    If finalspeed > 16 then 
+        PlaySoundAtLevelActiveBall ("Apron_Bounce_"& Int(Rnd*2)+1), Vol(ActiveBall) * BottomArchBallGuideSoundFactor
+    End if
+    If finalspeed >= 6 AND finalspeed <= 16 then
+        Select Case Int(Rnd*2)+1
+            Case 1 : PlaySoundAtLevelActiveBall ("Apron_Bounce_1"), Vol(ActiveBall) * BottomArchBallGuideSoundFactor
+            Case 2 : PlaySoundAtLevelActiveBall ("Apron_Bounce_Soft_1"), Vol(ActiveBall) * BottomArchBallGuideSoundFactor
+        End Select
+    End If
+    If finalspeed < 6 Then
+        Select Case Int(Rnd*2)+1
+            Case 1 : PlaySoundAtLevelActiveBall ("Apron_Bounce_Soft_1"), Vol(ActiveBall) * BottomArchBallGuideSoundFactor
+            Case 2 : PlaySoundAtLevelActiveBall ("Apron_Medium_3"), Vol(ActiveBall) * BottomArchBallGuideSoundFactor
+        End Select
+    End if
+End Sub
+
+'/////////////////////////////  BOTTOM ARCH BALL GUIDE - HARD HITS  ////////////////////////////
+Sub RandomSoundBottomArchBallGuideHardHit()
+    PlaySoundAtLevelActiveBall ("Apron_Hard_Hit_" & Int(Rnd*3)+1), BottomArchBallGuideSoundFactor * 0.25
+End Sub
+
+Sub Apron_Hit (idx)
+    If Abs(cor.ballvelx(activeball.id) < 4) and cor.ballvely(activeball.id) > 7 then
+        RandomSoundBottomArchBallGuideHardHit()
+    Else
+        RandomSoundBottomArchBallGuide
+    End If
+End Sub
+
+'/////////////////////////////  FLIPPER BALL GUIDE  ////////////////////////////
+Sub RandomSoundFlipperBallGuide()
+    dim finalspeed
+    finalspeed=SQR(activeball.velx * activeball.velx + activeball.vely * activeball.vely)
+    If finalspeed > 16 then 
+        Select Case Int(Rnd*2)+1
+            Case 1 : PlaySoundAtLevelActiveBall ("Apron_Hard_1"),  Vol(ActiveBall) * FlipperBallGuideSoundFactor
+            Case 2 : PlaySoundAtLevelActiveBall ("Apron_Hard_2"),  Vol(ActiveBall) * 0.8 * FlipperBallGuideSoundFactor
+        End Select
+    End if
+    If finalspeed >= 6 AND finalspeed <= 16 then
+        PlaySoundAtLevelActiveBall ("Apron_Medium_" & Int(Rnd*3)+1),  Vol(ActiveBall) * FlipperBallGuideSoundFactor
+    End If
+    If finalspeed < 6 Then
+        PlaySoundAtLevelActiveBall ("Apron_Soft_" & Int(Rnd*7)+1),  Vol(ActiveBall) * FlipperBallGuideSoundFactor
+    End If
+End Sub
+
+'/////////////////////////////  TARGET HIT SOUNDS  ////////////////////////////
+Sub RandomSoundTargetHitStrong()
+    PlaySoundAtLevelActiveBall SoundFX("Target_Hit_" & Int(Rnd*4)+5,DOFTargets), Vol(ActiveBall) * 0.45 * TargetSoundFactor
+End Sub
+
+Sub RandomSoundTargetHitWeak()                
+    PlaySoundAtLevelActiveBall SoundFX("Target_Hit_" & Int(Rnd*4)+1,DOFTargets), Vol(ActiveBall) * TargetSoundFactor
+End Sub
+
+Sub PlayTargetSound()
+    dim finalspeed
+    finalspeed=SQR(activeball.velx * activeball.velx + activeball.vely * activeball.vely)
+    If finalspeed > 10 then
+        RandomSoundTargetHitStrong()
+        RandomSoundBallBouncePlayfieldSoft Activeball
+    Else 
+        RandomSoundTargetHitWeak()
+    End If        
+End Sub
+
+Sub Targets_Hit (idx)
+    PlayTargetSound        
+End Sub
+
+'/////////////////////////////  BALL BOUNCE SOUNDS  ////////////////////////////
+Sub RandomSoundBallBouncePlayfieldSoft(aBall)
+    Select Case Int(Rnd*9)+1
+        Case 1 : PlaySoundAtLevelStatic ("Ball_Bounce_Playfield_Soft_1"), volz(aBall) * BallBouncePlayfieldSoftFactor, aBall
+        Case 2 : PlaySoundAtLevelStatic ("Ball_Bounce_Playfield_Soft_2"), volz(aBall) * BallBouncePlayfieldSoftFactor * 0.5, aBall
+        Case 3 : PlaySoundAtLevelStatic ("Ball_Bounce_Playfield_Soft_3"), volz(aBall) * BallBouncePlayfieldSoftFactor * 0.8, aBall
+        Case 4 : PlaySoundAtLevelStatic ("Ball_Bounce_Playfield_Soft_4"), volz(aBall) * BallBouncePlayfieldSoftFactor * 0.5, aBall
+        Case 5 : PlaySoundAtLevelStatic ("Ball_Bounce_Playfield_Soft_5"), volz(aBall) * BallBouncePlayfieldSoftFactor, aBall
+        Case 6 : PlaySoundAtLevelStatic ("Ball_Bounce_Playfield_Hard_1"), volz(aBall) * BallBouncePlayfieldSoftFactor * 0.2, aBall
+        Case 7 : PlaySoundAtLevelStatic ("Ball_Bounce_Playfield_Hard_2"), volz(aBall) * BallBouncePlayfieldSoftFactor * 0.2, aBall
+        Case 8 : PlaySoundAtLevelStatic ("Ball_Bounce_Playfield_Hard_5"), volz(aBall) * BallBouncePlayfieldSoftFactor * 0.2, aBall
+        Case 9 : PlaySoundAtLevelStatic ("Ball_Bounce_Playfield_Hard_7"), volz(aBall) * BallBouncePlayfieldSoftFactor * 0.3, aBall
+    End Select
+End Sub
+
+Sub RandomSoundBallBouncePlayfieldHard(aBall)
+    PlaySoundAtLevelStatic ("Ball_Bounce_Playfield_Hard_" & Int(Rnd*7)+1), volz(aBall) * BallBouncePlayfieldHardFactor, aBall
+End Sub
+
+'/////////////////////////////  DELAYED DROP - TO PLAYFIELD - SOUND  ////////////////////////////
+Sub RandomSoundDelayedBallDropOnPlayfield(aBall)
+    Select Case Int(Rnd*5)+1
+        Case 1 : PlaySoundAtLevelStatic ("Ball_Drop_Playfield_1_Delayed"), DelayedBallDropOnPlayfieldSoundLevel, aBall
+        Case 2 : PlaySoundAtLevelStatic ("Ball_Drop_Playfield_2_Delayed"), DelayedBallDropOnPlayfieldSoundLevel, aBall
+        Case 3 : PlaySoundAtLevelStatic ("Ball_Drop_Playfield_3_Delayed"), DelayedBallDropOnPlayfieldSoundLevel, aBall
+        Case 4 : PlaySoundAtLevelStatic ("Ball_Drop_Playfield_4_Delayed"), DelayedBallDropOnPlayfieldSoundLevel, aBall
+        Case 5 : PlaySoundAtLevelStatic ("Ball_Drop_Playfield_5_Delayed"), DelayedBallDropOnPlayfieldSoundLevel, aBall
+    End Select
+End Sub
+
+'/////////////////////////////  BALL GATES AND BRACKET GATES SOUNDS  ////////////////////////////
+
+Sub SoundPlayfieldGate()                        
+    PlaySoundAtLevelStatic ("Gate_FastTrigger_" & Int(Rnd*2)+1), GateSoundLevel, Activeball
+End Sub
+
+Sub SoundHeavyGate()
+    PlaySoundAtLevelStatic ("Gate_2"), GateSoundLevel, Activeball
+End Sub
+
+Sub Gates_hit(idx)
+    SoundHeavyGate
+End Sub
+
+Sub GatesWire_hit(idx)        
+    SoundPlayfieldGate        
+End Sub        
+
+'/////////////////////////////  LEFT LANE ENTRANCE - SOUNDS  ////////////////////////////
+
+Sub RandomSoundLeftArch()
+    PlaySoundAtLevelActiveBall ("Arch_L" & Int(Rnd*4)+1), Vol(ActiveBall) * ArchSoundFactor
+End Sub
+
+Sub RandomSoundRightArch()
+    PlaySoundAtLevelActiveBall ("Arch_R" & Int(Rnd*4)+1), Vol(ActiveBall) * ArchSoundFactor
+End Sub
+
+
+Sub Arch1_hit()
+    If Activeball.velx > 1 Then SoundPlayfieldGate
+    StopSound "Arch_L1"
+    StopSound "Arch_L2"
+    StopSound "Arch_L3"
+    StopSound "Arch_L4"
+End Sub
+
+Sub Arch1_unhit()
+    If activeball.velx < -8 Then
+        RandomSoundRightArch
+    End If
+End Sub
+
+Sub Arch2_hit()
+    If Activeball.velx < 1 Then SoundPlayfieldGate
+    StopSound "Arch_R1"
+    StopSound "Arch_R2"
+    StopSound "Arch_R3"
+    StopSound "Arch_R4"
+End Sub
+
+Sub Arch2_unhit()
+    If activeball.velx > 10 Then
+        RandomSoundLeftArch
+    End If
+End Sub
+
+'/////////////////////////////  SAUCERS (KICKER HOLES)  ////////////////////////////
+
+Sub SoundSaucerLock()
+    PlaySoundAtLevelStatic ("Saucer_Enter_" & Int(Rnd*2)+1), SaucerLockSoundLevel, Activeball
+End Sub
+
+Sub SoundSaucerKick(scenario, saucer)
+    Select Case scenario
+        Case 0: PlaySoundAtLevelStatic SoundFX("Saucer_Empty", DOFContactors), SaucerKickSoundLevel, saucer
+        Case 1: PlaySoundAtLevelStatic SoundFX("Saucer_Kick", DOFContactors), SaucerKickSoundLevel, saucer
+    End Select
+End Sub
+
+'/////////////////////////////  BALL COLLISION SOUND  ////////////////////////////
+Sub OnBallBallCollision(ball1, ball2, velocity)
+    Dim snd
+    Select Case Int(Rnd*7)+1
+        Case 1 : snd = "Ball_Collide_1"
+        Case 2 : snd = "Ball_Collide_2"
+        Case 3 : snd = "Ball_Collide_3"
+        Case 4 : snd = "Ball_Collide_4"
+        Case 5 : snd = "Ball_Collide_5"
+        Case 6 : snd = "Ball_Collide_6"
+        Case 7 : snd = "Ball_Collide_7"
+    End Select
+
+    PlaySound (snd), 0, Csng(velocity) ^2 / 200 * BallWithBallCollisionSoundFactor * VolumeDial, AudioPan(ball1), 0, Pitch(ball1), 0, 0, AudioFade(ball1)
+End Sub
+
+
+'/////////////////////////////////////////////////////////////////
+'                                        End Mechanical Sounds
+'/////////////////////////////////////////////////////////////////
+
+
+'******************************************************
+'		BALL ROLLING AND DROP SOUNDS
+'******************************************************
+
+Const tnob = 10 ' total number of balls
+Const maxvel = 50
 ReDim rolling(tnob)
 InitRolling
 
+Dim DropCount
+ReDim DropCount(tnob)
+
 Sub InitRolling
-    Dim i
-    For i = 0 to tnob
-        rolling(i) = False
-    Next
+	Dim i
+	For i = 0 to tnob
+		rolling(i) = False
+	Next
 End Sub
 
-Sub RollingUpdate()
-    Dim BOT, b, ballpitch, ballvol, speedfactorx, speedfactory, maxv
-    BOT = GetBalls
+Sub RollingUpdate
+	Dim BOT, b, maxv
+	BOT = GetBalls
 
-    ' stop the sound of deleted balls and hide the shadow
-    For b = UBound(BOT) + 1 to tnob
-        rolling(b) = False
-        StopSound("fx_ballrolling" & b)
-        aBallShadow(b).Y = 3000
-    Next
+	' stop the sound of deleted balls
+	For b = UBound(BOT) + 1 to tnob
+		rolling(b) = False
+		StopSound("BallRoll_" & b)
+	Next
 
-    ' exit the sub if no balls on the table
-    If UBound(BOT) = lob - 1 Then Exit Sub 'there no extra balls on this table
+	' exit the sub if no balls on the table
+	If UBound(BOT) = -1 Then Exit Sub
 
-    ' play the rolling sound for each ball and draw the shadow
-    For b = lob to UBound(BOT)
-        aBallShadow(b).X = BOT(b).X
-        aBallShadow(b).Y = BOT(b).Y
-        aBallShadow(b).Height = BOT(b).Z -24
+	' play the rolling sound for each ball
 
-        If BallVel(BOT(b))> 1 Then
-            If BOT(b).z <30 Then
-                ballpitch = Pitch(BOT(b))
-                ballvol = Vol(BOT(b))
-            Else
-                ballpitch = Pitch(BOT(b)) + 25000 'increase the pitch on a ramp
-                ballvol = Vol(BOT(b)) * 10
-            End If
-            rolling(b) = True
-            PlaySound("fx_ballrolling" & b), -1, ballvol, Pan(BOT(b)), 0, ballpitch, 1, 0, AudioFade(BOT(b))
-        Else
-            If rolling(b) = True Then
-                StopSound("fx_ballrolling" & b)
-                rolling(b) = False
-            End If
-        End If
+	For b = 0 to UBound(BOT)
+		If BallVel(BOT(b)) > 1 AND BOT(b).z < 30 Then
+			rolling(b) = True
+			PlaySound ("BallRoll_" & b), -1, VolPlayfieldRoll(BOT(b)) * 1.1 * VolumeDial, AudioPan(BOT(b)), 0, PitchPlayfieldRoll(BOT(b)), 1, 0, AudioFade(BOT(b))
 
-        ' rothbauerw's Dropping Sounds
-        If BOT(b).VelZ <-1 and BOT(b).z <55 and BOT(b).z> 27 Then 'height adjust for ball drop sounds
-            PlaySound "fx_balldrop", 0, ABS(BOT(b).velz) / 17, Pan(BOT(b)), 0, Pitch(BOT(b)), 1, 0, AudioFade(BOT(b))
-        End If
+		Else
+			If rolling(b) = True Then
+				StopSound("BallRoll_" & b)
+				rolling(b) = False
+			End If
+		End If
+
+		'***Ball Drop Sounds***
+		If BOT(b).VelZ < -1 and BOT(b).z < 55 and BOT(b).z > 27 Then 'height adjust for ball drop sounds
+			If DropCount(b) >= 5 Then
+				DropCount(b) = 0
+				If BOT(b).velz > -7 Then
+					RandomSoundBallBouncePlayfieldSoft BOT(b)
+				Else
+					RandomSoundBallBouncePlayfieldHard BOT(b)
+				End If				
+			End If
+		End If
+		If DropCount(b) < 5 Then
+			DropCount(b) = DropCount(b) + 1
+		End If
 
         ' jps ball speed control
         If BOT(b).VelX AND BOT(b).VelY <> 0 Then
@@ -758,31 +1444,144 @@ Sub RollingUpdate()
                 BOT(b).VelY = BOT(b).VelY * speedfactory
             End If
         End If
-    Next
+	Next
 End Sub
+
+'******************************************************
+'		TRACK ALL BALL VELOCITIES
+' 		FOR RUBBER DAMPENER AND DROP TARGETS
+'******************************************************
+
+dim cor : set cor = New CoRTracker
+
+Class CoRTracker
+	public ballvel, ballvelx, ballvely
+
+	Private Sub Class_Initialize : redim ballvel(0) : redim ballvelx(0): redim ballvely(0) : End Sub 
+
+	Public Sub Update()	'tracks in-ball-velocity
+		dim str, b, AllBalls, highestID : allBalls = getballs
+
+		for each b in allballs
+			if b.id >= HighestID then highestID = b.id
+		Next
+
+		if uBound(ballvel) < highestID then redim ballvel(highestID)	'set bounds
+		if uBound(ballvelx) < highestID then redim ballvelx(highestID)	'set bounds
+		if uBound(ballvely) < highestID then redim ballvely(highestID)	'set bounds
+
+		for each b in allballs
+			ballvel(b.id) = BallSpeed(b)
+			ballvelx(b.id) = b.velx
+			ballvely(b.id) = b.vely
+		Next
+	End Sub
+End Class
+
+Sub RDampen_Timer()
+	Cor.Update
+End Sub
+
+
+'***********************************************
+'   JP's VP10 Rolling Sounds + Ballshadow v3.0
+'   uses a collection of shadows, aBallShadow
+'***********************************************
+
+' Const tnob = 19   'total number of balls, 20 balls, from 0 to 19
+' Const lob = 0     'number of locked balls
+' Const maxvel = 50 'max ball velocity
+' ReDim rolling(tnob)
+' InitRolling
+
+' Sub InitRolling
+'     Dim i
+'     For i = 0 to tnob
+'         rolling(i) = False
+'     Next
+' End Sub
+
+' Sub RollingUpdate()
+'     Dim BOT, b, ballpitch, ballvol, speedfactorx, speedfactory, maxv
+'     BOT = GetBalls
+
+'     ' stop the sound of deleted balls and hide the shadow
+'     For b = UBound(BOT) + 1 to tnob
+'         rolling(b) = False
+'         StopSound("fx_ballrolling" & b)
+'         aBallShadow(b).Y = 3000
+'     Next
+
+'     ' exit the sub if no balls on the table
+'     If UBound(BOT) = lob - 1 Then Exit Sub 'there no extra balls on this table
+
+'     ' play the rolling sound for each ball and draw the shadow
+'     For b = lob to UBound(BOT)
+'         aBallShadow(b).X = BOT(b).X
+'         aBallShadow(b).Y = BOT(b).Y
+'         aBallShadow(b).Height = BOT(b).Z -24
+
+'         If BallVel(BOT(b))> 1 Then
+'             If BOT(b).z <30 Then
+'                 ballpitch = Pitch(BOT(b))
+'                 ballvol = Vol(BOT(b))
+'             Else
+'                 ballpitch = Pitch(BOT(b)) + 25000 'increase the pitch on a ramp
+'                 ballvol = Vol(BOT(b)) * 10
+'             End If
+'             rolling(b) = True
+'             PlaySound("fx_ballrolling" & b), -1, ballvol, Pan(BOT(b)), 0, ballpitch, 1, 0, AudioFade(BOT(b))
+'         Else
+'             If rolling(b) = True Then
+'                 StopSound("fx_ballrolling" & b)
+'                 rolling(b) = False
+'             End If
+'         End If
+
+'         ' rothbauerw's Dropping Sounds
+'         If BOT(b).VelZ <-1 and BOT(b).z <55 and BOT(b).z> 27 Then 'height adjust for ball drop sounds
+'             PlaySound "fx_balldrop", 0, ABS(BOT(b).velz) / 17, Pan(BOT(b)), 0, Pitch(BOT(b)), 1, 0, AudioFade(BOT(b))
+'         End If
+
+'         ' jps ball speed control
+'         If BOT(b).VelX AND BOT(b).VelY <> 0 Then
+'             If BOT(b).Z < 30 And BOT(B).Y < 100 Then maxv = 30 else maxv = maxvel   ' Slow the ball down on the top orbit - Skillman
+'             speedfactorx = ABS(maxv / BOT(b).VelX)
+'             speedfactory = ABS(maxv / BOT(b).VelY)
+'             If speedfactorx <1 Then
+'                 BOT(b).VelX = BOT(b).VelX * speedfactorx
+'                 BOT(b).VelY = BOT(b).VelY * speedfactorx
+'             End If
+'             If speedfactory <1 Then
+'                 BOT(b).VelX = BOT(b).VelX * speedfactory
+'                 BOT(b).VelY = BOT(b).VelY * speedfactory
+'             End If
+'         End If
+'     Next
+' End Sub
 
 '**********************
 ' Ball Collision Sound
 '**********************
 
-Sub OnBallBallCollision(ball1, ball2, velocity)
-    PlaySound "fx_collide", 0, Csng(velocity) ^2 / 2000, Pan(ball1), 0, Pitch(ball1), 0, 0, AudioFade(ball1)
-End Sub
+' Sub OnBallBallCollision(ball1, ball2, velocity)
+'     PlaySound "fx_collide", 0, Csng(velocity) ^2 / 2000, Pan(ball1), 0, Pitch(ball1), 0, 0, AudioFade(ball1)
+' End Sub
 
 '************************************
 ' Diverse Collection Hit Sounds v3.0
 '************************************
 
-Sub aMetals_Hit(idx):PlaySoundAtBall "fx_MetalHit":End Sub
-Sub aMetalWires_Hit(idx):PlaySoundAtBall "fx_MetalWire":End Sub
-Sub aRubber_Bands_Hit(idx):PlaySoundAtBall "fx_rubber_band":End Sub
-Sub aRubber_LongBands_Hit(idx):PlaySoundAtBall "fx_rubber_longband":End Sub
-Sub aRubber_Posts_Hit(idx):PlaySoundAtBall "fx_rubber_post":End Sub
-Sub aRubber_Pins_Hit(idx):PlaySoundAtBall "fx_rubber_pin":End Sub
-Sub aRubber_Pegs_Hit(idx):PlaySoundAtBall "fx_rubber_peg":End Sub
-Sub aPlastics_Hit(idx):PlaySoundAtBall "fx_PlasticHit":End Sub
-Sub aGates_Hit(idx):PlaySoundAtBall "fx_Gate":End Sub
-Sub aWoods_Hit(idx):PlaySoundAtBall "fx_Woodhit":End Sub
+' Sub aMetals_Hit(idx):PlaySoundAtBall "fx_MetalHit":End Sub
+' Sub aMetalWires_Hit(idx):PlaySoundAtBall "fx_MetalWire":End Sub
+' Sub aRubber_Bands_Hit(idx):PlaySoundAtBall "fx_rubber_band":End Sub
+' Sub aRubber_LongBands_Hit(idx):PlaySoundAtBall "fx_rubber_longband":End Sub
+' Sub aRubber_Posts_Hit(idx):PlaySoundAtBall "fx_rubber_post":End Sub
+' Sub aRubber_Pins_Hit(idx):PlaySoundAtBall "fx_rubber_pin":End Sub
+' Sub aRubber_Pegs_Hit(idx):PlaySoundAtBall "fx_rubber_peg":End Sub
+' Sub aPlastics_Hit(idx):PlaySoundAtBall "fx_PlasticHit":End Sub
+' Sub aGates_Hit(idx):PlaySoundAtBall "fx_Gate":End Sub
+' Sub aWoods_Hit(idx):PlaySoundAtBall "fx_Woodhit":End Sub
 
 ' Slingshots has been hit
 
@@ -790,7 +1589,9 @@ Dim LStep, RStep
 
 Sub LeftSlingShot_Slingshot
     If Tilted Then Exit Sub
-    PlaySoundAt SoundFXDOF("CrispySlingLeft", 103, DOFPulse, DOFContactors), Lemk
+    'PlaySoundAt SoundFXDOF("CrispySlingLeft", 103, DOFPulse, DOFContactors), Lemk
+    RandomSoundSlingshotLeft Lemk
+    DOF 103, DOFPulse
     LeftSling4.Visible = 1:LeftSling1.Visible = 0
     Lemk.RotX = 26
     LStep = 0
@@ -817,7 +1618,9 @@ End Sub
 
 Sub RightSlingShot_Slingshot
     If Tilted Then Exit Sub
-    PlaySoundAt SoundFXDOF("CrispySlingRight", 104, DOFPulse, DOFContactors),Remk
+    'PlaySoundAt SoundFXDOF("CrispySlingRight", 104, DOFPulse, DOFContactors),Remk
+    RandomSoundSlingshotRight Remk
+    DOF 104,DOFPulse
     RightSling4.Visible = 1:RightSling1.Visible = 0
     Remk.RotX = 26
     RStep = 0
@@ -859,7 +1662,8 @@ Sub Loadhs
         If(x <> "")Then HighScoreName(i-1) = x Else HighScoreName(i-1) = Chr(64+i)&Chr(64+i)&Chr(64+i) End If
     Next
     x = LoadValue(myGameName, "Credits")
-    If(x <> "")then Credits = CInt(x)Else Credits = 0:If bFreePlay = False Then DOF 125, DOFOff:End If
+    If(x <> "")then Credits = CInt(x)Else Credits = 0
+    If Credits = 0 And bFreePlay = False Then DOF 140, DOFOff Else DOF 140, DOFOn
     x = LoadValue(myGameName, "TotalGamesPlayed")
     If(x <> "")then TotalGamesPlayed = CInt(x)Else TotalGamesPlayed = 0 End If
 End Sub
@@ -905,8 +1709,9 @@ Sub CheckHighscore()
         Case 1: HighScoreEntryInit()
         Case 2
             Credits = Credits + 1
-            DOF 125, DOFOn
-            PlaySound SoundFXDOF("fx_Knocker", 122, DOFPulse, DOFKnocker)
+            DOF 140, DOFOn
+            'PlaySound SoundFXDOF("fx_Knocker", 122, DOFPulse, DOFKnocker)
+            KnockerSolenoid
             DOF 121, DOFPulse
             HighScoreEntryInit()
     End Select
@@ -932,6 +1737,7 @@ Sub HighScoreEntryInit()
     Dim i
     hsbModeActive = True
     ' Table-specific
+    i = RndNbr(4)
     PlaySoundVol "say-enterinitials"&i,VolCallout
     PlaySoundVol "got-track-hstd",VolDef/8
     hsLetterFlash = 0
@@ -2079,7 +2885,8 @@ Sub Drain_Hit()
     ' Exit Sub ' only for debugging - this way you can add balls from the debug window
 
     ' pretend to knock the ball into the ball storage mech
-    PlaySoundAt "fx_drain", Drain
+    'PlaySoundAt "fx_drain", Drain
+    RandomSoundDrain Drain
 
     If bGameInPLay = False Then Exit Sub 'don't do anything, just delete the ball
 
@@ -2134,7 +2941,7 @@ End Sub
 Sub swPlungerRest_Hit()
     'debug.print "ball in plunger lane"
     ' some sound according to the ball position
-    PlaySoundAt "fx_sensor", swPlungerRest
+    'PlaySoundAt "fx_sensor", swPlungerRest
     bBallInPlungerLane = True
     ' turn on Launch light is there is one
     'LaunchLight.State = 2
@@ -2349,7 +3156,7 @@ Dim TimerSubroutine     ' Names of subroutines to call when each timer's time ex
 TimerSubroutine = Array("","UpdateChooseBattle","PreLaunchBattleMode","LaunchBattleMode","UpdateBattleMode","MysteryAwardTimer", _
                         "BattleModeTimer1","BattleModeTimer2", _ 
                         "MartellBattleTimer","HurryUpTimer","ResetComboMultipliers","ModePauseTimer","BlackwaterSJPTimer","WildfireModeTimer", _
-                        "UPFMultiplierTimer","PFMStateTimer","PFMultiplierTimer","BallSaveTimer","BallSaverSpeedUpTimer","WHCTimer")
+                        "UPFMultiplierTimer","PFMStateTimer","PFMultiplierTimer","BallSaveTimer","BallSaverSpeedUpTimer","WHCTimer","LoLSaveTimer","TargaryenFreezeTimer")
 Const tmrUpdateChooseBattle = 1 ' Update DMD timers during Choose Your Battle
 Const tmrChooseBattle   = 2       ' Countdown timer for choosing your Battle
 Const tmrLaunchBattle   = 3       ' After battle is chosen, countdown to launch while scenes play. Can be aborted with flippers
@@ -2369,7 +3176,9 @@ Const tmrPFMultiplier   = 16
 Const tmrBallSave       = 17
 Const tmrBallSaveSpeedUp= 18
 Const tmrWinterHasCome  = 19    ' 1 second update timer for WinterHasCome mode
-Const MaxTimers         = 19     ' Total number of defined timers. There MUST be a corresponding subroutine for each
+Const tmrLoLSave        = 20
+Const tmrTargaryenFreeze= 21
+Const MaxTimers         = 22     ' Total number of defined timers. There MUST be a corresponding subroutine for each
 
 'HurryUp Support
 Dim HurryUpValue
@@ -2629,16 +3438,8 @@ Class cHouse
 
     Private Sub Class_Initialize(  )
 		dim i
-		For i = 0 to 7
-			bQualified(i) = False
-            bCompleted(i) = False
-            bSaid(i) = False
-            QualifyCount(i) = 0
-            Set MyBattleState(i) = New cBattleState
-            MyBattleState(i).SetHouse = i
-		Next
+		ResetHouse
         HouseSelected = 0
-        QualifyValue = 100000
         bBattleReady = False
         LockWall.collidable = False : Lockwall.Uservalue = 0 : LockPost.TransZ = 0 : MoveSword True
         UPFState = 0
@@ -2646,20 +3447,54 @@ Class cHouse
         UPFMultiplier = 1
         UPFShotMask = 42    ' Shots 1, 3 and 5
         UPFCastleShotMask = 42
+        WiCs = 3 ' For testing Winter Has Come
+        ActionButtonUsed = 0
+	End Sub
+
+    ' This sub sets variables for the beginning of a game, but also after Iron Throne completes
+    Private Sub ResetHouse
+        Dim i
+        For i = 0 to 7
+			bQualified(i) = False
+            bCompleted(i) = False
+            bSaid(i) = False
+            QualifyCount(i) = 0
+            Set MyBattleState(i) = New cBattleState
+            MyBattleState(i).SetHouse = i
+		Next
+        QualifyValue = 100000
         WicTotal = 0
         WicShots = 0
-        WiCs = 3 ' For testing Winter Has Come
+        WiCs = 0
         WiCMask = 0
-        ActionButtonUsed = 0
         HotkMask = 0
-	End Sub
+    End Sub
 
     Public Property Let MyHouse(h) 
         HouseSelected = h
         bQualified(h) = True
         QualifyCount(h) = 3
         ActionAbility = h
+        
+
+        '
+        ' Action buttons
+        '  √ Stark: Dire Wolf: Only active during Battle - finishes current HouseBattle1 and scores 5M
+        '  √ Barahteon: Red Woman - light Lord Of Light for a few seconds only. Can be used once per ball
+        '  √ Lannister: Buy playfield X's for successively more gold
+        '  √ Greyjoy: Plunders other houses' action button
+        '  - Tyrell: Iron Bank - sell all X's for gold
+        '  √ Martell: Add-A-Ball
+        '  √ Targaryen: Freeze timers for 15s (except ball save timer). Timers started during freeze don't start until after
+        If h = Tyrell Then bInlanes(0) = True : SetInlaneLights
+
+        if bITMBDone Then Exit Property
+
+        If h = Lannister Then AddGold 750 Else TotalGold = 100 : CurrentGold = 100
+        If h = Baratheon Then AdvanceWallMultiball 2 : WallJPValue = 9250000 Else WallJPValue = 3400000
         If h = Greyjoy Then bCompleted(h) = True Else BattleReady = True
+        PlaySoundVol "say-"&HouseToString(h)&"motto",VolCallout
+
         If bDebug Then
             ' For testing HOTK:
             If h = Stark Then bCompleted(Stark) = True : bCompleted(Baratheon) = True: bCompleted(Targaryen) = True : bQualified(Martell) = True
@@ -2677,19 +3512,6 @@ Class cHouse
         Else
             If (h = Greyjoy or h = Targaryen) Then bCompleted(h) = True Else BattleReady = True
         End If
-        '
-        ' Action buttons
-        '  √ Stark: Dire Wolf: Only active during Battle - finishes current HouseBattle1 and scores 5M
-        '  √ Barahteon: Red Woman - light Lord Of Light for a few seconds only. Can be used once per ball
-        '  √ Lannister: Buy playfield X's for successively more gold
-        '  √ Greyjoy: Plunders other houses' action button
-        '  - Tyrell: Iron Bank - sell all X's for gold
-        '  √ Martell: Add-A-Ball
-        '  - Targaryen: Freeze timers for 15s (except ball save timer). Timers started during freeze don't start until after
-        If h = Lannister Then AddGold 750 Else TotalGold = 100 : CurrentGold = 100
-        If h = Baratheon Then AdvanceWallMultiball 2 : WallJPValue = 9250000 Else WallJPValue = 3400000
-        If h = Tyrell Then bInlanes(0) = True : SetInlaneLights
-        PlaySoundVol "say-"&HouseToString(h)&"motto",VolCallout
     End Property
 	Public Property Get MyHouse : MyHouse = HouseSelected : End Property
 
@@ -2726,6 +3548,11 @@ Class cHouse
         UPFMultiplier = 1
         If ActionAbility <> Lannister Then ActionButtonUsed = False
         If bITMBActive Then DMDCreateITMBScoreScene ITState,ITActiveCastle,7-ITCastlesCollected
+    End Sub
+
+    Public Sub ResetAfterIronThrone
+        ResetHouse
+        Me.MyHouse = SelectedHouse
     End Sub
 
     Public Function HasActionAbility
@@ -2821,6 +3648,9 @@ Class cHouse
                 ModeLightState(i,2) = 0
                 ModeLightState(i,0) = 2
             End If
+            If PlayerMode = -2.1 or PlayerMode = 1 Then
+                If i = HouseBattle1 or i = HouseBattle2 Then SetLightColor HouseSigil(i),HouseColor(i),2 Else HouseSigil(i).State = 0
+            End if
         Next
 
         If HouseBattle1 > 0 Then MyBattleState(HouseBattle1).SetBattleLights
@@ -2872,13 +3702,19 @@ Class cHouse
         ElseIf bITMBActive Then
             If ITCastlesCollected < 7 Then
                 For i = 1 to 7
-                    If (ITState = 0 And (ITCastleMask And 2^i) > 0) Or ITState > 0 Then BWJackpotShots(i) = 1
+                    If (ITState = 0 And (ITCastleMask And 2^i) > 0) Or ITState > 0 Then 
+                        BWJackpotShots(i) = 1
+                        If i = Baratheon Then ResetDropTargets
+                    End if
                 Next
             Else
                 j = 0
                 Do
                     i = RndNbr(7)
-                    If  BWJackpotShots(i) = 0 Then BWJackpotShots(i) = 1 : j=j+1
+                    If  BWJackpotShots(i) = 0 Then 
+                        BWJackpotShots(i) = 1 : j=j+1
+                        If i = Baratheon Then ResetDropTargets
+                    End If
                 Loop While j < 3
             End If
         Else ' Blackwater MB
@@ -3029,7 +3865,6 @@ Class cHouse
                 BWJackpotShots(h) = BWJackpotShots(h) - 1
                 ScoreITJP h,combo,false
             End If
-            If h = Baratheon Then ResetDropTargets
         End If
 
         If bMultiBallMode And PlayerMode <> 2 And ((BWState MOD 2) <> 0 Or bBWMultiballActive = False) Then
@@ -3048,7 +3883,7 @@ Class cHouse
                     BlackwaterScore = BlackwaterScore + (BWJackpotValue*combo*BWJackpotLevel*PlayfieldMultiplierVal)
                     i = ComboLaneMap(h)
                     If i = 0 then i = 1
-                    PlaySoundVol "gotfx-bwexplosion"
+                    PlaySoundVol "gotfx-bwexplosion",VolDef
                     DMDPlayHitScene "got-bwexplosion"&i-1,"gotfx-bwaward",BWExplosionTimes(i-1), _
                                     BWJackpotLevel&"X BLACKWATER JACKPOT",FormatScore(BWJackpotValue*combo*BWJackpotLevel*PlayfieldMultiplierVal),"",combo,3
                     debug.print "jackpot hit. BWJackpotvalue: "&BWJackpotValue&"  New BWScore: "&BlackwaterScore
@@ -3198,7 +4033,7 @@ Class cHouse
             If HouseBattle2 > 0 Then MyBattleState(HouseBattle2).RegisterHit(h)
         End If
 
-        If h = Targaryen And bMultiBallMode = False Then AdvanceWallMultiball 1
+        If h = Targaryen And bMultiBallMode = False And bITMBActive = False Then AdvanceWallMultiball 1
         
         IncreaseComboMultiplier(h)
     End Sub
@@ -3262,6 +4097,7 @@ Class cHouse
         If bCompleted(h) = False Then
             bCompleted(h) = True
             CompletedHouses = CompletedHouses + 1
+            DoSwordsAreLit
             If CompletedHouses = 3 Then DoEBisLit
             If CompletedHouses = 4 Then 
                 For i = 1 to 7
@@ -3321,7 +4157,7 @@ Class cHouse
                 SetModeLights
                 EnableBallSaver 16
                 WHCFlipperFrozen = True : SolLFlipper 0
-                PlaySoundVol "gotfx-whcfrozen",VolDef
+                PlaySoundVol "gotfx-whcfreeze",VolDef
             Else
                 PlaySound "gotfx-ticktock", -1, VolDef, 0, 0, 0, 1, 0
             End If
@@ -3999,7 +4835,7 @@ Class cHouse
                 If ActionButtonUsed Or bLoLLit Then Exit Sub
                 DoLordOfLight False
                 ActionButtonUsed = True
-                'TODO: Start a LoL timer that turns off LoL after 10 seconds
+                SetGameTimer tmrLoLSave,120
             Case Lannister
                 If ActionButtonUsed >= 12 Or PlayfieldMultiplierVal = 5 Or PlayfieldMultiplierVal >= SwordsCollected+3 Then Exit Sub
                 If CurrentGold < ((PlayfieldMultiplierVal+1) * 600) Then Exit Sub 'Not enough gold. TODO: Snarky scene?
@@ -4018,7 +4854,13 @@ Class cHouse
                 DoAddABall
                 ActionButtonUsed = True
             Case Targaryen
-                ' TODO: FreezeAllTimers (except Ball Save) for 15 seconds
+                TargaryenFreezeAllTimers
+                If bUseFlexDMD Then
+                    Set scene = FlexDMD.NewGroup("freeze")
+                    scene.AddActor FlexDMD.NewLabel("txt",FlexDMD.NewFont("skinny10x12.fnt",vbwhite,vbwhite,0),"TARGARYEN"&vbLf&"FREEZE TIMERS")
+                    scene.GetLabel("txt").SetAlignedPosition 64,16,FlexDMD_Align_Center
+                    DMDEnqueueScene scene,1,1000,1500,2000,""
+                End If
         End Select
         SetLockbarLight
     End Sub
@@ -4788,7 +5630,7 @@ Class cBattleState
         DMDBaratheonSpinnerScene HouseValue
         UpdateBattleScene
         
-        If State = 1 And HouseValue > 20000000 Then   ' TODO Spinner value needs to build how high before advancing to State 2?
+        If State = 1 And HouseValue > 20000000 Then
             State = 2
             If SelectedHouse = Greyjoy Then ShotMask = 144 Else ShotMask = 128
             SetModeLights
@@ -5095,7 +5937,7 @@ Class cBattleState
             scene.GetLabel("ttl").SetAlignedPosition 0,10,FlexDMD_Align_Left
             scene.GetLabel("bscore").SetAlignedPosition 40,20,FlexDMD_Align_Center
             DMDEnqueueScene scene,0,2000,3000,4000,"gotfx-battletotal"
-            PlaySoundVol "say-"&HouseToString(MyHouse)&"battlecomplete",VolCallout
+            If MyHouse <> Baratheon Then PlaySoundVol "say-"&HouseToString(MyHouse)&"battlecomplete",VolCallout
         Else
             ' Fail!!
             If MyHouse = Stark Then PlaySoundVol "say-starkbattlefailed",VolCallout
@@ -5272,11 +6114,18 @@ Sub ResetForNewPlayerBall()
     CurrentWildfire = 0
     SwordsCollected = 0
     bLockIsLit = False
+    bEBisLit = False
     BallsInLock = 0
     BWMultiballsCompleted = 0
     WallMBCompleted = 0
     WallMBLevel = 0
     bWallMBReady = False
+    bLoLLit = False
+    bLoLUsed = False
+    bHotkMBDone = False
+    bITMBReady =False
+    bITMBDone = False
+    bITMBActive = False
     bWildfireTargets(0) = False:bWildfireTargets(1) = False
     ' End restore
 
@@ -5355,6 +6204,7 @@ Sub SetPlayfieldLights
         FlashShields SelectedHouse,True
     End If
     SetLockLight
+    SetBumperLights
     SetOutlaneLights
     SetInlaneLights
     SetTopLaneLights
@@ -5371,6 +6221,7 @@ Sub SetPlayfieldLights
     SetTargetLights
     SetBatteringRamLights
     setEBLight
+    SetCastleBlackLight
 End Sub
 
 ' Create a new ball on the Playfield
@@ -5383,7 +6234,9 @@ Sub CreateNewBall()
     BallsOnPlayfield = BallsOnPlayfield + 1
 
     ' kick it out..
-    PlaySoundAt SoundFXDOF("fx_Ballrel", 123, DOFPulse, DOFContactors), BallRelease
+    'PlaySoundAt SoundFXDOF("fx_Ballrel", 123, DOFPulse, DOFContactors), BallRelease
+    RandomSoundBallRelease BallRelease
+    DOF 123, DOFPulse
     BallRelease.Kick 90, 4
 
 ' if there is 2 or more balls then set the multiball flag (remember to check for locked balls and other balls used for animations)
@@ -5469,7 +6322,7 @@ Sub AddScoreNoX(points)
             EnableBallSaver BallSaverTime
         End If
 
-        'TODO: Award replay if score goes over replay score
+        If Score(CurrentPlayer) < ReplayScore And Score(CurrentPlayer) + points > ReplayScore Then DoAwardReplay
         Score(CurrentPlayer) = Score(CurrentPlayer) + points
 
         ' update the score display
@@ -5824,6 +6677,7 @@ Sub EndOfBallComplete()
     ' are there multiple players playing this game ?
     If(PlayersPlayingGame > 1)Then
         ' then move to the next player
+        ScoreScene = Empty  ' Delete the Score scene to force it to be recreated for new player
         NextPlayer = CurrentPlayer + 1
         ' are we going from the last player back to the first
         ' (ie say from player 4 back to player 1)
@@ -5933,7 +6787,8 @@ Sub PlayYouMatched
 	'PlaySoundVol "YouMatchedPlayAgain", VolDef
 	DOF 140, DOFOn
 	DMDFlush
-	DMD "_", CL(1, "CREDITS: " & Credits), "", eNone, eNone, eNone, 500, True, "fx_knocker"
+	DMD "_", CL(1, "CREDITS: " & Credits), "", eNone, eNone, eNone, 500, True, ""
+    KnockerSolenoid
 End Sub 
 
 ' Plays the right song for the current situation
@@ -5942,9 +6797,9 @@ Sub PlayModeSong
     mysong = ""
     If PlayerMode = 2 Then
         mysong = "got-track-wic"
-    ElseIf bHotkMBReady Then
+    ElseIf bHotkMBReady Or bITMBReady Or bWallMBReady Then
         mysong = "got-track-hotk-ready"
-    ElseIf bITMBActive Or bITMBReady Then
+    ElseIf bITMBActive Then
         mysong = "got-track-ironthrone"
     ElseIf bPlayfieldValidated = False Then
         mysong = "got-track-playfieldunvalidated"
@@ -6018,6 +6873,7 @@ End Sub
 
 Sub StopEndOfBallModes() 'this sub is called after the last ball is drained
     If bITMBActive Then DMDIronThroneMBCompleteScene
+    If (TimerFlags(tmrLoLSave) And 1) > 0 Then LoLSaveTimer    ' Baratheon used his button ability. Clear it
 End Sub
 
 ' Called when the last ball of multiball is lost
@@ -6059,6 +6915,7 @@ Sub StopMBmodes
         ' Down to single ball and Iron Throne 7 houses have been completed. IT mode is over
         tmrMultiballCompleteScene.UserValue = "DMDIronThroneMBCompleteScene"
         bITMBActive = False
+        House(CurrentPlayer).ResetAfterIronThrone
     End If
     bHotkMBActive = False
     bWallMBActive = False
@@ -6101,8 +6958,10 @@ Sub SetTopGates
     If PlayerMode = 2 Or HouseBattle1 = Baratheon or HouseBattle2 = Baratheon or HouseBattle1 = Martell or HouseBattle2 = Martell or HouseBattle1=Greyjoy or HouseBattle2 = Greyjoy Then
         lstate=True:rstate=True
     End If
-    If bEBisLit or bElevatorShotUsed = False or bCastleMBActive or (bWallMBReady And bMultiBallMode = False) Or (bMysteryLit And bMultiBallMode = False And PlayerMode = 0) Then
-        lstate=True : MoveDiverter(1)
+    If bEBisLit or bElevatorShotUsed = False or bCastleMBActive or _
+        (bWallMBReady And bMultiBallMode = False And bITMBActive = False) Or _
+        (bMysteryLit And bMultiBallMode = False And PlayerMode = 0 And bITMBActive = False) Then
+            lstate=True : MoveDiverter(1)
     Else MoveDiverter(0)
     End If
     If ComboMultiplier(1) > 1 Then rstate=True
@@ -6129,7 +6988,7 @@ Sub ResetComboMultipliers
 End Sub
 
 Sub SetMystery
-    If bMysteryLit = True And PlayerMode = 0 And bMultiBallMode = False Then
+    If bMysteryLit = True And PlayerMode = 0 And bMultiBallMode = False And bITMBActive = False Then
         SetLightColor li153, white, 2  ' Turn on Mystery light
         MoveDiverter 1
         topgatel.open = True
@@ -6243,17 +7102,31 @@ Sub SetLockbarLight
         If ab <> 0 Then col = HouseColor(ab) : st = 1 : Else st = 0
     End if
 
-    If bMysteryAwardActive Or PlayerMode = -2 Or ((bMultiBallMode Or Playermode = 1) And ab > 0) Then st = 2
+    If bMysteryAwardActive Or PlayerMode = -2 Then st = 2
 
-    Select Case st
-        Case 0: LockbarFlasher.visible=0
-        Case 1: SetFlashColor LockbarFlasher,col,1 : LockbarFlasher.TimerEnabled = 0
-        Case 2
-            SetFlashColor LockbarFlasher,col,1
-            LockbarFlasher.UserValue = 1
-            LockbarFlasher.TimerInterval = 100
-            LockbarFlasher.TimerEnabled = 1
-    End Select
+    'DOF for Lockbar button light
+    If bHaveLockbarButton Then
+        LockbarFlasher.visible = 0
+        lockbarlightbase.visible = 0
+        Dim dofnum
+        Select Case st
+            Case 0: For dofnum = 141 to 147 : DOF dofnum,DOFOff : Next
+            Case 1: DOF 140 + ab, DOFOn
+            Case 2
+                If bMysteryAwardActive Then dofnum = 142 Else dofnum = 141
+                DOF dofnum,DOFOn
+        End Select
+    Else
+        Select Case st
+            Case 0: LockbarFlasher.visible=0
+            Case 1: SetFlashColor LockbarFlasher,col,1 : LockbarFlasher.TimerEnabled = 0
+            Case 2
+                SetFlashColor LockbarFlasher,col,1
+                LockbarFlasher.UserValue = 1
+                LockbarFlasher.TimerInterval = 100
+                LockbarFlasher.TimerEnabled = 1
+        End Select
+    End If
 End Sub
 
 Sub LockbarFlasher_Timer
@@ -6500,8 +7373,9 @@ Sub SetBonusMultiplier(Level)
 End Sub
 
 Sub IncreaseBonusMultiplier(bx)
-    If BonusMultiplier(CurrentPlayer) = 20 then Exit Sub
-    BonusMultiplier(CurrentPlayer) = BonusMultiplier(CurrentPlayer) + bx : If BonusMultiplier(CurrentPlayer) > 20 Then BonusMultiplier(CurrentPlayer) = 20
+    If BonusMultiplier(CurrentPlayer) = MaxBonusMultiplier then Exit Sub
+    BonusMultiplier(CurrentPlayer) = BonusMultiplier(CurrentPlayer) + bx
+    If BonusMultiplier(CurrentPlayer) > MaxBonusMultiplier Then BonusMultiplier(CurrentPlayer) = MaxBonusMultiplier
     Dim scene
     If bUseFlexDMD Then
         Set scene = FlexDMD.NewGroup("testscene")
@@ -6621,7 +7495,7 @@ Sub ChooseHouse(ByVal keycode)
         End If
         FlashShields SelectedHouse,True
         House(CurrentPlayer).Say(SelectedHouse)
-        DMDScrollITMap t,SelectedHouse,10000000
+        'DMDScrollITMap t,SelectedHouse,10000000
     ElseIf keycode = RightFlipperKey Then
         FlashShields SelectedHouse,False
         House(CurrentPlayer).StopSay(SelectedHouse)
@@ -6805,7 +7679,7 @@ Sub doWFTargetHit(t)
         li80.TimerEnabled = True
         bWildfireTargets(0)=False:bWildfireTargets(1)=False
         If PlayerMode <> 1 Then House(CurrentPlayer).RegisterHit(Tyrell)
-        bWildfireLit = True: SetLightColor li126, darkgreen, 1
+        DoWildfileLit
     Else
         AddBonus 10000
         Select Case t
@@ -6835,7 +7709,7 @@ End Sub
 Sub LightLock
     Dim i
 
-    if bLockIsLit or bMultiBallMode Then Exit Sub
+    if bLockIsLit or bMultiBallMode Or bITMBActive Then Exit Sub
     bLockIsLit = True
     ' Flash the lock light
     li111.BlinkInterval = 300
@@ -6919,7 +7793,7 @@ Sub Outlane_Hit
             EnableBallSaver 5
             bLoLLit = False
             SetOutlaneLights
-            DoLordOfLightSaved True
+            DoLordOfLight True
         End If
         Exit Sub
     End If
@@ -7020,9 +7894,8 @@ Sub Kicker37_Hit
     If Tilted then Exit Sub
     AddScore 1000
     House(CurrentPlayer).RegisterHit(Targaryen)
-    PlaySoundAt "fx_kicker",kicker37
-    Kicker37.Kick 190,50    'Angle,Power
-    DOF 111, DOFPulse
+    PlaySoundAt SoundFXDOF("fx_kickback", 112, DOFPulse, DOFContactors),kicker37
+    Kicker37.Kick 190,40    'Angle,Power
 End Sub
 
 '*****************
@@ -7035,10 +7908,11 @@ End Sub
 
 Sub KickerFloor_Hit
     Me.DestroyBall
+    SoundSaucerLock KickerFloor
     MoveDiverter(0)
     Dim delay : delay = 500
     If ROrbitsw31.UserValue > 10 Then delay = 3000 ' A qualifying hit on the Right orbit was made, so give time for callout to finish
-    If ((((bMysteryLit And PlayerMode = 0) Or bWallMBReady And PlayerMode < 2) And bMultiBallMode = False) or bEBisLit) And bJustPlunged = False Then
+    If ((((bMysteryLit And PlayerMode = 0) Or (bWallMBReady And PlayerMode < 2 )) And bITMBActive = False And bMultiBallMode = False) or bEBisLit) And bJustPlunged = False Then
         vpmTimer.AddTimer delay,"ElevatorKick 2 '"
         If bMultiBallMode = False Then FreezeAllGameTimers
     Else
@@ -7049,7 +7923,9 @@ Sub KickerFloor_Hit
 End Sub
 
 Sub ElevatorKick(f)
-    PlaySoundAt "fx_kicker",KickerFloor
+    'PlaySoundAt SoundFXDOF("fx_kicker", 110, DOFPulse, DOFContactors), KickerFloor
+    SoundSaucerKick 1, KickerFloor
+    DOF 110,DOFPulse
     Select Case f
         Case 1
             KickerUPF.CreateBall
@@ -7068,13 +7944,14 @@ End Sub
 
 Sub KickerIT_Hit
     Dim delay
+    SoundSaucerLock KickerIT
     delay = 500
     If bEBisLit Then
         bEBisLit = False : setEBLight
         DoAwardExtraBall
         delay = 6500
     End If
-    If bWallMBReady And PlayerMode < 2 And bMultiBallMode = False Then
+    If bWallMBReady And PlayerMode < 2 And bMultiBallMode = False And bITMBActive = False Then
         vpmTimer.AddTimer delay,"StartWallMB '"
     ElseIf bMysteryLit And PlayerMode = 0 And bMultiBallMode = False Then
         vpmTimer.AddTimer delay,"DoMysteryAward '"
@@ -7084,7 +7961,9 @@ Sub KickerIT_Hit
 End Sub
 
 Sub IronThroneKickout
-    PlaySoundAt "fx_kicker",KickerIT
+    'PlaySoundAt SoundFXDOF("fx_kicker", 111, DOFPulse, DOFContactors), KickerIT
+    SoundSaucerKick 1, KickerIT
+    DOF 111, DOFPulse
     KickerIT.Kick 180,3
 End Sub
 
@@ -7528,21 +8407,32 @@ End Sub
 '**************
 Sub Bumper1_Hit
     If Tilted then Exit Sub
-    PlaySoundAt SoundFXDOF("fx_bumper", 107, DOFPulse, DOFContactors),Bumper1
+    'PlaySoundAt SoundFXDOF("fx_bumper1", 107, DOFPulse, DOFContactors),Bumper1
+    RandomSoundBumperTop Bumper1
+    DOF 107, DOFPulse
     doPictoPops 0
 End Sub
 
 Sub Bumper2_Hit
     If Tilted then Exit Sub
-    PlaySoundAt SoundFXDOF("fx_bumper", 108, DOFPulse, DOFContactors),Bumper1
+    'PlaySoundAt SoundFXDOF("fx_bumper2", 108, DOFPulse, DOFContactors),Bumper2
+    RandomSoundBumperMiddle Bumper2
+    DOF 108, DOFPulse
     doPictoPops 1
 End Sub
 
 Sub Bumper3_Hit
     If Tilted then Exit Sub
-    PlaySoundAt SoundFXDOF("fx_bumper", 109, DOFPulse, DOFContactors),Bumper1
+    'PlaySoundAt SoundFXDOF("fx_bumper3", 109, DOFPulse, DOFContactors),Bumper3
+    RandomSoundBumperBottom Bumper3
+    DOF 109, DOFPulse
     doPictoPops 2
 End Sub
+
+'***** Bumper Light Timers - Turn bumpers back on when they're done flashing ******
+Sub Li168_Timer : Me.State = 1 : End Sub
+Sub Li171_Timer : Me.State = 1 : End Sub
+Sub Li174_Timer : Me.State = 1 : End Sub
 
 
 '*************************
@@ -7582,7 +8472,6 @@ MysteryAwards(25) = Array("HOLD"&vbLf&"BONUS",4200)
 MysteryAwards(26) = Array("LIGHT"&vbLf&"EXTRA"&vbLf&"BALL",4500)
 MysteryAwards(27) = Array("LIGHT 3X"&vbLf&"SUPER"&vbLf&"JACKPOT",4750)
 MysteryAwards(28) = Array(25,6000)
-MysteryAwards(29) = Array("SPECIAL",10000)
 
 ' Choose 2 "random" mysteries from the array. One will use a moderate amount of their gold, the other will use as much as possible. 
 ' The third (First) option is option 0 - keep gold
@@ -7593,11 +8482,11 @@ MysteryAwards(29) = Array("SPECIAL",10000)
 Sub DoMysteryAward
     Dim i
     MysteryVals(0) = 0
-    For i = 1 to 19+RndNbr(10)
+    For i = 1 to 18+RndNbr(10)
         If MysteryAwards(i)(1) < CurrentGold And MysteryAwardGoNoGo(i) Then MysteryVals(2) = i
     Next
     Do
-        i = RndNbr(29)
+        i = RndNbr(28)
     Loop Until MysteryAwards(i)(1) < CurrentGold And i <> MysteryVals(2) And MysteryAwardGoNoGo(i)
     MysteryVals(1) = i
     bMysteryAwardActive = True
@@ -7622,7 +8511,7 @@ Function MysteryAwardGoNoGo(aw)
                 If House(CurrentPlayer).Qualified(i) = False Then Exit Function
             Next
             MysteryAwardGoNoGo = False
-        Case 3: If BonusMultiplier(CurrentPlayer) >= 20 Then MysteryAwardGoNoGo = False
+        Case 3: If BonusMultiplier(CurrentPlayer) >= MaxBonusMultiplier Then MysteryAwardGoNoGo = False
         Case 5: If bWildfireLit Then MysteryAwardGoNoGo = False
         Case 6: If bLockIsLit Then MysteryAwardGoNoGo = False
         Case 8: If bSwordLit Then MysteryAwardGoNoGo = False
@@ -7705,10 +8594,10 @@ Sub SelectMysteryAward
             DMD "",HouseToUCString(i)&" IS LIT","",eNone,eNone,eNone,1000,True,""
         Case 3: IncreaseBonusMultiplier 1  ' +1X
         Case 4: IncreaseWallJackpot
-        Case 5: bWildfireLit = True: SetLightColor li126, darkgreen, 1 ' TODO: This has a scene
+        Case 5: DoWildfileLit
         Case 6: LightLock
         Case 7: TotalWildfire = TotalWildfire + 5: House(CurrentPlayer).AddWildfire 5  ' Increase wildfire. TODO: Should play a scene
-        Case 8: bSwordLit = True: SetSwordLight  ' Light Swords. TODO: Play a scene
+        Case 8: DoSwordsAreLit
         Case 9: PFMState = 2 : SetBatteringRamLights : DoBatteringRamScene "LIGHT PLAYFIELD"&vbLf&"MULTIPLIER"
         Case 10: DoAwardSword
         Case 11: House(CurrentPlayer).IncreaseUPFLevel : House(CurrentPlayer).SetUPFLights
@@ -7731,7 +8620,7 @@ Sub SelectMysteryAward
         Case 28
             AddScore 25000000*combo
             DMD "BIGGEST POINTS",FormatScore(25000000*PlayfieldMultiplierVal*combo),"",eNone,eNone,eNone,1000,True,""
-        Case 29: AwardSpecial
+        Case 29: AwardSpecial   ' Not implemented
     End Select
     vpmTimer.AddTimer 500,"IronThroneKickout '"
     PlayModeSong
@@ -7797,6 +8686,8 @@ PictoPops(16) = Array("LIGHT"&vbLf&"WILDFIRE","WF LIT",20,7)
 PictoPops(17) = Array("AWARD"&vbLf&"SPECIAL","SPECIAL",5,0)
 
 
+Dim BumperLights
+BumperLights = Array(li168,li171,li174)
 Sub doPictoPops(b)
     Dim i,tmp
     ' Pick a random drum sound effect
@@ -7811,6 +8702,12 @@ Sub doPictoPops(b)
         Case 2
             b2=0            
     End Select
+
+    ' Bumper Lights
+    For i = 0 to 2
+        If b = i Then BumperLights(i).BlinkInterval = 50 : BumperLights(i).State = 2 Else BumperLights(i).State = 0
+        BumperLights(i).TimerEnabled = 0 : BumperLights(i).TimerInterval = 400 : BumperLights(i).TimerEnabled = 1
+    Next
 
     If (BumperVals(b) = BumperVals(b1) or BumperVals(b) = BumperVals(b2)) Then
         ' This bumper already matches one other. Check to make sure the value they're locked to is still valid
@@ -7834,8 +8731,8 @@ Sub doPictoPops(b)
             TotalWildfire = TotalWildfire + 5: House(CurrentPlayer).AddWildfire 5
         Case 3      ' Increase Gold
             If House(CurrentPlayer).HasAbility(Lannister) Then AddGold 250 Else AddGold 150
-        Case 4      ' Light Swords. TODO: Play a scene
-            bSwordLit = True: SetSwordLight
+        Case 4      ' Light Swords.
+            DoSwordsAreLit
         Case 5      ' Increase Winter Is Coming value
             IncreaseWinterIsComing
         Case 6      ''Battle for Wall Value Increases. Value=xxx'
@@ -7854,14 +8751,12 @@ Sub doPictoPops(b)
                 HurryUpValue = HurryUpValue + (HurryUpChange * 50)
                 'TODO: pLay an "Add Time" scene with two hourglasses
             End if
-        Case 11: If bMultiBallMode Then DoAddABall
+        Case 11: If bMultiBallMode Then DoAddABall : bAddABallUsed = True
         Case 12: AdvanceWallMultiball 1
         Case 13: DoEBisLit
         Case 14: DoLordOfLight False
         Case 15: bMysteryLit = True : SetMystery
-        Case 16
-            ' TODO: This has a scene
-            bWildfireLit = True: SetLightColor li126, darkgreen, 1
+        Case 16: DoWildfileLit
         Case 17
             AwardSpecial
     End Select
@@ -8012,6 +8907,7 @@ Sub StartCastleMultiball
     DMDCreateCastleMBScoreScene ' alternate scoring scene
     EnableBallSaver 25
     SetTopGates ' all shots go to upper PF
+    PlayModeSong
     StartNonBWMB 2
 End Sub
 
@@ -8044,6 +8940,7 @@ Sub StartWallMB
     House(CurrentPlayer).ResetForWallMB
     DMDCreateWallMBScoreScene
     DoWallMBSeq
+    PlayModeSong
 End Sub
 
 Sub StartWHCMB(shot)
@@ -8235,6 +9132,7 @@ Sub StartIronThroneMB
     bHotkIntroRunning = True ' Tell sw48 to ignore the ball for now
     bITMBReady = False
     ResetDropTargets
+    ResetHotkLights
     ITScore = 0
     EnableBallSaver 25
     bBallReleasing = True
@@ -8244,7 +9142,6 @@ Sub StartIronThroneMB
         scene.AddActor NewSceneFromImageSequence("itfg","itintro",110,20,0,0)
         DMDEnqueueScene scene,0,5000,5000,2000,""
     End If
-    'TODO Not finished yet?
     House(CurrentPlayer).ResetForITMB
     SetPlayfieldLights
     PlayModeSong
@@ -8260,7 +9157,8 @@ Sub ReleaseLockedBall(sword)
     LockWall.Collidable = False : Lockwall.Uservalue = 0
     'Move the actuator primitive down
     LockPost.TransZ = 0
-    PlaySoundAt "fx_kicker",sw46
+    'PlaySoundAt "fx_kicker",sw46
+    SoundSaucerKick 0, sw46
     If sword Then
         'Rotate sword primitive to "chop off" the ball
         MoveSword False
@@ -8272,11 +9170,11 @@ Sub MoveSword(up)
     If up Then
         LockSword.ObjRotY = -30
         SwordScrew.TransY = -12 : SwordScrew.TransX=-3
-        SwordActuator.HeightTop = 170
+        SwordActuator.TransX = -12 : SwordActuator.TransZ = -3
     Else
         LockSword.ObjRotY = 0
         SwordScrew.TransY = 0 : SwordScrew.TransX=0
-        SwordActuator.HeightTop = 160
+        SwordActuator.TransX = 0 : SwordActuator.TransZ = 0
     End If
 End Sub
 
@@ -8316,7 +9214,7 @@ Sub tmrGame_Timer
     if bGameTimersEnabled = False Then Exit Sub
     bGameTimersEnabled = False
     For i = 1 to MaxTimers
-        If (TimerFlags(i) AND 2) = 2 And i > 5 Then TimerTimestamp(i) = TimerTimestamp(i) + 1 ' "Frozen" timer - increase its expiry by 1 step (Timers 1 - 5 can't be frozen.)
+        If ((TimerFlags(i) AND 2) = 2 Or (TimerFlags(i) And 4) = 4) And i > 5 Then TimerTimestamp(i) = TimerTimestamp(i) + 1 ' "Frozen" timer - increase its expiry by 1 step (Timers 1 - 5 can't be frozen.)
         If (TimerFlags(i) AND 1) = 1 Then 
             bGameTimersEnabled = True
             If TimerTimestamp(i) <= GameTimeStamp Then
@@ -8411,6 +9309,26 @@ Sub WHCTimer
     House(CurrentPlayer).CheckWHCTimer
 End Sub
 
+Sub LoLSaveTimer
+    bLoLLit = False
+    SetOutlaneLights
+End Sub
+
+Sub TargaryenFreezeTimer
+    Dim i
+    For i = 6 to MaxTimers
+        TimerFlags(i) = TimerFlags(i) And 251
+    Next
+End Sub
+
+Sub TargaryenFreezeAllTimers
+    Dim i
+    For i = 6 to MaxTimers
+        If i <> tmrBallSave And i <> tmrBallSaveSpeedUp And i <> tmrTargaryenFreeze Then TimerFlags(i) = TimerFlags(i) Or 4
+    Next
+    SetGameTimer tmrTargaryenFreeze,TargaryenFreezeLength*10
+End Sub
+ 
 ' Check the location of all balls on the playfield to see if any are stuck on the ramp
 ' that shouldn't be
 Dim BallCheckFails
@@ -8529,6 +9447,7 @@ Sub StopHurryUp
         GiIntensity 1
         SetPlayfieldLights
         SetTopGates
+        PlayModeSong
         If bBWMultiballActive Then DMDCreateBWMBScoreScene : Else DMDResetScoreScene
         DMDFlush
         AddScore 0
@@ -8691,7 +9610,7 @@ Sub DoLordOfLight(saved)
         If saved then BlinkActor Scene.GetLabel("txt"),100,15
         DMDEnqueueScene Scene,2,750,750,1500,"gotfx-lolsave"
     End If
-    bLoLLit = True
+    bLolLit = Not Saved
     SetOutlaneLights
 End Sub
 
@@ -8721,6 +9640,29 @@ Sub DoAwardSword
     End if
 End Sub
 
+Sub DoSwordsAreLit
+    Dim scene
+    bSwordLit = True : SetSwordLight
+    If bUseFlexDMD Then
+        Set scene = NewSceneWithVideo("swordlit","got-swordslit")
+        scene.AddActor FlexDMD.NewLabel("txt",FlexDMD.NewFont("udmd-f6by8.fnt",vbwhite,vbwhite,0),"SWORDS"&vbLf&"ARE LIT")
+        scene.GetLabel("txt").SetAlignedPosition 96,9,FlexDMD_Align_Center
+        DMDEnqueueScene scene,1,500,1000,2000,"gotfx-swordsarelit"
+    End If
+End Sub
+
+Sub DoWildfileLit
+    Dim scene
+    bWildfireLit = True : SetLightColor li126, darkgreen, 1
+    If bUseFlexDMD Then
+        Set scene = NewSceneWithImage("wflit","got-wildfirelit")
+        scene.GetImage("wflitimg").AddAction scene.GetImage("wflitimg").ActionFactory().MoveTo(0,-58,1)
+        scene.AddActor FlexDMD.NewLabel("txt",FlexDMD.NewFont("udmd-f6by8.fnt",vbwhite,vbwhite,0),"WILDFIRE"&vbLf&"IS LIT")
+        scene.GetLabel("txt").SetAlignedPosition 102,9,FlexDMD_Align_Center
+        DMDEnqueueScene scene,1,1000,1000,2000,""
+    End If
+End Sub
+
 Sub DoEBisLit
     Dim scene,i
     If bEBisLit Then Exit Sub
@@ -8739,12 +9681,24 @@ Sub DoAwardExtraBall
     Dim scene
     ExtraBallsAwards(CurrentPlayer) = ExtraBallsAwards(CurrentPlayer) + 1
     LightShootAgain.State = 1
+    AddScore 15000000
     PlaySoundVol "gotfx-extra-ball1",VolDef
     If bUseFlexDMD Then
         Set scene = NewSceneWithVideo("eb","got-extraball")
         DMDEnqueueScene scene,0,5500,7500,2500,"gotfx-extra-ball"
     Else
         DisplayDMDText "","EXTRA BALL",1000
+    End if
+End Sub
+
+Sub DoAwardReplay
+    Dim scene
+    'PlaySound SoundFXDOF("fx_Knocker", 122, DOFPulse, DOFKnocker)
+    KnockerSolenoid
+    Credits = Credits + 1
+    If bUseFlexDMD Then
+        Set scene = NewSceneWithVideo("replay","got-replay")
+        DMDEnqueueScene scene,0,2500,4000,2000,"gotfx-replay"
     End if
 End Sub
 
@@ -9118,7 +10072,7 @@ Sub SetComboLights
     Dim i,stat,x
     stat = 0:x=False
     For i = 1 to 5
-        If bWallMBReady And i=5 Then 
+        If bWallMBReady And bITMBActive = False And i=5 Then 
             SetLightColor ComboLights(5),purple,2
         Else
             If ComboMultiplier(i) > 1 Then stat=2:x=True Else stat=0
@@ -9134,7 +10088,7 @@ Sub SetComboLights
 End Sub
 
 Sub setEBLight
-    If bWallMBReady Then
+    If bWallMBReady And bITMBActive = False And bMultiBallMode = False Then
         SetLightColor li150,purple,2
         SetLightColor ComboLights(5),purple,2
     ElseIf bEBisLit Then
@@ -9142,6 +10096,22 @@ Sub setEBLight
     Else
         SetLightColor li150,white,0
     End If
+End Sub
+
+Sub SetCastleBlackLight
+    If PlayerMode >=0 And PlayerMode < 2 And bMultiBallMode = False And bITMBActive = False Then
+        SetLightColor li95,purple,1
+    Else
+        li95.state = 0
+    End If
+End Sub
+
+Sub SetBumperLights
+    Dim a,clr
+    If PlayerMode = 2 Then clr = ice Else clr = white
+    For Each a in Array(li168,li171,li174)
+        SetLightColor a,clr,1
+    Next
 End Sub
 
 Sub SetShootAgainLight
@@ -9161,6 +10131,7 @@ Sub SetDefaultPlayfieldLights
     For i = 0 to 4: SetLightColor GoldTargetLights(i),yellow,-1: Next
     For i = 0 to 2: SetLightColor LoLLights(i),yellow,-1: Next
     For i = 0 to 3: SetLightColor pfmuxlights(i),amber,-1: Next
+    SetLightColor li95,purple,-1    ' Castle Black light (Dragon Shot)
     SetLightColor li80,green,-1     ' WF targets
     SetLightColor li83,green,-1     ' WF targets
     SetLightColor li150,amber,-1    ' EB light
@@ -9404,7 +10375,7 @@ Sub InstantInfo
             line1="TOTAL BONUS"
             line2=FormatScore(BonusPoints(CurrentPlayer))
             line3="CURRENT MULTIPLIER "&BonusMultiplier(CurrentPlayer)&"X"
-        'TODO  more InstantInfo screens in here
+        'Could add more Info screens here. Real game doesn't have any more though
         Case 24: InfoPage=29:InstantInfo:Exit Sub
 
         Case 29:format=1:line1 = "REPLAY AT" &vbLf&ReplayScore
@@ -9519,7 +10490,7 @@ Sub GameSaveHighScore(score,name)
 End Sub
 
 Sub GameAddCredit
-    PlaySoundVol "fx_coin",VolDef
+    PlaySound ("Coin_In_"&RndNbr(3)), 0, CoinSoundLevel, 0, 0.25
     ' Jump to the Attract Mode Scene to the "Credits" screen
     if bAttractMode Then
         DMDFlush
@@ -10159,7 +11130,6 @@ Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo,format)
         scene.GetGroup("hitscenetext").GetLabel("line3").Visible = l3vis
 
         ' After delay, disable video/image and enable text
-        ' TODO: Make the transition from video to text cool.
         If format <> 6 And delay > 0 And Not (scenevid Is Nothing) Then
             If format <> 9 then DelayActor scenevid,delay,False
             DelayActor scene.GetGroup("hitscenetext"),delay,True
@@ -10257,7 +11227,7 @@ Sub DMDChooseScene1(line0,line1,line2,sigil)    ' sigil is an image name
         ChooseHouseScene.AddActor FlexDMD.NewLabel("action", FlexDMD.NewFont("tiny3by5.fnt", vbWhite, vbWhite, 0) ,line2)
         ChooseHouseScene.GetLabel("action").SetAlignedPosition 77,28,FlexDMD_Align_Center
         Set DefaultScene = ChooseHouseScene
-  ' for debugging map mover      DMDFlush
+        DMDFlush
     Else
         DisplayDMDText line0, line1, 0
     End if
@@ -10293,14 +11263,14 @@ Sub DMDChooseBattleScene(line0,line1,line2,tmr)
                 Set smlfont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0)
                 CBScene.AddActor FlexDMD.NewLabel("choose",font,"CHOOSE YOUR BATTLE") 
                 CBScene.GetLabel("choose").SetAlignedPosition 64,4,FlexDMD_Align_Center
-                CBScene.AddActor FlexDMD.NewLabel("house1",font,"")   ' TODO: needs fatter font
+                CBScene.AddActor FlexDMD.NewLabel("house1",font,"")
                 CBScene.GetLabel("house1").SetAlignedPosition 64,20,FlexDMD_Align_Center
                 CBScene.AddActor FlexDMD.NewLabel("and",fatfont,"AND")
                 With CBScene.GetLabel("and")
                     .SetAlignedPosition 64,20,FlexDMD_Align_Center
                     .Visible = False
                 End With
-                CBScene.AddActor FlexDMD.NewLabel("house2",font,"")   ' TODO: needs fatter font
+                CBScene.AddActor FlexDMD.NewLabel("house2",font,"")
                 With CBScene.GetLabel("house2")
                     .SetAlignedPosition 64,28,FlexDMD_Align_Center
                     .Visible = False
@@ -10611,7 +11581,7 @@ Sub DMDSpinnerScene(spinval)
         If Not IsEmpty(DisplayingScene) Then
             If DisplayingScene Is SpinScene Then FlexDMD.LockRenderThread:locked=true
         End If
-        If spinval=AccumulatedSpinnerValue Then ' First spin this scene: clear the scene
+        If spinval=AccumulatedSpinnerValue Or SpinScene.GetLabel("level") Is Nothing Then ' First spin this scene: clear the scene
             SpinScene.RemoveAll
             SpinScene.AddActor FlexDMD.NewLabel("level",tinyfont,"0")
             SpinScene.AddActor FlexDMD.NewLabel("spin", FlexDMD.NewFont("FlexDMD.Resources.udmd-f7by13.fnt", RGB(167, 165, 165), vbWhite, 0),"SPINNER")
@@ -10960,21 +11930,41 @@ End Sub
 
 Dim ScoreScene,bAlternateScoreScene,AlternateScoreSceneMask
 Sub DMDLocalScore
-    Dim ComboFont,ScoreFont,i,font
+    Dim ComboFont,ScoreFont,i,j,x,y,font,tinyfont
     If bUseFlexDMD Then
         If IsEmpty(ScoreScene) And bAlternateScoreScene = False Then
             Set ScoreScene = FlexDMD.NewGroup("ScoreScene")
             Set ComboFont = FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0)
-            If Score(CurrentPlayer) < 1000000000 Then font = "FlexDMD.Resources.udmd-f7by13.fnt" Else font = "udmd-f6by8.fnt"
+            If Score(CurrentPlayer) < 1000000000 And PlayersPlayingGame < 3 Then font = "FlexDMD.Resources.udmd-f7by13.fnt" Else font = "udmd-f6by8.fnt"
             Set ScoreFont = FlexDMD.NewFont(font, vbWhite, vbWhite, 0) 
+            Set tinyfont = FlexDMD.NewFont("tiny3by5.fnt",vbWhite,vbWhite,0)
             ' Score text
-            ScoreScene.AddActor FlexDMD.NewLabel("Score", ScoreFont, "0")
+            For i = 1 to PlayersPlayingGame
+                If i = CurrentPlayer Then
+                    j=""
+                    ScoreScene.AddActor FlexDMD.NewLabel("Score", ScoreFont, FormatScore(Score(i)))
+                Else
+                    j=i
+                    ScoreScene.AddActor FlexDMD.NewLabel("Score"&i, tinyfont, FormatScore(Score(i)))
+                End If
+                x = 80 : y = 0
+                If CurrentPlayer > 2 Then 
+                    y=6
+                Elseif i > 2 Then 
+                    y = 10
+                End If
+                If (i MOD 2) = 0 Then 
+                    x = 127
+                ElseIf (CurrentPlayer MOD 2) = 0 Then
+                    x = 48
+                End if 
+                ScoreScene.GetLabel("Score"&j).SetAlignedPosition x,y, FlexDMD_Align_TopRight
+            Next
             ' Ball, credits
             ScoreScene.AddActor FlexDMD.NewLabel("Ball", ComboFont, "BALL 1")
             ScoreScene.AddActor FlexDMD.NewLabel("Credit", ComboFont, "CREDITS 0")
             If bFreePlay Then ScoreScene.GetLabel("Credit").Text = "Free Play"
-            ' Align them 
-            ScoreScene.GetLabel("Score").SetAlignedPosition 88,0, FlexDMD_Align_TopRight
+            ' Align them
             ScoreScene.GetLabel("Ball").SetAlignedPosition 32,20, FlexDMD_Align_Center
             ScoreScene.GetLabel("Credit").SetAlignedPosition 96,20, FlexDMD_Align_Center
             ' Divider
@@ -10997,21 +11987,26 @@ Sub DMDLocalScore
             End With
         End If
         
+        ' Update score position
         If bAlternateScoreScene = False Then
-            i = 80
-            If CurrentPlayer = 2 Or CurrentPlayer = 4 Then 
-                i = 127
-            ElseIf  Score(CurrentPlayer) > 999999999 Then 
-                i = 90
-            End If
-            ScoreScene.GetLabel("Score").SetAlignedPosition i,0, FlexDMD_Align_TopRight
+            x = 80 : y = 0
+            If CurrentPlayer = 2 Or CurrentPlayer = 4 Then x = 127
+            If CurrentPlayer > 2 Then y = 10
+            ScoreScene.GetLabel("Score").SetAlignedPosition x,y, FlexDMD_Align_TopRight
         End If
         If bAlternateScoreScene = False or (AlternateScoreSceneMask And 8) = 8 Then
             ' Update combo x
+            Dim t : t = False
+            If (TimerFlags(tmrTargaryenFreeze) And 1) = 1 Then t = True
             For i = 1 to 5
                 With ScoreScene.GetLabel("combo"&i)
-                    .Text = (ComboMultiplier(i)*PlayfieldMultiplierVal)&"X"
+                    If t And i=1 Then
+                        .Text = "TIMERS FROZEN: " & Int(TimerTimestamp(tmrTargaryenFreeze)-GameTimeStamp)
+                    Else 
+                        .Text = (ComboMultiplier(i)*PlayfieldMultiplierVal)&"X"
+                    End If
                     .SetAlignedPosition (i-1)*25,31,FlexDMD_Align_BottomLeft
+                    If t And i > 1 Then .Visible = 0 Else .Visible = 1
                 End With
             Next
         End If
@@ -11086,23 +12081,13 @@ Class PinupNULL	' Dummy Pinup class so I dont have to keep adding if cases when 
 	End Sub 
 End Class 
 
-' √? Implement LoL outlanes - they should release new ball as soon as existing ball rolls over outlane, if ball saver not lit
-'   - need to modify Drain and CreateNewBall code to not think we’re in multiball mode
 ' - Implement playfield lighting effects
 ' - Implement Flashers
 
-' √? During BWMB, with LoL lit, losing one ball down the side didn't save the ball
-'    - in real game, this re-lights ball saver for a few seconds and says "keep shooting"
-
-' Targaryen battle mode:
-' √? in Level 3, a shot on the dragon doesn't register and move to the next State, but restarting the mode does
-' - At State 7, after exiting it, the BattleReady light wasn't lit. Wasn't repeatable
-' - Targaryen battle end may award total twice because final shot is on targaryen
 ' - Elevator kickers are visible on UPF but are unfinished - problem is actually lighting shining inside elevator
 
 ' - if you press action button during battle instructions, it goes straight to battle and bypasses intro music, but still sits on the ball for 5 seconds
 ''
-' - need more things awarding bonus
 ' - UPF can't handle multiball and battle at the same time - does it need to?
 
 ' - my fonts need to be on a transparent background, not black background.
@@ -11111,33 +12096,22 @@ End Class
 ' - Lock Is Lit stayed lit during Wall MB
 ' - When all battles were done, Choose Battle was still able to start and wanted us to do Tyrell
 
-' √ "INSERT COINS" scene doesn't work
-
-' √? during HOTk Stark bonus round, HurryUp value was still on screen, obj said "Hit Battering ram", and counter counted past 0
-
-' Iron Throne mode:
-' √ iron throne fg scene needs to done with image stack rather than transparent gif
-' √ tmrBallLockCheck might fire during IT mode and release a locked ball
-' √ fix Sub ResetLights - it should still set Sigil lights during BattleMode and Multiball Mode
-' √ IronThrone music keeps playing 
-
 ' - Need to allow for Blackwater to be stacked with WHC - it CAN happen.
+
+' - When I got a high score, it didn't say anything. And it didn't pause after I entered them.
+' - Need to save scores for IT, HOTK, WHC
 
 ' TODO:
 ' - Add Bonus Hold to bonus counting
 ' √ Add logic to Mystery to not offer choices that don't currently make sense (e.g. light something that's already lit)
 ' - Implement Mystery SuperJackpot lighting
-' - Implement Replay, Special
+' √ Implement Replay
 ' √ Implement lockbar light to reflect possible Action button options
-'   - need works - doesn't stop flashing after Choose House
-' - Fix Score layout for multiplayer
-' - Add Keep Shooting scene for LoL save and add gif to the "outlanes lit" scene
-' - Add Swords Are Lit scene
-' - Add Wildfire Lit scene
-
-' UNRESOLVED ISSUES
-' - In BW multiball, after battle modes timed out, scene went to default scene instead of BWmultiball scene. 
-'   May have happened independently of battle mode ending
+'   - need to flash yellow in Mystery Select mode
+' √ Fix Score layout for multiplayer
+' √ Add Keep Shooting scene for LoL save and add gif to the "outlanes lit" scene
+' √ Add Swords Are Lit scene
+' √ Add Wildfire Lit scene
 
 ' Nice-To-Haves
 ' - Change the timer for selecting which house mode to play. It will start at three seconds. Each button press will add eight seconds. The timer will max out at 20 seconds.
