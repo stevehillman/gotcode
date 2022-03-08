@@ -34,8 +34,7 @@
 Option Explicit
 Randomize
 
-Const BallSize = 50     ' 50 is the normal size used in the core.vbs, VP kicker routines uses this value divided by 2
-Const BallMass = 1      ' standard ball mass
+Const bDebug = True
 
 '***********TABLE VOLUME LEVELS ********* 
 ' [Value is from 0 to 1 where 1 is full volume. 
@@ -56,13 +55,21 @@ Const VolumeDial = 0.5
 Const Rubberizer = 3				'Enhance micro bounces on flippers. 0 - disable, 1 - rothbauerw version, 2 - iaakki version, 3 - apophis version (default)
 Const FlipperCoilRampupMode = 0     '0 = fast, 1 = medium, 2 = slow (tap passes should work)
 
-
+'////// Cabinet Options
 Const bHaveLockbarButton = False    ' Set to true if you have a lockdown bar button. Will disable the flasher on the apron
 Const DMDMode = 1 ' Use FlexDMD (currently the only option supported)
-Const UltraDMDVideos = True				'	ULTRA: Works on my DMDv3 but seems it causes issues on others. Not used by GoT
 Const bUsePlungerForSternKey = False    ' If true, use the plunger key for the Action/Select button. 
-Const bUseDragonFire = True             ' Whether to use dragon fire effect on the upper playfield. Looks cool but isn't true to real table
 
+'///// Game of Thrones Options - most from the real ROM
+Const bUseDragonFire = True             ' Whether to use dragon fire effect on the upper playfield. Looks cool but isn't true to real table
+Const TargaryenFreezeLength = 12 ' Length in seconds that Targaryen House can freeze timers for. This is a configurable value in the real table
+Const TargaryenDragonsCompleted = 2 'If playing as House Targaryen, number of dragons completed at start of game. 3 = Factory Default = Mode completed
+
+
+'/////// No User Configurable options beyond this point ////////
+
+Const BallSize = 50     ' 50 is the normal size used in the core.vbs, VP kicker routines uses this value divided by 2
+Const BallMass = 1      ' standard ball mass
 
 ' Load the core.vbs for supporting Subs and functions
 LoadCoreFiles
@@ -86,9 +93,6 @@ Const MaxMultiplier = 5       ' limit playfield multiplier
 Const MaxBonusMultiplier = 20 'limit Bonus multiplier
 Const BallsPerGame = 3        ' usually 3 or 5
 Const MaxMultiballs = 5       ' max number of balls during multiballs
-Const TargaryenFreezeLength = 12 ' Length in seconds that Targaryen House can freeze timers for. This is a configurable value in the real table
-
-Const bDebug = True
 
 '*****************************************************************************************************
 ' FlexDMD constants
@@ -2642,11 +2646,7 @@ Sub DMDClearQueue
 End Sub
 
 Sub PlayDMDScene(video, timeMs)
-	if bUseFlexDMD and UltraDMDVideos Then
-		' Note Video needs to not have sounds and must be more then 3 seconds (Export from iMovie, I chose 540p, high quality, Faster compression.
-		'UltraDMD.DisplayScene00 video, "", 15, "", 15, UltraDMD_Animation_None, timeMs, UltraDMD_Animation_None
-		'UltraDMD.DisplayScene00ExWithId video, False, video, "", 15, 15, "", 15, 15, 14, 4000, 14
-	End If
+	debug.print "PlayDMDScene called"
 End Sub
 
 Sub DisplayDMDText(Line1, Line2, duration)
@@ -4205,8 +4205,17 @@ Class cHouse
                 Next
                 bHotkMBDone = True : WiCMask = 254
             End If
+        End If
+        If h = Greyjoy Then 
+            bCompleted(h) = True 
+        ElseIf h = Targaryen Then
+            Select Case TargaryenDragonsCompleted
+                Case 1: MyBattleState(Targaryen).State = 5 : BattleReady = True
+                Case 2: MyBattleState(Targaryen).State = 10 : BattleReady = True
+                Case 3: bCompleted(Targaryen) = True
+            End Select
         Else
-            If (h = Greyjoy or h = Targaryen) Then bCompleted(h) = True Else BattleReady = True
+            BattleReady = True
         End If
     End Property
 	Public Property Get MyHouse : MyHouse = HouseSelected : End Property
@@ -6479,9 +6488,9 @@ Class cBattleState
                 For i = 0 to 15
                     BattleScene.AddActor FlexDMD.NewFrame("health"&i)
                     With BattleScene.GetFrame("health"&i)
-                        .Thickness = 1
+                        '.Thickness = 1
                         .SetBounds 62+i*4, 1, 4,2      ' Each Health unit is 4W by 2H, and offset by 65+i*4 pixels
-                        If i >= 15-Me.DrogonHits Then .Visible = 1 Else .Visible = 0
+                        If i >= 15-Me.DrogonHits Then .Thickness = 0 Else .Thickness = 1
                     End With
                 Next
             End If
@@ -6611,7 +6620,7 @@ Class cBattleState
             Dim i
             FlexDMD.LockRenderThread
                 For i = 0 to 15
-                    If i >= 15-DrogonHits Then MyBattleScene.GetFrame("health"&i).Visible = 0 Else MyBattleScene.GetFrame("health"&i).Visible = 1
+                    If i >= 15-DrogonHits Then MyBattleScene.GetFrame("health"&i).Thickness = 0 Else MyBattleScene.GetFrame("health"&i).Thickness = 1
                 Next
             FlexDMD.UnlockRenderThread
         End If
@@ -8594,7 +8603,7 @@ Sub Kicker37_Hit
     AddScore 1000
     House(CurrentPlayer).RegisterHit(Targaryen)
     PlaySoundAt SoundFXDOF("fx_kickback", 112, DOFPulse, DOFContactors),kicker37
-    Kicker37.Kick 190,30    'Angle,Power
+    Kicker37.Kick 190,35    'Angle,Power
 End Sub
 
 '*****************
@@ -9563,7 +9572,6 @@ Sub StartBWMultiball
     bWildfireLit = False : SetWildfireLights
 debug.print "Score at start of BW: "&Score(CurrentPlayer)
     AddScore 10000000
-    BlackwaterScore = 10000000
     CurrentWildfire = 0
     Dim scene
     If bUseFlexDMD Then
@@ -9580,6 +9588,7 @@ debug.print "Score at start of BW: "&Score(CurrentPlayer)
   	tmrBWmultiballRelease.Interval = 5000	' Long initial delay to give sequence time to complete
     tmrBWmultiballRelease.Enabled = True
     House(CurrentPlayer).SetBWJackpots
+    BlackwaterScore = 10000000
     DMDCreateBWMBScoreScene
     EnableBallSaver 30  ' 20 seconds plus the 5 second delay before MB starts plus 5 second grace
 End Sub
@@ -10350,7 +10359,7 @@ Sub DoSwordsAreLit
         Set scene = NewSceneWithVideo("swordlit","got-swordslit")
         scene.AddActor FlexDMD.NewLabel("txt",FlexDMD.NewFont("udmd-f6by8.fnt",vbwhite,vbwhite,0),"SWORDS"&vbLf&"ARE LIT")
         scene.GetLabel("txt").SetAlignedPosition 96,9,FlexDMD_Align_Center
-        DMDEnqueueScene scene,1,500,1000,2000,"gotfx-swordsarelit"
+        DMDEnqueueScene scene,1,1500,2500,2000,"gotfx-swordsarelit"
     End If
 End Sub
 
@@ -10359,10 +10368,11 @@ Sub DoWildfileLit
     bWildfireLit = True : SetLightColor li126, darkgreen, 1
     If bUseFlexDMD Then
         Set scene = NewSceneWithImage("wflit","got-wildfirelit")
-        scene.GetImage("wflitimg").AddAction scene.GetImage("wflitimg").ActionFactory().MoveTo(0,-58,1)
+        scene.GetImage("wflitimg").SetAlignedPosition 0,-58,FlexDMD_Align_TopLeft
+        scene.GetImage("wflitimg").AddAction scene.GetImage("wflitimg").ActionFactory().MoveTo(0,0,1)
         scene.AddActor FlexDMD.NewLabel("txt",FlexDMD.NewFont("udmd-f6by8.fnt",vbwhite,vbwhite,0),"WILDFIRE"&vbLf&"IS LIT")
         scene.GetLabel("txt").SetAlignedPosition 102,9,FlexDMD_Align_Center
-        DMDEnqueueScene scene,1,1000,1000,2000,""
+        DMDEnqueueScene scene,1,2000,3000,2000,""
     End If
 End Sub
 
@@ -10755,7 +10765,7 @@ Sub SetSwordLight
 End Sub
 
 Sub SetMysteryLight
-    if bMysteryLit And bMultiBallMode = False And bITMBActive = False Then
+    if bMysteryLit And PlayerMode = 0 And bMultiBallMode = False And bITMBActive = False Then
         li153.BlinkInterval = 250
         SetLightColor li153,white,2
     Else
@@ -10866,6 +10876,14 @@ Sub FlashPlayfieldLights(color,blinks,interval)
     LightSeqPlayfield.UpdateInterval = 10
     LightSeqPlayfield.Play SeqBlinking,,blinks,interval
     LightSeqPlayfield.Play SeqAllOff
+End Sub
+
+Sub DoBWSJPSeq(fast)
+    If LightSeqPlayfield.UserValue > 0 Then
+        LightSeqPlayfield.StopPlay
+        LightSeqPlayfield_PlayDone
+    End If
+    If fast Then FlashPlayfieldLights green,30,33 : Else FlashPlayfieldLights green,12,88
 End Sub
 
 Sub DoWallMBSeq
@@ -11569,8 +11587,7 @@ Sub tmrSJPScene_Timer
     If i = 1 Then   ' Turn on the first letter
         BWSJPScene.GetImage("img"&i).Visible = 1
         PlaySoundVol "gotfx-sjpdrum",VolDef
-        LightSeqAttract.UpdateInterval = 20
-        LightSeqAttract.Play SeqBlinking, ,12, 62
+        DoBWSJPSeq False
         LightSeqGi.UpdateInterval = 20
         LightSeqGi.Play SeqBlinking, , 12, 62
     ElseIf i < 13 Then  ' turn on the next letter
@@ -11583,6 +11600,7 @@ Sub tmrSJPScene_Timer
         BWSJPScene.GetLabel("score").Visible = 1
         PlaySoundVol "say-super-jackpot",VolCallout
         delay = 33
+        DoBWSJPSeq True
     ElseIf i < 73 Then  ' toggle inverted score with white background on and off
         delay = 50
         If (i MOD 2) = 0 Then
@@ -12795,7 +12813,7 @@ End Class
 
 ' - my fonts need to be on a transparent background, not black background.
 
-' - In Greyjoy vs Targaryen, Level 3 ended after hitting the dragon target, rather than going back to the previous state
+' - In Targaryen, Level 3 ended after hitting the dragon target, rather than going back to the previous state
 ' - Lock Is Lit stayed lit during Wall MB
 ' - When all battles were done, Choose Battle was still able to start and wanted us to do Tyrell
 
@@ -12803,6 +12821,16 @@ End Class
 
 ' - When I got a high score, it didn't say anything. And it didn't pause after I entered them.
 ' - Need to save scores for IT, HOTK, WHC
+
+' - If replay is awarded during bonus, replay scene doesn't play.
+' √? mystery light is lit during battle, even though mystery can't be collected
+' - greyjoy battle says "I took the great castle of winterfell" even if you didn't complete it
+' - during HOTK, Stark bonus mode went to -2 or -3 before switching scenes
+' √? Wildfire Lit scene doesn't show text
+' √? Swords Lit isn't long enough
+' - When starting two battles, "say-" speeches are stacked instead of consecutive. 
+' √? FlexDMD has a bug - visible flag is ignored for frames. So instead, set its location to the first segment if it should be invisible. 
+' - In Targaryen Drogon, when HurryUp runs down, it should do a breath fire effect from the UPF to sigils and immediately start over with new shots
 
 ' Fleep:
 ' - need ball rolling on UPF and ramps
@@ -12818,6 +12846,7 @@ End Class
 ' √ Add Keep Shooting scene for LoL save and add gif to the "outlanes lit" scene
 ' √ Add Swords Are Lit scene
 ' √ Add Wildfire Lit scene
+' - Add flipper speeches during Attract Mode
 
 ' Nice-To-Haves
 ' - Change the timer for selecting which house mode to play. It will start at three seconds. Each button press will add eight seconds. The timer will max out at 20 seconds.
