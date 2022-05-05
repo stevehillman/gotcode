@@ -277,6 +277,7 @@ Sub Table1_Init()
 	bTableReady = True
 	' set any lights for the attract mode
     GiOff
+    TurnOffPlayfieldLights
     StartAttractMode
 
     ' Start the RealTime timer
@@ -445,7 +446,7 @@ Sub Table1_KeyDown(ByVal Keycode)
                 End If
             End If
         ElseIf bAttractMode And (keycode = LeftFlipperKey Or keycode = RightFlipperKey)  Then
-            doFlipperSpeech
+            doFlipperSpeech keycode
         End If
     End If ' If (GameInPlay)
 End Sub
@@ -3531,6 +3532,10 @@ Sub RestorePlayfieldLightState(state)
         a.FadeSpeedDown = LightSaveState(i,4)
         i = i + 1
     Next
+    For i = 0 to 69
+        Lampz.FadeSpeedUp(i) = LightSaveState(0,3)
+        Lampz.FadeSpeedDown(i) = LightSaveState(0,4)
+    Next
 End Sub
 
 ' Set Playfield lights to slow fade a color
@@ -3538,8 +3543,11 @@ Sub PlayfieldSlowFade(color,fadespeed)
     Dim a
     For each a in aPlayfieldLights
         If color >= 0 Then SetLightColor a,color,-1
-        a.FadeSpeedUp = fadespeed
-        a.FadeSpeedDown = fadespeed
+    Next
+    For a = 0 to 69 '	for x = 0 to 140 : Lampz.FadeSpeedUp(x) = 1/2 : Lampz.FadeSpeedDown(x) = 1/10 : next
+
+        Lampz.FadeSpeedUp(a) = fadespeed
+        Lampz.FadeSpeedDown(a) = fadespeed/4
     Next
 End Sub
 
@@ -3596,6 +3604,7 @@ Sub TurnOffPlayfieldLights()
         a.State = 0
     Next
     UPFFlasher001.visible = 0 : UPFFlasher002.visible = 0
+    fl242.state = 0 : fl237.state = 0
 End Sub
 
 '**************************************
@@ -3632,8 +3641,8 @@ Dim bulb
 Dim LampState(10), FadingLevel(10), chgLamp(10)
 
 InitLamps()             ' turn off the lights and flashers and reset them to the default parameters
-LampTimer.Interval = -1 'lamp fading speed
-LampTimer.Enabled = 1
+Lamp2Timer.Interval = -1 'lamp fading speed
+Lamp2Timer.Enabled = 1
 
 Sub InitLamps()
     Dim x
@@ -3643,7 +3652,7 @@ Sub InitLamps()
     Next
 End Sub
 
-Sub LampTimer_Timer()
+Sub Lamp2Timer_Timer()
     Dim num, chg, ii, vid, prevlvl, targetlvl
  
     For ii = 0 To 10
@@ -3714,9 +3723,9 @@ End Sub
 
 Sub SetLamp(id,state)
     Select Case state
-        Case 0: chgLamp(id) = 0
-        Case 1: chgLamp(id) = 255
-        Case 3: chgLamp(id) = 255 : vpmTimer.addTimer 33,"chglamp("&id&")=0 '"
+        Case 0: id.state = 0
+        Case 1: id.state = 1
+        Case 3: id.state = 1 : vpmTimer.addTimer 33,id.name&".state=0 '"
     End Select
 End Sub
 
@@ -7448,7 +7457,7 @@ Sub tmrEndOfBallBonus_Timer()
                 incr = 0
                 tmrEndOfBallBonus.UserValue = 9
             Else
-                tmrEndOfBallBonus.Interval = 125
+                if i = 1 then tmrEndOfBallBonus.Interval = 175 Else tmrEndOfBallBonus.Interval = 125
                 incr = 0.01
             End If
         Case 9
@@ -8042,8 +8051,8 @@ End Sub
 Sub UpdateLamps
     SingleLampM fl237a, 0
 	SingleLamp fl237, 0
-    SingleLampM fl242a, 1
-	SingleLamp fl242, 1
+'    SingleLampM fl242a, 1
+'	SingleLamp fl242, 1
 End Sub
 
 
@@ -9395,7 +9404,7 @@ Sub Spinner001_Spin
         Exit Sub
     End If
 
-    Setlamp 1,3    ' Flash the spinner Flasher
+    Setlamp fl242,3    ' Flash the spinner Flasher
 
     If bMadnessMB = 2 Then DoMadnessMBHit
     ' According to Chukwurt, Max spinner value per level are roughly 30k,60k,150k,250k,400k,500k,650k,800k
@@ -9793,7 +9802,7 @@ Sub doPictoPops(b)
         BumperLights(i).TimerEnabled = 0 : BumperLights(i).TimerInterval = 400 : BumperLights(i).TimerEnabled = 1
     Next
 
-    SetLamp 0,3 ' Flash the Bumper Flasher
+    SetLamp fl237,3 ' Flash the Bumper Flasher
 
     If bMadnessMB = 2 Then DoMadnessMBHit : Exit Sub
 
@@ -10364,7 +10373,7 @@ Sub DoMadnessMBHit
     GiEffect 6
     SetSpotFlashers 6
     SetUPFFlashers 6,white
-    SetLamp 0,3 : SetLamp 1,3
+    SetLamp fl237,3 : SetLamp fl242,3
     DMDUpdateMadnessScoreScene(100000*PlayfieldMultiplierVal)
 End Sub
 
@@ -11877,20 +11886,17 @@ Sub tmrFlipperSpeech_Timer
 End Sub
 
 Sub doFlipperSpeech(keycode)
+    tmrAttractModeScene.Enabled = False
+    If keycode = LeftFlipperKey Then
+        tmrAttractModeScene.UserValue = tmrAttractModeScene.UserValue - 2
+        If tmrAttractModeScene.UserValue < 0 Then tmrAttractModeScene.UserValue =  tmrAttractModeScene.UserValue + 24
+    End If
+    tmrAttractModeScene_Timer
+
     if tmrFlipperSpeech.Enabled <> 0 Then Exit Sub
     tmrFlipperSpeech.Interval = tmrFlipperSpeech.UserValue*1000
     tmrFlipperSpeech.Enabled=1
     PlaySoundVol "say-flipper"&RndNbr(43),VolCallout
-
-    tmrAttractModeScene.Enabled = False
-    If keycode = RightFlipperKey Then
-        tmrAttractModeScene.UserValue = tmrAttractModeScene.UserValue + 1
-        If tmrAttractModeScene.UserValue > 23 Then tmrAttractModeScene.UserValue = 0
-    ElseIf keycode = LeftFlipperKey Then
-        tmrAttractModeScene.UserValue = tmrAttractModeScene.UserValue - 1
-        If tmrAttractModeScene.UserValue < 0 Then tmrAttractModeScene.UserValue = 23
-    End If
-    tmrAttractModeScene_Timer
 End Sub
 
 ' To launch attract mode, disable DMDUpdateTimer and enble tmrAttractModeScene
@@ -13603,7 +13609,716 @@ Class PinupNULL	' Dummy Pinup class so I dont have to keep adding if cases when 
 	End Sub 
 End Class 
 
-' - Elevator kickers are visible on UPF but are unfinished - problem is actually lighting shining inside elevator
+
+
+
+
+'******************************************************
+'****  LAMPZ by nFozzy
+'******************************************************
+
+Const UsingROM = False			' Change this to true if you are using Lampz with on ROM based table
+
+Dim NullFader : set NullFader = new NullFadingObject
+Dim Lampz : Set Lampz = New LampFader
+InitLampsNF              ' Setup lamp assignments
+LampTimer.Interval = 20
+LampTimer.Enabled = 1
+
+
+Sub LampTimer_Timer()
+	If UsingROM Then
+		dim x, chglamp
+		If b2son then chglamp = Controller.ChangedLamps
+		If Not IsEmpty(chglamp) Then
+			For x = 0 To UBound(chglamp) 			'nmbr = chglamp(x, 0), state = chglamp(x, 1)
+				Lampz.state(chglamp(x, 0)) = chglamp(x, 1)
+			next
+		End If
+	Else	'apophis - Use the InPlayState of the 1st light in the Lampz.obj array to set the Lampz.state
+		dim idx : for idx = 0 to uBound(Lampz.Obj)
+			if Lampz.IsLight(idx) then 
+				if IsArray(Lampz.obj(idx)) then
+					dim tmp : tmp = Lampz.obj(idx)
+					Lampz.state(idx) = tmp(0).GetInPlayStateBool
+					'debug.print tmp(0).name & " " &  tmp(0).GetInPlayStateBool & " " & tmp(0).IntensityScale  & vbnewline
+				Else
+					Lampz.state(idx) = Lampz.obj(idx).GetInPlayStateBool
+					'debug.print Lampz.obj(idx).name & " " &  Lampz.obj(idx).GetInPlayStateBool & " " & Lampz.obj(idx).IntensityScale  & vbnewline
+				end if
+			end if
+		Next
+	End If
+	Lampz.Update1	'update (fading logic only)
+End Sub
+
+dim FrameTime, InitFrameTime : InitFrameTime = 0
+LampTimer2.Interval = -1
+LampTimer2.Enabled = True
+Sub LampTimer2_Timer()
+
+	LightShootAgainbloom.colorfull=LightShootAgain.colorfull : ponLightShootAgain.color = LightShootAgain.colorfull 
+	li26bloom.colorfull=li26.colorfull : p26on.color = li26.colorfull 
+	li32bloom.colorfull=li32.colorfull : p32on.color = li32.colorfull 
+	li38bloom.colorfull=li38.colorfull : p38on.color = li38.colorfull
+	li41bloom.colorfull=li41.colorfull : p41on.color = li41.colorfull
+	li44bloom.colorfull=li44.colorfull : p44on.color = li44.colorfull
+	li47bloom.colorfull=li47.colorfull : p47on.color = li47.colorfull
+	li50bloom.colorfull=li50.colorfull : p50on.color = li50.colorfull
+	li53bloom.colorfull=li53.colorfull : p53on.color = li53.colorfull
+	li11bloom.colorfull=li11.colorfull : p11on.color = li11.colorfull
+	li14bloom.colorfull=li14.colorfull : p14on.color = li14.colorfull
+	li29bloom.colorfull=li29.colorfull : p29on.color = li29.colorfull
+	li35bloom.colorfull=li35.colorfull : p35on.color = li35.colorfull
+	li71bloom.colorfull=li71.colorfull : p71on.color = li71.colorfull
+	li74bloom.colorfull=li74.colorfull : p74on.color = li74.colorfull
+
+	li17bloom.colorfull=li17.colorfull : p17on.color = li17.colorfull
+	li20bloom.colorfull=li20.colorfull : p20on.color = li20.colorfull
+	li23bloom.colorfull=li23.colorfull : p23on.color = li23.colorfull
+	li80bloom.colorfull=li80.colorfull : p80on.color = li80.colorfull
+	li83bloom.colorfull=li83.colorfull : p83on.color = li83.colorfull
+
+	li86bloom.colorfull=li86.colorfull : p86on.color = li86.colorfull
+	li98bloom.colorfull=li98.colorfull : p98on.color = li98.colorfull
+	li114bloom.colorfull=li114.colorfull : p114on.color = li114.colorfull
+	li141bloom.colorfull=li141.colorfull : p141on.color = li141.colorfull
+	li156bloom.colorfull=li156.colorfull : p156on.color = li156.colorfull
+	li77bloom.colorfull=li77.colorfull : p77on.color = li77.colorfull
+	li95bloom.colorfull=li95.colorfull : p95on.color = li95.colorfull
+	li111bloom.colorfull=li111.colorfull : p111on.color = li111.colorfull
+	li108bloom.colorfull=li108.colorfull : p108on.color = li108.colorfull
+	li138bloom.colorfull=li138.colorfull : p138on.color = li138.colorfull
+	li153bloom.colorfull=li153.colorfull : p153on.color = li153.colorfull
+	li150bloom.colorfull=li150.colorfull : p150on.color = li150.colorfull
+	li92bloom.colorfull=li92.colorfull : p92on.color = li92.colorfull
+	li105bloom.colorfull=li105.colorfull : p105on.color = li105.colorfull
+	li120bloom.colorfull=li120.colorfull : p120on.color = li120.colorfull
+	li135bloom.colorfull=li135.colorfull : p135on.color = li135.colorfull
+	li147bloom.colorfull=li147.colorfull : p147on.color = li147.colorfull
+
+	li89bloom.colorfull=li89.colorfull : p89on.color = li89.colorfull
+	li101bloom.colorfull=li101.colorfull : p101on.color = li101.colorfull
+	li117bloom.colorfull=li117.colorfull : p117on.color = li117.colorfull
+	li132bloom.colorfull=li132.colorfull : p132on.color = li132.colorfull
+	li144bloom.colorfull=li144.colorfull : p144on.color = li144.colorfull
+	li159bloom.colorfull=li159.colorfull : p159on.color = li159.colorfull
+	li62bloom.colorfull=li62.colorfull : p62on.color = li62.colorfull
+	li65bloom.colorfull=li65.colorfull : p65on.color = li65.colorfull
+	li56bloom.colorfull=li56.colorfull : p56on.color = li56.colorfull
+	li59bloom.colorfull=li59.colorfull : p59on.color = li59.colorfull
+
+	li123bloom.colorfull=li123.colorfull : p123on.color = li123.colorfull
+	li126bloom.colorfull=li126.colorfull : p126on.color = li126.colorfull
+	li129bloom.colorfull=li129.colorfull : p129on.color = li129.colorfull
+
+	'li242bloom.colorfull=fl242.colorfull : p242on.color = fl242.colorfull
+    p242on.color = fl242.colorfull
+	li162bloom.colorfull=li162.colorfull : p162on.color = li162.colorfull
+	li165bloom.colorfull=li165.colorfull : p165on.color = li165.colorfull
+    'UPF
+    li180bloom.colorfull=li180.colorfull : p180on.color = li180.colorfull
+    li183bloom.colorfull=li183.colorfull : p183on.color = li183.colorfull
+    li186bloom.colorfull=li186.colorfull : p186on.color = li186.colorfull
+    li189bloom.colorfull=li189.colorfull : p189on.color = li189.colorfull
+    li192bloom.colorfull=li192.colorfull : p192on.color = li192.colorfull
+    li195bloom.colorfull=li195.colorfull : p195on.color = li195.colorfull
+    li198bloom.colorfull=li198.colorfull : p198on.color = li198.colorfull
+    li201bloom.colorfull=li201.colorfull : p201on.color = li201.colorfull
+    li204bloom.colorfull=li204.colorfull : p204on.color = li204.colorfull
+    li207bloom.colorfull=li207.colorfull : p207on.color = li207.colorfull
+    li210bloom.colorfull=li210.colorfull : p210on.color = li210.colorfull
+    li213bloom.colorfull=li213.colorfull : p213on.color = li213.colorfull
+    li216bloom.colorfull=li216.colorfull : p216on.color = li216.colorfull
+
+    'Bumpers
+    li168a.colorfull=li168.colorfull : li168b.colorfull = li168.colorfull
+    li171a.colorfull=li171.colorfull : li171b.colorfull = li171.colorfull
+    li174a.colorfull=li174.colorfull : li174b.colorfull = li174.colorfull
+
+
+
+	FrameTime = gametime - InitFrameTime : InitFrameTime = gametime	'Count frametime. Unused atm?
+	Lampz.Update 'updates on frametime (Object updates only)
+End Sub
+
+Function FlashLevelToIndex(Input, MaxSize)
+	FlashLevelToIndex = cInt(MaxSize * Input)
+End Function
+
+Sub UpdateLightmap(lightmap, intensity, ByVal aLvl)  ' additiveblend prims
+	if Lampz.UseFunction then aLvl = Lampz.FilterOut(aLvl)    'Callbacks don't get this filter automatically
+    lightmap.Opacity = aLvl * intensity
+End Sub
+
+'***Material Swap***
+'Fade material for green, red, yellow colored Bulb prims
+Sub FadeMaterialColoredBulb(pri, group, ByVal aLvl)	'cp's script
+	'	if Lampz.UseFunction then aLvl = LampFilter(aLvl)	'Callbacks don't get this filter automatically
+	if Lampz.UseFunction then aLvl = Lampz.FilterOut(aLvl)	'Callbacks don't get this filter automatically
+	Select case FlashLevelToIndex(aLvl, 3)
+		Case 0:pri.Material = group(0) 'Off
+		Case 1:pri.Material = group(1) 'Fading...
+		Case 2:pri.Material = group(2) 'Fading...
+		Case 3:pri.Material = group(3) 'Full
+	End Select
+	'if tb.text <> pri.image then tb.text = pri.image : 'debug.print pri.image end If	'debug
+	pri.blenddisablelighting = aLvl * 1 'Intensity Adjustment
+End Sub
+
+
+'Fade material for red, yellow colored bulb Filiment prims
+Sub FadeMaterialColoredFiliment(pri, group, ByVal aLvl)	'cp's script
+	'	if Lampz.UseFunction then aLvl = LampFilter(aLvl)	'Callbacks don't get this filter automatically
+	if Lampz.UseFunction then aLvl = Lampz.FilterOut(aLvl)	'Callbacks don't get this filter automatically
+	Select case FlashLevelToIndex(aLvl, 3)
+		Case 0:pri.Material = group(0) 'Off
+		Case 1:pri.Material = group(1) 'Fading...
+		Case 2:pri.Material = group(2) 'Fading...
+		Case 3:pri.Material = group(3) 'Full
+	End Select
+	'if tb.text <> pri.image then tb.text = pri.image : 'debug.print pri.image end If	'debug
+	pri.blenddisablelighting = aLvl * 50  'Intensity Adjustment
+End Sub
+
+dim insertDLMult: insertDLMult = 1
+
+Sub DisableLighting(pri, DLintensity, ByVal aLvl)	'cp's script  DLintensity = disabled lighting intesity
+	if Lampz.UseFunction then aLvl = Lampz.FilterOut(aLvl)	'Callbacks don't get this filter automatically
+	pri.blenddisablelighting = aLvl * DLintensity * insertDLMult
+End Sub
+
+Sub DisableLightingMinMix(pri, DLMin, DLMax, ByVal aLvl)	'cp's script  DLintensity = disabled lighting intesity
+	if Lampz.UseFunction then aLvl = Lampz.FilterOut(aLvl)	'Callbacks don't get this filter automatically
+	pri.blenddisablelighting = (aLvl * (DLMax - DLMin)) + DLMin
+End Sub
+
+Sub DisableLightingPortals(pri, DLintensity, ByVal aLvl)	
+	if Lampz.UseFunction then aLvl = Lampz.FilterOut(aLvl)	
+	pri.blenddisablelighting = aLvl * DLintensity
+	UpdateMaterial pri.material,0,0,0,0,0,0,aLvl,RGB(255,80,40),0,0,False,True,0,0,0,0
+End Sub
+
+Sub DisableLightingPortalsBack(pri, DLintensity, ByVal aLvl)	
+	if Lampz.UseFunction then aLvl = Lampz.FilterOut(aLvl)	
+	pri.blenddisablelighting = aLvl * DLintensity
+	UpdateMaterial pri.material,0,0,0,0,0,0,1,RGB(255*aLvl,80*aLvl,40*aLvl),0,0,False,True,0,0,0,0
+	'UpdateMaterial pri.material,0,0,0,0,0,0,aLvl,RGB(255,80,40),0,0,False,True,0,0,0,0
+End Sub
+
+sub FadeTracySkin(ByVal aLvl)
+	if Lampz.UseFunction then aLvl = Lampz.FilterOut(aLvl)	
+	'tracyskin 121,108,57
+	'clear coat 109,102,61
+	'new 224,20,168
+	'UpdateMaterial(string, float wrapLighting, float roughness, float glossyImageLerp, float thickness, float edge, float edgeAlpha, float opacity, 
+	'OLE_COLOR base, OLE_COLOR glossy, OLE_COLOR clearcoat, VARIANT_BOOL isMetal, VARIANT_BOOL opacityActive, float elasticity, float elasticityFalloff, float friction, float scatterAngle)
+	UpdateMaterial "tracyskin",0.25,0.8,0,0,0,0,1,RGB(103*aLvl+121,108-88*aLvl,111*aLvl+57),RGB(103*aLvl+121,108-88*aLvl,111*aLvl+57),RGB(103*aLvl+121,108-88*aLvl,111*aLvl+57),True,False,0,0,0,0
+end sub
+
+
+Sub InitLampsNF()
+
+	'Filtering (comment out to disable)
+	Lampz.Filter = "LampFilter"	'Puts all lamp intensityscale output (no callbacks) through this function before updating
+
+	'Adjust fading speeds (1 / full MS fading time)
+	dim x
+	
+	for x = 0 to 140 : Lampz.FadeSpeedUp(x) = 1/2 : Lampz.FadeSpeedDown(x) = 1/10 : next
+'	for x = 111 to 140 : Lampz.FadeSpeedUp(x) = 1/5: Lampz.FadeSpeedDown(x) = 1/22 : next	'slow lamps for gi testing
+
+	Lampz.FadeSpeedUp(81) = 1/20 : Lampz.FadeSpeedDown(81) = 1/60
+
+	'Lampz Assignments
+	'  In a ROM based table, the lamp ID is used to set the state of the Lampz objects
+
+	'MassAssign is the way to do assignments. It'll create arrays automatically / append objects to existing arrays
+	'If not using a ROM, then the first light in the object array should be an invisible control light (in this example they
+    'are named starting with "lc"). Then, lights should always be controlled via these control lights, including
+    'when using Light Sequencers.
+
+
+	Lampz.MassAssign(1)= LightShootAgain
+	Lampz.MassAssign(1)= LightShootAgainbloom
+	Lampz.Callback(1) = "UpdateLightMap ponLightShootAgain, 300,"	
+
+	Lampz.MassAssign(2)= li11
+	Lampz.MassAssign(2)= li11bloom
+	Lampz.Callback(2) = "UpdateLightMap  p11on, 200,"
+	Lampz.MassAssign(3)= li14
+	Lampz.MassAssign(3)= li14bloom
+	Lampz.Callback(3) = "UpdateLightMap  p14on, 200,"
+
+	Lampz.MassAssign(4)= li17
+	Lampz.MassAssign(4)= li17bloom
+	Lampz.Callback(4) = "UpdateLightMap  p17on, 200,"
+	Lampz.MassAssign(5)= li20
+	Lampz.MassAssign(5)= li20bloom
+	Lampz.Callback(5) = "UpdateLightMap  p20on, 200,"
+	Lampz.MassAssign(6)= li23
+	Lampz.MassAssign(6)= li23bloom
+	Lampz.Callback(6) = "UpdateLightMap  p23on, 200,"
+	Lampz.MassAssign(7)= li26							' control light -100h
+	Lampz.MassAssign(7)= li26bloom						' bloom light +1 height
+	Lampz.Callback(7) = "UpdateLightMap  p26on, 200,"	' on primitive
+
+	Lampz.MassAssign(8)= li29
+	Lampz.MassAssign(8)= li29bloom
+	Lampz.Callback(8) = "UpdateLightMap  p29on, 200,"
+	Lampz.MassAssign(9)= li32
+	Lampz.MassAssign(9)= li32bloom
+	Lampz.Callback(9) = "UpdateLightMap  p32on, 200,"
+    Lampz.MassAssign(10)= li35
+	Lampz.MassAssign(10)= li35bloom
+	Lampz.Callback(10) = "UpdateLightMap  p35on, 200,"
+	Lampz.MassAssign(11)= li38
+	Lampz.MassAssign(11)= li38bloom
+	Lampz.Callback(11) = "UpdateLightMap  p38on, 200,"
+	Lampz.MassAssign(12)= li41
+	Lampz.MassAssign(12)= li41bloom
+	Lampz.Callback(12) = "UpdateLightMap  p41on, 200,"
+	Lampz.MassAssign(13)= li44
+	Lampz.MassAssign(13)= li44bloom
+	Lampz.Callback(13) = "UpdateLightMap  p44on, 200,"
+	Lampz.MassAssign(14)= li47
+	Lampz.MassAssign(14)= li47bloom
+	Lampz.Callback(14) = "UpdateLightMap  p47on, 200,"
+	Lampz.MassAssign(15)= li50
+	Lampz.MassAssign(15)= li50bloom
+	Lampz.Callback(15) = "UpdateLightMap  p50on, 200,"
+	Lampz.MassAssign(16)= li53
+	Lampz.MassAssign(16)= li53bloom
+	Lampz.Callback(16) = "UpdateLightMap  p53on, 200,"
+	Lampz.MassAssign(17)= li56
+	Lampz.MassAssign(17)= li56bloom
+	Lampz.Callback(17) = "UpdateLightMap  p56on, 250,"
+	Lampz.MassAssign(18)= li59
+	Lampz.MassAssign(18)= li59bloom
+	Lampz.Callback(18) = "UpdateLightMap  p59on, 250,"
+	Lampz.MassAssign(19)= li62
+	Lampz.MassAssign(19)= li62bloom
+	Lampz.Callback(19) = "UpdateLightMap  p62on, 250,"
+	Lampz.MassAssign(20)= li65
+	Lampz.MassAssign(20)= li65bloom
+	Lampz.Callback(20) = "UpdateLightMap  p65on, 250,"
+	Lampz.MassAssign(21)= li71
+	Lampz.MassAssign(21)= li71bloom
+	Lampz.Callback(21) = "UpdateLightMap  p71on, 200,"
+	Lampz.MassAssign(22)= li74
+	Lampz.MassAssign(22)= li74bloom
+	Lampz.Callback(22) = "UpdateLightMap  p74on, 200,"
+	Lampz.MassAssign(23)= li77
+	Lampz.MassAssign(23)= li77bloom
+	Lampz.Callback(23) = "UpdateLightMap  p77on, 200,"
+	Lampz.MassAssign(24)= li80
+	Lampz.MassAssign(24)= li80bloom
+	Lampz.Callback(24) = "UpdateLightMap  p80on, 200,"
+	Lampz.MassAssign(25)= li83
+	Lampz.MassAssign(25)= li83bloom
+	Lampz.Callback(25) = "UpdateLightMap  p83on, 200,"
+	Lampz.MassAssign(26)= li86
+	Lampz.MassAssign(26)= li86bloom
+	Lampz.Callback(26) = "UpdateLightMap  p86on, 200,"
+	Lampz.MassAssign(27)= li89
+	Lampz.MassAssign(27)= li89bloom
+	Lampz.Callback(27) = "UpdateLightMap  p89on, 200,"
+
+	Lampz.MassAssign(28)= li92
+	Lampz.MassAssign(28)= li92bloom
+	Lampz.Callback(28) = "UpdateLightMap  p92on, 500,"
+	Lampz.MassAssign(29)= li95
+	Lampz.MassAssign(29)= li95bloom
+	Lampz.Callback(29) = "UpdateLightMap  p95on, 200,"
+	Lampz.MassAssign(30)= li98
+	Lampz.MassAssign(30)= li98bloom
+	Lampz.Callback(30) = "UpdateLightMap  p98on, 200,"
+	Lampz.MassAssign(31)= li101
+	Lampz.MassAssign(31)= li101bloom
+	Lampz.Callback(31) = "UpdateLightMap  p101on, 200,"
+
+	Lampz.MassAssign(32)= li105
+	Lampz.MassAssign(32)= li105bloom
+	Lampz.Callback(32) = "UpdateLightMap  p105on, 500,"
+
+	Lampz.MassAssign(33)= li108
+	Lampz.MassAssign(33)= li108bloom
+	Lampz.Callback(33) = "UpdateLightMap  p108on, 400,"
+
+	Lampz.MassAssign(34)= li111
+	Lampz.MassAssign(34)= li111bloom
+	Lampz.Callback(34) = "UpdateLightMap  p111on, 400,"
+
+	Lampz.MassAssign(35)= li114
+	Lampz.MassAssign(35)= li114bloom
+	Lampz.Callback(35) = "UpdateLightMap  p114on, 200,"
+	Lampz.MassAssign(36)= li117
+	Lampz.MassAssign(36)= li117bloom
+	Lampz.Callback(36) = "UpdateLightMap  p117on, 200,"
+	Lampz.MassAssign(37)= li120
+	Lampz.MassAssign(37)= li120bloom
+	Lampz.Callback(37) = "UpdateLightMap  p120on, 500,"
+	Lampz.MassAssign(38)= li123
+	Lampz.MassAssign(38)= li123bloom
+	Lampz.Callback(38) = "UpdateLightMap  p123on, 200,"
+	Lampz.MassAssign(39)= li126
+	Lampz.MassAssign(39)= li126bloom
+	Lampz.Callback(39) = "UpdateLightMap  p126on, 200,"
+	Lampz.MassAssign(40)= li129
+	Lampz.MassAssign(40)= li129bloom
+	Lampz.Callback(40) = "UpdateLightMap  p129on, 200,"
+	Lampz.MassAssign(41)= li132
+	Lampz.MassAssign(41)= li132bloom
+	Lampz.Callback(41) = "UpdateLightMap  p132on, 200,"
+	Lampz.MassAssign(42)= li135
+	Lampz.MassAssign(42)= li135bloom
+	Lampz.Callback(42) = "UpdateLightMap  p135on, 500,"
+    Lampz.MassAssign(43)= li138
+	Lampz.MassAssign(43)= li138bloom
+	Lampz.Callback(43) = "UpdateLightMap  p138on, 200,"
+	Lampz.MassAssign(44)= li141
+	Lampz.MassAssign(44)= li141bloom
+	Lampz.Callback(44) = "UpdateLightMap  p141on, 200,"
+    Lampz.MassAssign(45)= li144
+	Lampz.MassAssign(45)= li144bloom
+	Lampz.Callback(45) = "UpdateLightMap  p144on, 200,"
+    Lampz.MassAssign(46)= li147
+	Lampz.MassAssign(46)= li147bloom
+	Lampz.Callback(46) = "UpdateLightMap  p147on, 500,"
+	Lampz.MassAssign(47)= li150
+	Lampz.MassAssign(47)= li150bloom
+	Lampz.Callback(47) = "UpdateLightMap  p150on, 200,"
+    Lampz.MassAssign(48)= li153
+	Lampz.MassAssign(48)= li153bloom
+	Lampz.Callback(48) = "UpdateLightMap  p153on, 200,"
+	Lampz.MassAssign(49)= li156
+	Lampz.MassAssign(49)= li156bloom
+	Lampz.Callback(49) = "UpdateLightMap  p156on, 200,"
+    Lampz.MassAssign(50)= li159
+	Lampz.MassAssign(50)= li159bloom
+	Lampz.Callback(50) = "UpdateLightMap  p159on, 200,"
+	Lampz.MassAssign(51)= li162
+	Lampz.MassAssign(51)= li162bloom
+	Lampz.Callback(51) = "UpdateLightMap  p162on, 200,"
+	Lampz.MassAssign(52)= li165
+	Lampz.MassAssign(52)= li165bloom
+	Lampz.Callback(52) = "UpdateLightMap  p165on, 200,"
+    ' UPF
+    Lampz.MassAssign(53)= li180
+	Lampz.MassAssign(53)= li180bloom
+	Lampz.Callback(53) = "UpdateLightMap  p180on, 600,"
+    Lampz.MassAssign(54)= li183
+	Lampz.MassAssign(54)= li183bloom
+	Lampz.Callback(54) = "UpdateLightMap  p183on, 600,"
+    Lampz.MassAssign(55)= li186
+	Lampz.MassAssign(55)= li186bloom
+	Lampz.Callback(55) = "UpdateLightMap  p186on, 600,"
+    Lampz.MassAssign(56)= li189
+	Lampz.MassAssign(56)= li189bloom
+	Lampz.Callback(56) = "UpdateLightMap  p189on, 600,"
+    Lampz.MassAssign(57)= li192
+	Lampz.MassAssign(57)= li192bloom
+	Lampz.Callback(57) = "UpdateLightMap  p192on, 600,"
+    Lampz.MassAssign(58)= li195
+	Lampz.MassAssign(58)= li195bloom
+	Lampz.Callback(58) = "UpdateLightMap  p195on, 600,"
+    Lampz.MassAssign(59)= li198
+	Lampz.MassAssign(59)= li198bloom
+	Lampz.Callback(59) = "UpdateLightMap  p198on, 200,"
+    Lampz.MassAssign(60)= li201
+	Lampz.MassAssign(60)= li201bloom
+	Lampz.Callback(60) = "UpdateLightMap  p201on, 300,"
+    Lampz.MassAssign(61)= li204
+	Lampz.MassAssign(61)= li204bloom
+	Lampz.Callback(61) = "UpdateLightMap  p204on, 300,"
+    Lampz.MassAssign(62)= li207
+	Lampz.MassAssign(62)= li207bloom
+	Lampz.Callback(62) = "UpdateLightMap  p207on, 300,"
+    Lampz.MassAssign(63)= li210
+	Lampz.MassAssign(63)= li210bloom
+	Lampz.Callback(63) = "UpdateLightMap  p210on, 300,"
+    Lampz.MassAssign(64)= li213
+	Lampz.MassAssign(64)= li213bloom
+	Lampz.Callback(64) = "UpdateLightMap  p213on, 300,"
+    Lampz.MassAssign(65)= li216
+	Lampz.MassAssign(65)= li216bloom
+	Lampz.Callback(65) = "UpdateLightMap  p216on, 300,"
+    'Bumpers
+    Lampz.MassAssign(66)= li168
+	Lampz.MassAssign(66)= li168a
+	Lampz.MassAssign(66)= li168b
+    Lampz.MassAssign(66)= li168bloom
+
+    Lampz.MassAssign(67)= li171
+	Lampz.MassAssign(67)= li171a
+	Lampz.MassAssign(67)= li171b
+    Lampz.MassAssign(67)= li171bloom
+
+
+    Lampz.MassAssign(68)= li174
+	Lampz.MassAssign(68)= li174a
+	Lampz.MassAssign(68)= li174b
+    Lampz.MassAssign(68)= li174bloom
+
+    ' Spinner Flasher
+    Lampz.MassAssign(70)= fl242
+	Lampz.MassAssign(70)= li242bloom
+	Lampz.Callback(70) = "UpdateLightMap  p242on, 1000,"
+    Lampz.FadeSpeedUp(70) = 100
+    Lampz.FadeSpeedDown(70) = 5
+	
+	
+
+	'Turn off all lamps on startup
+	Lampz.Init	'This just turns state of any lamps to 1
+
+	'Immediate update to turn on GI, turn off lamps
+	Lampz.Update
+
+End Sub
+
+'Helper functions
+
+Function ColtoArray(aDict)	'converts a collection to an indexed array. Indexes will come out random probably.
+	redim a(999)
+	dim count : count = 0
+	dim x  : for each x in aDict : set a(Count) = x : count = count + 1 : Next
+	redim preserve a(count-1) : ColtoArray = a
+End Function
+
+
+'====================
+'Class jungle nf
+'====================
+
+'No-op object instead of adding more conditionals to the main loop
+'It also prevents errors if empty lamp numbers are called, and it's only one object
+'should be g2g?
+
+Class NullFadingObject : Public Property Let IntensityScale(input) : : End Property : End Class
+
+'version 0.11 - Mass Assign, Changed modulate style
+'version 0.12 - Update2 (single -1 timer update) update method for core.vbs
+'Version 0.12a - Filter can now be accessed via 'FilterOut'
+'Version 0.12b - Changed MassAssign from a sub to an indexed property (new syntax: lampfader.MassAssign(15) = Light1 )
+'Version 0.13 - No longer requires setlocale. Callback() can be assigned multiple times per index
+'Version 0.14 - apophis - added IsLight property to the class
+' Note: if using multiple 'LampFader' objects, set the 'name' variable to avoid conflicts with callbacks
+
+Class LampFader
+	Public IsLight(140)					'apophis
+	Public FadeSpeedDown(140), FadeSpeedUp(140)
+	Private Lock(140), Loaded(140), OnOff(140)
+	Public UseFunction
+	Private cFilter
+	Public UseCallback(140), cCallback(140)
+	Public Lvl(140), Obj(140)
+	Private Mult(140)
+	Public FrameTime
+	Private InitFrame
+	Public Name
+
+	Sub Class_Initialize()
+		InitFrame = 0
+		dim x : for x = 0 to uBound(OnOff) 	'Set up fade speeds
+			FadeSpeedDown(x) = 1/100	'fade speed down
+			FadeSpeedUp(x) = 1/80		'Fade speed up
+			UseFunction = False
+			lvl(x) = 0
+			OnOff(x) = False
+			Lock(x) = True : Loaded(x) = False
+			Mult(x) = 1
+			IsLight(x) = False   		'apophis
+		Next
+		Name = "LampFaderNF" 'NEEDS TO BE CHANGED IF THERE'S MULTIPLE OF THESE OBJECTS, OTHERWISE CALLBACKS WILL INTERFERE WITH EACH OTHER!!
+		for x = 0 to uBound(OnOff) 		'clear out empty obj
+			if IsEmpty(obj(x) ) then Set Obj(x) = NullFader' : Loaded(x) = True
+		Next
+	End Sub
+
+	Public Property Get Locked(idx) : Locked = Lock(idx) : End Property		''debug.print Lampz.Locked(100)	'debug
+	Public Property Get state(idx) : state = OnOff(idx) : end Property
+	Public Property Let Filter(String) : Set cFilter = GetRef(String) : UseFunction = True : End Property
+	Public Function FilterOut(aInput) : if UseFunction Then FilterOut = cFilter(aInput) Else FilterOut = aInput End If : End Function
+	'Public Property Let Callback(idx, String) : cCallback(idx) = String : UseCallBack(idx) = True : End Property
+	Public Property Let Callback(idx, String)
+		UseCallBack(idx) = True
+		'cCallback(idx) = String 'old execute method
+		'New method: build wrapper subs using ExecuteGlobal, then call them
+		cCallback(idx) = cCallback(idx) & "___" & String	'multiple strings dilineated by 3x _
+
+		dim tmp : tmp = Split(cCallback(idx), "___")
+
+		dim str, x : for x = 0 to uBound(tmp)	'build proc contents
+			'If Not tmp(x)="" then str = str & "	" & tmp(x) & " aLVL" & "	'" & x & vbnewline	'more verbose
+			If Not tmp(x)="" then str = str & tmp(x) & " aLVL:"
+		Next
+		'msgbox "Sub " & name & idx & "(aLvl):" & str & "End Sub"
+		dim out : out = "Sub " & name & idx & "(aLvl):" & str & "End Sub"
+		'if idx = 132 then msgbox out	'debug
+		ExecuteGlobal Out
+
+	End Property
+
+	Public Property Let state(ByVal idx, input) 'Major update path
+		if Input <> OnOff(idx) then  'discard redundant updates
+			OnOff(idx) = input
+			Lock(idx) = False
+			Loaded(idx) = False
+		End If
+	End Property
+
+	'Mass assign, Builds arrays where necessary
+	'Sub MassAssign(aIdx, aInput)
+	Public Property Let MassAssign(aIdx, aInput)
+		If typename(obj(aIdx)) = "NullFadingObject" Then 'if empty, use Set
+			if IsArray(aInput) then
+				obj(aIdx) = aInput
+			Else
+				Set obj(aIdx) = aInput
+				if typename(aInput) = "Light" then IsLight(aIdx) = True   'apophis - If first object in array is a light, this will be set true
+			end if
+		Else
+			Obj(aIdx) = AppendArray(obj(aIdx), aInput)
+		end if
+	end Property
+
+	Sub SetLamp(aIdx, aOn) : state(aIdx) = aOn : End Sub	'Solenoid Handler
+
+	Public Sub TurnOnStates()	'If obj contains any light objects, set their states to 1 (Fading is our job!)
+		dim debugstr
+		dim idx : for idx = 0 to uBound(obj)
+			if IsArray(obj(idx)) then
+				'debugstr = debugstr & "array found at " & idx & "..."
+				dim x, tmp : tmp = obj(idx) 'set tmp to array in order to access it
+				for x = 0 to uBound(tmp)
+					if typename(tmp(x)) = "Light" then DisableState tmp(x)' : debugstr = debugstr & tmp(x).name & " state'd" & vbnewline
+					tmp(x).intensityscale = 0.001 ' this can prevent init stuttering
+				Next
+			Else
+				if typename(obj(idx)) = "Light" then DisableState obj(idx)' : debugstr = debugstr & obj(idx).name & " state'd (not array)" & vbnewline
+				obj(idx).intensityscale = 0.001 ' this can prevent init stuttering
+			end if
+		Next
+		''debug.print debugstr
+	End Sub
+	Private Sub DisableState(ByRef aObj) : aObj.FadeSpeedUp = 1000 : aObj.State = 1 : End Sub	'turn state to 1
+
+	Public Sub Init()	'Just runs TurnOnStates right now
+		TurnOnStates
+	End Sub
+
+	Public Property Let Modulate(aIdx, aCoef) : Mult(aIdx) = aCoef : Lock(aIdx) = False : Loaded(aIdx) = False: End Property
+	Public Property Get Modulate(aIdx) : Modulate = Mult(aIdx) : End Property
+
+	Public Sub Update1()	 'Handle all boolean numeric fading. If done fading, Lock(x) = True. Update on a '1' interval Timer!
+		dim x : for x = 0 to uBound(OnOff)
+			if not Lock(x) then 'and not Loaded(x) then
+				if OnOff(x) then 'Fade Up
+					Lvl(x) = Lvl(x) + FadeSpeedUp(x)
+					if Lvl(x) >= 1 then Lvl(x) = 1 : Lock(x) = True
+				elseif Not OnOff(x) then 'fade down
+					Lvl(x) = Lvl(x) - FadeSpeedDown(x)
+					if Lvl(x) <= 0 then Lvl(x) = 0 : Lock(x) = True
+				end if
+			end if
+		Next
+	End Sub
+
+	Public Sub Update2()	 'Both updates on -1 timer (Lowest latency, but less accurate fading at 60fps vsync)
+		FrameTime = gametime - InitFrame : InitFrame = GameTime	'Calculate frametime
+		dim x : for x = 0 to uBound(OnOff)
+			if not Lock(x) then 'and not Loaded(x) then
+				if OnOff(x) then 'Fade Up
+					Lvl(x) = Lvl(x) + FadeSpeedUp(x) * FrameTime
+					if Lvl(x) >= 1 then Lvl(x) = 1 : Lock(x) = True
+				elseif Not OnOff(x) then 'fade down
+					Lvl(x) = Lvl(x) - FadeSpeedDown(x) * FrameTime
+					if Lvl(x) <= 0 then Lvl(x) = 0 : Lock(x) = True
+				end if
+			end if
+		Next
+		Update
+	End Sub
+
+	Public Sub Update()	'Handle object updates. Update on a -1 Timer! If done fading, loaded(x) = True
+		dim x,xx : for x = 0 to uBound(OnOff)
+			if not Loaded(x) then
+				if IsArray(obj(x) ) Then	'if array
+					If UseFunction then
+						for each xx in obj(x) : xx.IntensityScale = cFilter(Lvl(x)*Mult(x)) : Next
+					Else
+						for each xx in obj(x) : xx.IntensityScale = Lvl(x)*Mult(x) : Next
+					End If
+				else						'if single lamp or flasher
+					If UseFunction then
+						obj(x).Intensityscale = cFilter(Lvl(x)*Mult(x))
+					Else
+						obj(x).Intensityscale = Lvl(x)
+					End If
+				end if
+				if TypeName(lvl(x)) <> "Double" and typename(lvl(x)) <> "Integer" then msgbox "uhh " & 2 & " = " & lvl(x)
+				'If UseCallBack(x) then execute cCallback(x) & " " & (Lvl(x))	'Callback
+				If UseCallBack(x) then Proc name & x,Lvl(x)*mult(x)	'Proc
+				If Lock(x) Then
+					if Lvl(x) = 1 or Lvl(x) = 0 then Loaded(x) = True	'finished fading
+				end if
+			end if
+		Next
+	End Sub
+End Class
+
+
+'Lamp Filter
+Function LampFilter(aLvl)
+	LampFilter = aLvl^1.6	'exponential curve?
+End Function
+
+
+'Helper functions
+Sub Proc(string, Callback)	'proc using a string and one argument
+	'On Error Resume Next
+	dim p : Set P = GetRef(String)
+	P Callback
+	If err.number = 13 then  msgbox "Proc error! No such procedure: " & vbnewline & string
+	if err.number = 424 then msgbox "Proc error! No such Object"
+End Sub
+
+Function AppendArray(ByVal aArray, aInput)	'append one value, object, or Array onto the end of a 1 dimensional array
+	if IsArray(aInput) then 'Input is an array...
+		dim tmp : tmp = aArray
+		If not IsArray(aArray) Then	'if not array, create an array
+			tmp = aInput
+		Else						'Append existing array with aInput array
+			Redim Preserve tmp(uBound(aArray) + uBound(aInput)+1)	'If existing array, increase bounds by uBound of incoming array
+			dim x : for x = 0 to uBound(aInput)
+				if isObject(aInput(x)) then
+					Set tmp(x+uBound(aArray)+1 ) = aInput(x)
+				Else
+					tmp(x+uBound(aArray)+1 ) = aInput(x)
+				End If
+			Next
+			AppendArray = tmp	 'return new array
+		End If
+	Else 'Input is NOT an array...
+		If not IsArray(aArray) Then	'if not array, create an array
+			aArray = Array(aArray, aInput)
+		Else
+			Redim Preserve aArray(uBound(aArray)+1)	'If array, increase bounds by 1
+			if isObject(aInput) then
+				Set aArray(uBound(aArray)) = aInput
+			Else
+				aArray(uBound(aArray)) = aInput
+			End If
+		End If
+		AppendArray = aArray 'return new array
+	End If
+End Function
+
+'******************************************************
+'****  END LAMPZ
+'******************************************************
+
 
 ' - if you press action button during battle instructions, it goes straight to battle and bypasses intro music, but still sits on the ball for 5 seconds
 ''
@@ -13624,7 +14339,6 @@ End Class
 '    - it's a mystery - shouldn't happen
 ' √? Dragon Fire light seq during Targaryen Level 3 doesn't include the right lights and sometimes doesn't play at all
 ' √? during HOTK, Stark bonus mode went to -2 or -3 before switching scenes
-' √? LolSaved is still not turning off LoL light.
 ' √? Targaryen hurry-up doesn't start if the mode is restarted
 ' - mystery and battle ready lights are too intense when white. Fine when other colours
 
@@ -13653,4 +14367,4 @@ End Class
 '		Add Spinner and Bumper Flashers
 ' 104 - In Iron Throne mode, don't add extra balls after the 7 main castles are done
 '       Use flippers to advance through Attract mode
-
+' 105 - oqqsan LAMPZ / inserts and extra lights / working rgb .. some colors need "help"
