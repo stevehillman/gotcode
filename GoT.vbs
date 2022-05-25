@@ -39,10 +39,11 @@ Const bDebug = False
 '***********TABLE VOLUME LEVELS ********* 
 ' [Value is from 0 to 1 where 1 is full volume. 
 ' NOTE: you can go past 1 to amplify sounds]
-Const VolBGMusic = 0.15  ' Volume for table background music  
-Const VolCallout = 0.9   ' Volume of voice callouts
-Const VolDef = 0.5		 ' Volume for GoT sound effects
-Const VolSfx = 0.2		 ' Volume for table "physical" Sound effects (non Fleep sounds)
+Const cVolBGMusic = 0.15  ' Volume for table background music  
+Const cVolCallout = 0.9   ' Volume of voice callouts
+Const cVolDef = 0.5		 ' Volume for GoT sound effects
+Const cVolSfx = 0.2		 ' Volume for table "physical" Sound effects (non Fleep sounds)
+Const cVolTable = 0.2   ' Used by Daphishbowl's Service menu
 '*** Fleep ****
 '///////////////////////-----General Sound Options-----///////////////////////
 '// VolumeDial:
@@ -62,12 +63,7 @@ Const DMDMode = 1                   ' Use FlexDMD (currently the only option sup
 Const bUsePlungerForSternKey = False ' If true, use the plunger key for the Action/Select button. 
 
 '///// Game of Thrones Options - most from the real ROM
-Const bFreePlay = True         ' Want coins?
 Const bUseDragonFire = True             ' Whether to use dragon fire effect on the upper playfield. Looks cool but isn't true to real table
-Const TargaryenFreezeLength = 12 ' Length in seconds that Targaryen House can freeze timers for. This is a configurable value in the real table
-Const TargaryenDragonsCompleted = 2 'If playing as House Targaryen, number of dragons completed at start of game. 3 = Factory Default = Mode completed
-Const BaseReplayScore = 298000000
-
 
 '/////// No User Configurable options beyond this point ////////
 
@@ -91,10 +87,9 @@ Const cGameName = "gameofthrones"  ' Used by B2S for DOF
 Const myGameName = "gameofthrones" ' Used for FlexDMD, High score storage, etc
 Const myVersion = "0.9"
 Const MaxPlayers = 4          ' from 1 to 4 - don't change
-Const BallSaverTime = 20      ' in seconds of the first ball
 Const MaxMultiplier = 5       ' limit playfield multiplier
 Const MaxBonusMultiplier = 20 'limit Bonus multiplier
-Const BallsPerGame = 3        ' usually 3 or 5
+Dim BallsPerGame
 Const MaxMultiballs = 6       ' max number of balls during multiballs
 
 '*****************************************************************************************************
@@ -246,6 +241,7 @@ Sub Table1_Init()
 
     'load saved values, highscore, names, jackpot
     Loadhs
+    DMDSettingsInit() ' Init the Service Menu
 
     ' initalise the DMD display
     DMD_Init
@@ -326,7 +322,7 @@ Sub Table1_KeyDown(ByVal Keycode)
 
     If Keycode = AddCreditKey Then
         Credits = Credits + 1
-        if bFreePlay = False Then DOF 140, DOFOn
+        if DMDStd(kDMDStd_FreePlay) = False Then DOF 140, DOFOn
         If(Tilted = False)Then GameAddCredit
     End If
 
@@ -341,6 +337,8 @@ Sub Table1_KeyDown(ByVal Keycode)
         UpdateMysteryAward(keycode)
         Exit Sub
     End If
+
+    StartServiceMenu keycode
 
     ' Normal flipper action
 
@@ -390,16 +388,24 @@ Sub Table1_KeyDown(ByVal Keycode)
         If CheckLocalKeydown(keycode) Then Exit Sub
 
         If keycode = StartGameKey Then
-            If LFPress=1 And bBallInPlungerLane and bFreePlay = True Then  ' Quick Restart
+            If LFPress=1 And bBallInPlungerLane and (DMDStd(kDMDStd_LeftStartReset)=1 Or (DMDStd(kDMDStd_LeftStartReset)=2 And DMDStd(kDMDStd_FreePlay) = True)) Then  ' Quick Restart
                 Dim b
-                swPlunger.DestroyBall
+                PlungerIM.AutoFire
                 For each b in GetBalls : b.DestroyBall : next
-                ResetForNewGame()
+                bGameInPLay = False	
+                bShowMatch = False
+                tmrBallSearch.Enabled = False
+                
+                ' ensure that the flippers are down
+                SolLFlipper 0
+                SolRFlipper 0
+                GiOff
+                StartAttractMode
                 Exit Sub
             End If
             If((PlayersPlayingGame <MaxPlayers)AND(bOnTheFirstBall = True))Then
 
-                If(bFreePlay = True)Then
+                If(DMDStd(kDMDStd_FreePlay) = True)Then
                     PlayersPlayingGame = PlayersPlayingGame + 1
                     TotalGamesPlayed = TotalGamesPlayed + 1
                     DMD "_", CL(1, PlayersPlayingGame & " PLAYERS"), "", eNone, eBlink, eNone, 1000, False, ""
@@ -411,7 +417,7 @@ Sub Table1_KeyDown(ByVal Keycode)
                         Credits = Credits - 1
                         DMD "_", CL(1, PlayersPlayingGame & " PLAYERS"), "", eNone, eBlink, eNone, 1000, False, ""
                         ScoreScene = Empty
-                        If Credits <1 And bFreePlay = False Then DOF 140, DOFOff
+                        If Credits <1 And DMDStd(kDMDStd_FreePlay) = False Then DOF 140, DOFOff
                     Else
                         ' Not Enough Credits to start a game.
                         DisplayDMDText "CREDITS 0", "INSERT COINS", 1000
@@ -422,7 +428,7 @@ Sub Table1_KeyDown(ByVal Keycode)
     Else ' If (GameInPlay)
 
         If keycode = StartGameKey Then
-            If(bFreePlay = True)Then
+            If(DMDStd(kDMDStd_FreePlay) = True)Then
                 If(BallsOnPlayfield = 0)Then
                     ResetForNewGame()
                 End If
@@ -430,7 +436,7 @@ Sub Table1_KeyDown(ByVal Keycode)
                 If(Credits> 0)Then
                     If(BallsOnPlayfield = 0)Then
                         Credits = Credits - 1
-                        If Credits <1 And bFreePlay = False Then DOF 140, DOFOff
+                        If Credits <1 And DMDStd(kDMDStd_FreePlay) = False Then DOF 140, DOFOff
                         ResetForNewGame()
                     End If
                 Else
@@ -674,37 +680,7 @@ Sub TiltRecoveryTimer_Timer()
 ' else retry (checks again in another second or so)
 End Sub
 
-'***************************************************************
-'             Supporting Ball & Sound Functions v3.0
-'  includes random pitch in PlaySoundAt and PlaySoundAtBall
-'***************************************************************
 
-' Dim TableWidth, TableHeight
-
-' TableWidth = Table1.width
-' TableHeight = Table1.height
-
-' Function Vol(ball) ' Calculates the Volume of the sound based on the ball speed
-'     Vol = Csng(BallVel(ball) ^2 / 2000) * VolSfx
-' End Function
-
-' Function Pan(ball) ' Calculates the pan for a ball based on the X position on the table. "table1" is the name of the table
-'     Dim tmp
-'     tmp = ball.x * 2 / TableWidth-1
-'     If tmp> 0 Then
-'         Pan = Csng(tmp ^10)
-'     Else
-'         Pan = Csng(-((- tmp) ^10))
-'     End If
-' End Function
-
-' Function Pitch(ball) ' Calculates the pitch of the sound based on the ball speed
-'     Pitch = BallVel(ball) * 20
-' End Function
-
-' Function BallVel(ball) 'Calculates the ball speed
-'     BallVel = (SQR((ball.VelX ^2) + (ball.VelY ^2)))
-' End Function
 
 Sub PlaySoundVol(soundname, Volume)
   PlaySound soundname, 1, Volume
@@ -2205,106 +2181,7 @@ End Class
 
 
 
-
-'***********************************************
-'   JP's VP10 Rolling Sounds + Ballshadow v3.0
-'   uses a collection of shadows, aBallShadow
-'***********************************************
-
-' Const tnob = 19   'total number of balls, 20 balls, from 0 to 19
-' Const lob = 0     'number of locked balls
-' Const maxvel = 50 'max ball velocity
-' ReDim rolling(tnob)
-' InitRolling
-
-' Sub InitRolling
-'     Dim i
-'     For i = 0 to tnob
-'         rolling(i) = False
-'     Next
-' End Sub
-
-' Sub RollingUpdate()
-'     Dim BOT, b, ballpitch, ballvol, speedfactorx, speedfactory, maxv
-'     BOT = GetBalls
-
-'     ' stop the sound of deleted balls and hide the shadow
-'     For b = UBound(BOT) + 1 to tnob
-'         rolling(b) = False
-'         StopSound("fx_ballrolling" & b)
-'         aBallShadow(b).Y = 3000
-'     Next
-
-'     ' exit the sub if no balls on the table
-'     If UBound(BOT) = lob - 1 Then Exit Sub 'there no extra balls on this table
-
-'     ' play the rolling sound for each ball and draw the shadow
-'     For b = lob to UBound(BOT)
-'         aBallShadow(b).X = BOT(b).X
-'         aBallShadow(b).Y = BOT(b).Y
-'         aBallShadow(b).Height = BOT(b).Z -24
-
-'         If BallVel(BOT(b))> 1 Then
-'             If BOT(b).z <30 Then
-'                 ballpitch = Pitch(BOT(b))
-'                 ballvol = Vol(BOT(b))
-'             Else
-'                 ballpitch = Pitch(BOT(b)) + 25000 'increase the pitch on a ramp
-'                 ballvol = Vol(BOT(b)) * 10
-'             End If
-'             rolling(b) = True
-'             PlaySound("fx_ballrolling" & b), -1, ballvol, Pan(BOT(b)), 0, ballpitch, 1, 0, AudioFade(BOT(b))
-'         Else
-'             If rolling(b) = True Then
-'                 StopSound("fx_ballrolling" & b)
-'                 rolling(b) = False
-'             End If
-'         End If
-
-'         ' rothbauerw's Dropping Sounds
-'         If BOT(b).VelZ <-1 and BOT(b).z <55 and BOT(b).z> 27 Then 'height adjust for ball drop sounds
-'             PlaySound "fx_balldrop", 0, ABS(BOT(b).velz) / 17, Pan(BOT(b)), 0, Pitch(BOT(b)), 1, 0, AudioFade(BOT(b))
-'         End If
-
-'         ' jps ball speed control
-'         If BOT(b).VelX AND BOT(b).VelY <> 0 Then
-'             If BOT(b).Z < 30 And BOT(B).Y < 100 Then maxv = 30 else maxv = maxvel   ' Slow the ball down on the top orbit - Skillman
-'             speedfactorx = ABS(maxv / BOT(b).VelX)
-'             speedfactory = ABS(maxv / BOT(b).VelY)
-'             If speedfactorx <1 Then
-'                 BOT(b).VelX = BOT(b).VelX * speedfactorx
-'                 BOT(b).VelY = BOT(b).VelY * speedfactorx
-'             End If
-'             If speedfactory <1 Then
-'                 BOT(b).VelX = BOT(b).VelX * speedfactory
-'                 BOT(b).VelY = BOT(b).VelY * speedfactory
-'             End If
-'         End If
-'     Next
-' End Sub
-
-'**********************
-' Ball Collision Sound
-'**********************
-
-' Sub OnBallBallCollision(ball1, ball2, velocity)
-'     PlaySound "fx_collide", 0, Csng(velocity) ^2 / 2000, Pan(ball1), 0, Pitch(ball1), 0, 0, AudioFade(ball1)
-' End Sub
-
-'************************************
-' Diverse Collection Hit Sounds v3.0
-'************************************
-
-' Sub aMetals_Hit(idx):PlaySoundAtBall "fx_MetalHit":End Sub
-' Sub aMetalWires_Hit(idx):PlaySoundAtBall "fx_MetalWire":End Sub
-' Sub aRubber_Bands_Hit(idx):PlaySoundAtBall "fx_rubber_band":End Sub
-' Sub aRubber_LongBands_Hit(idx):PlaySoundAtBall "fx_rubber_longband":End Sub
-' Sub aRubber_Posts_Hit(idx):PlaySoundAtBall "fx_rubber_post":End Sub
-' Sub aRubber_Pins_Hit(idx):PlaySoundAtBall "fx_rubber_pin":End Sub
-' Sub aRubber_Pegs_Hit(idx):PlaySoundAtBall "fx_rubber_peg":End Sub
-' Sub aPlastics_Hit(idx):PlaySoundAtBall "fx_PlasticHit":End Sub
- Sub aGates_Hit(idx):PlaySoundAtBall "fx_Gate4":End Sub
-' Sub aWoods_Hit(idx):PlaySoundAtBall "fx_Woodhit":End Sub
+Sub aGates_Hit(idx):PlaySoundAtBall "fx_Gate4":End Sub
 Sub aRollovers_Hit(idx):PlaySoundAtBall "fx_sensor":End Sub
 
 ' Slingshots has been hit
@@ -2387,18 +2264,35 @@ Sub Loadhs
     Next
     x = LoadValue(myGameName, "Credits")
     If(x <> "")then Credits = CInt(x)Else Credits = 0
-    If Credits = 0 And bFreePlay = False Then DOF 140, DOFOff Else DOF 140, DOFOn
+    If Credits = 0 And DMDStd(kDMDStd_FreePlay) = False Then DOF 140, DOFOff Else DOF 140, DOFOn
     x = LoadValue(myGameName, "TotalGamesPlayed")
     If(x <> "")then TotalGamesPlayed = CInt(x)Else TotalGamesPlayed = 0 End If
 End Sub
 
 Sub reseths
     Dim i
-    For i = 1 to 16
-        HighScore(i-1) = (17-i)*1000000
-        HighScoreName(i-1) = Chr(64+i)&Chr(64+i)&Chr(64+i)
+    For i = 0 to 15
+        HighScore(i) = (16-i)*10000000
+        HighScoreName(i) = Chr(64+i)&Chr(64+i)&Chr(64+i)
     Next
+    HighScore(0) = DMDStd(kDMDStd_HighScoreGC)
+    HighScore(1) = DMDStd(kDMDStd_HighScore1)
+    HighScore(2) = DMDStd(kDMDStd_HighScore2)
+    HighScore(3) = DMDStd(kDMDStd_HighScore3)
+    HighScore(4) = DMDStd(kDMDStd_HighScore4)
     savehs
+End Sub
+
+Sub Clearhs : reseths : End Sub
+Sub ClearAll
+    reseths
+    Dim i
+    For i = 0 to kDMDStd_LastStdSetting
+        SaveValue myGameName, "DMDStd_"&i,""
+    Next
+    For i =  kDMDStd_LastStdSetting+1 to 200
+        SaveValue myGameName, "DMDFet_"&i,""
+    Next
 End Sub
 
 Sub Savehs
@@ -2417,8 +2311,11 @@ End Sub
 
 Dim hsbModeActive
 Dim hsEnteredName
-Dim hsEnteredDigits(3)
+Dim hsEnteredDigits(10)
 Dim hsCurrentDigit
+Dim hsMaxDigits
+Dim hsX
+Dim hsStart, hsEnd
 Dim hsValidLetters
 Dim hsCurrentLetter
 Dim hsLetterFlash
@@ -2426,35 +2323,26 @@ Dim HSscene
 
 Sub CheckHighscore()
     Dim tmp
-    tmp = Score(CurrentPlayer)
+    tmp = GameCheckHighScore(Score(CurrentPlayer))
 
-    Select Case GameCheckHighScore(tmp)
+    Select Case tmp
         Case 0: EndOfBallComplete()
         Case 1: HighScoreEntryInit()
-        Case 2
-            Credits = Credits + 1
+        Case 2,3,4,5,6
+            Credits = Credits + tmp-1
             DOF 140, DOFOn
-            'PlaySound SoundFXDOF("fx_Knocker", 122, DOFPulse, DOFKnocker)
             KnockerSolenoid
             DOF 121, DOFPulse
-            HighScoreEntryInit()
+            If tmp > 2 Then
+                vpmTimer.AddTimer 500+100*(tmp-3), "HighScoreEntryInit() '"
+                Do While tmp > 2
+                    vpmTimer.AddTimer 200*(tmp-2),"KnockerSolenoid : DOF 121, DOFPulse '"
+                    tmp = tmp - 1
+                Loop
+            Else
+                vpmTimer.AddTimer 300, "HighScoreEntryInit() '"
+            End If
     End Select
-
-    ' Not used on the GoT table
-    ' If tmp> HighScore(0)Then 'add 1 credit for beating the highscore
-    '     Credits = Credits + 1
-    '     DOF 125, DOFOn
-    ' End If
-
-    ' If tmp> HighScore(3)Then
-    '     PlaySound SoundFXDOF("fx_Knocker", 122, DOFPulse, DOFKnocker)
-    '     DOF 121, DOFPulse
-    '     HighScore(3) = tmp
-    '     'enter player's name
-    '     HighScoreEntryInit()
-    ' Else
-    '     EndOfBallComplete()
-    ' End If
 End Sub
 
 Sub HighScoreEntryInit()
@@ -2466,12 +2354,17 @@ Sub HighScoreEntryInit()
     PlaySoundVol "got-track-hstd",VolDef/8
     hsLetterFlash = 0
 
-    hsEnteredDigits(0) = " "
-    hsEnteredDigits(1) = " "
-    hsEnteredDigits(2) = " "
+    hsMaxDigits = DMDStd(kDMDStd_Initials)
+    hsText = "> ___ <" : hsX = 40 : hsStart = "> " : hsEnd = " <"
+    For i = 0 to hsMaxDigits-1 : hsEnteredDigits(i) = " " : Next
     hsCurrentDigit = 0
 
     hsValidLetters = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<" ' < is back arrow
+    if hsMaxDigits > 3 Then 
+        hsValidLetters = hsValidLetters + "~" ' Add the ~ key to the end to exit long initials entry
+        hsText = "" : hsStart="" : hsEnd=""
+        hsX = 10
+    End If
     hsCurrentLetter = 1
     If bUseFlexDMD Then
         Set HSscene = FlexDMD.NewGroup("highscore")
@@ -2479,8 +2372,8 @@ Sub HighScoreEntryInit()
         ' Note, these fonts aren't included with FlexDMD. Change to stock fonts for other tables
         HSscene.AddActor FlexDMD.NewLabel("name",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbWhite, 0),"YOUR NAME:")
         HSScene.GetLabel("name").SetAlignedPosition 2,2,FlexDMD_Align_TopLeft
-        HSscene.AddActor FlexDMD.NewLabel("initials",FlexDMD.NewFont("skinny10x12.fnt", vbWhite, vbWhite, 0),"> ___ <")
-        HSScene.GetLabel("initials").SetAlignedPosition 40,16,FlexDMD_Align_TopLeft
+        HSscene.AddActor FlexDMD.NewLabel("initials",FlexDMD.NewFont("skinny10x12.fnt", vbWhite, vbWhite, 0),hsText)
+        HSScene.GetLabel("initials").SetAlignedPosition hsX,16,FlexDMD_Align_TopLeft
         DMDFlush()
         DMDDisplayScene HSscene
     End If
@@ -2518,9 +2411,10 @@ Sub EnterHighScoreKey(keycode)
             'playsound "fx_Enter"
             'Table-specific
             PlaySoundVol "gotfx-hstd-enter",VolDef
+            if hsMaxDigits = 10 And (mid(hsValidLetters, hsCurrentLetter, 1) = "~") Then HighScoreCommitName() : Exit Sub
             hsEnteredDigits(hsCurrentDigit) = mid(hsValidLetters, hsCurrentLetter, 1)
             hsCurrentDigit = hsCurrentDigit + 1
-            if(hsCurrentDigit = 3)then
+            if(hsCurrentDigit = 3 And hsMaxDigits = 3)then
                 HighScoreCommitName()
             else
                 HighScoreDisplayNameNow()
@@ -2549,12 +2443,12 @@ Sub HighScoreDisplayName()
     Dim TempBotStr
 
     TempTopStr = "YOUR NAME:"
-    TempBotStr = "> "
-    if(hsCurrentDigit> 0)then TempBotStr = TempBotStr & hsEnteredDigits(0)
-    if(hsCurrentDigit> 1)then TempBotStr = TempBotStr & hsEnteredDigits(1)
-    if(hsCurrentDigit> 2)then TempBotStr = TempBotStr & hsEnteredDigits(2)
+    TempBotStr = hsStart
+    For i = 0 to hsMaxDigits-1
+        if(hsCurrentDigit> i)then TempBotStr = TempBotStr & hsEnteredDigits(i)
+    Next
 
-    if(hsCurrentDigit <> 3)then
+    if(hsCurrentDigit <> hsMaxDigits)then
         if(hsLetterFlash <> 0)then
             TempBotStr = TempBotStr & "_"
         else
@@ -2562,16 +2456,17 @@ Sub HighScoreDisplayName()
         end if
     end if
 
-    if(hsCurrentDigit <1)then TempBotStr = TempBotStr & hsEnteredDigits(1)
-    if(hsCurrentDigit <2)then TempBotStr = TempBotStr & hsEnteredDigits(2)
+    For i = 1 to hsMaxDigits-1
+        if(hsCurrentDigit <i)then TempBotStr = TempBotStr & hsEnteredDigits(i)
+    Next
 
-    TempBotStr = TempBotStr & " <    "
+    TempBotStr = TempBotStr & hsEnd
     
     If bUseFlexDMD Then
         FlexDMD.LockRenderThread
         With HSscene.GetLabel("initials")
             .Text = TempBotStr
-            .SetAlignedPosition 40,16,FlexDMD_Align_TopLeft
+            .SetAlignedPosition hsX,16,FlexDMD_Align_TopLeft
         End With
         FlexDMD.UnlockRenderThread
     Else
@@ -2591,13 +2486,16 @@ Sub HighScoreFlashTimer_Timer()
 End Sub
 
 Sub HighScoreCommitName()
+    Dim i,bBlank
     HighScoreFlashTimer.Enabled = False
     hsbModeActive = False
 
-    hsEnteredName = hsEnteredDigits(0) & hsEnteredDigits(1) & hsEnteredDigits(2)
-    if(hsEnteredName = "   ")then
-        hsEnteredName = "YOU"
-    end if
+    hsEnteredName="":bBlank=true
+    For i = 0 to hsMaxDigits-1
+        hsEnteredName = hsEnteredName & hsEnteredDigits(i) 
+        if hsEnteredDigits(i) <> " " Then bBlank=False
+    Next
+    if bBlank then hsEnteredName = "YOU"
 
     GameSaveHighScore Score(CurrentPlayer),hsEnteredName
     SortHighscore
@@ -3215,6 +3113,639 @@ Sub DelayBlinkActor(actor,delay,blinkinterval,times)
     seq.Add af.Repeat(blink,times)
     actor.AddAction seq
 End Sub
+
+
+Dim TableName : TableName = myGameName
+' ***********************************************************************
+' DAPHISHBOWL - STERN Service Menu
+' - Modified by Skillman for SPIKE1/FlexDMD
+'   - Refactored to remove distinction between Std and Game-specific features in feature array
+'   - Added variables to indicate where game-specific features start in the array
+'   - Moved all display logic outside the ServiceMenu sub
+'   - Added Defaults to Settings array
+'   - Optimized initialization of settings
+'   - Added support for Boolean options in the Service Menu Adjustment
+' ***********************************************************************
+
+' SERVICE Key Definitions
+Const ServiceCancelKey 	= 8			' 7 key
+Const ServiceUpKey 		= 9			' 8 key
+Const ServiceDownKey 	= 10		' 9 key
+Const ServiceEnterKey 	= 11		' 0 key
+
+Dim serviceSaveAttract
+dim serviceIdx
+Dim serviceLevel
+dim bServiceMenu
+dim bServiceVol
+dim bServiceEdit
+dim serviceOrigValue
+Dim bInService:bInService=False
+Dim MasterVol:MasterVol=100
+'Dim VolBGVideo:VolBGVideo = cVolBGVideo
+Dim VolBGMusic :VolBGMusic = cVolBGMusic
+Dim VolCallout : VolCallout = cVolCallout
+Dim VolDef:VolDef = cVolDef
+Dim VolSfx:VolSfx = cVolSfx
+Dim VolTable:VolTable = cVolTable
+Dim TopArray:TopArray = Array("GO TO DIAGNOSTIC MENU","GO TO AUDITS MENU","GO TO ADJUSTMENTS MENU","GO TO UTILITIES MENU","GO TO TOURNAMENT MENU","GO TO REDEMPTION MENU","EXIT SERVICE MENU")
+Dim AdjArray:AdjArray = Array("STANDARD ADJUSTMENTS","FEATURE ADJUSTMENTS","PREVIOUS MENU","EXIT SRVICE MENU","HELP")
+Const kMenuNone 	= -1
+Const kMenuTop	 	= 0
+Const kMenuAdj	 	= 1
+Const kMenuAdjStd	= 2
+Const kMenuAdjGame  = 3
+
+Sub StartServiceMenu(keycode)
+	Dim i
+	Dim maxVal
+	Dim minVal
+	Dim dataType
+	dim TmpStr
+	Dim direction
+	Dim values
+	Dim valuesLst
+	Dim NewVal
+	Dim displayText
+    Dim SvcFontSm
+    Dim SvcFontBg
+    Dim line3
+	
+	if keycode=ServiceEnterKey and bInService=False then 
+'debug.print "Start Service:" & bInService
+		PlaySoundVol "stern-svc-enter", VolSfx
+		serviceSaveAttract=bAttractMode
+		bAttractMode=False
+		bServiceMenu=False
+		bServiceEdit=False 
+		bInService=True
+		bServiceVol=False
+		serviceIdx=-1
+		serviceLevel=kMenuNone
+		
+        tmrDMDUpdate.Enabled = False
+        tmrAttractModeScene.Enabled = False
+
+        CreateServiceDMDScene serviceIdx
+
+	elseif keycode=ServiceCancelKey then 					' 7 key starts the service menu
+		if bInService then
+			PlaySoundVol "stern-svc-cancel", VolSfx
+			Select case serviceLevel:
+				case kMenuTop, kMenuNone: 
+					bInService=False
+					bServiceVol=False
+					bAttractMode=serviceSaveAttract
+					if bAttractMode then
+						StartAttractMode
+                    Else
+                        tmrDMDUpdate.Enabled = True
+					End if 
+					
+				case kMenuAdj:
+					serviceLevel=kMenuNone
+					serviceIdx=0
+					StartServiceMenu 11
+				case kMenuAdjStd,kMenuAdjGame:
+					if bServiceEdit then 
+						bServiceEdit=False 
+                        DMDStd(DMDMenu(serviceIdx).StdIdx)=serviceOrigValue
+                        UpdateServiceDMDScene GetTextForAdjustment(serviceIdx)
+					else 
+                        serviceLevel=kMenuTop
+						serviceIdx=2
+						StartServiceMenu 11
+					End if 
+			End Select  
+		End if 
+	elseif bInService Then
+		if keycode=ServiceEnterKey then 	' Select 
+			PlaySoundVol "stern-svc-enter", VolSfx
+			select case serviceLevel
+				case kMenuNone:
+					serviceLevel=kMenuTop
+					serviceIdx=0
+                    CreateServiceDMDScene serviceLevel
+				case kMenuTop: 
+					if serviceIdx=2 then 
+						serviceLevel=kMenuAdj : serviceIdx=0
+						CreateServiceDMDScene serviceLevel
+					elseif serviceIdx=6 then 
+						StartServiceMenu 8		' Exit 
+						Exit sub 
+					else 
+						PlaySoundVol "sfx-deny", VolSfx
+					End if 
+				case kMenuAdj:
+                    Select Case serviceIdx
+					    Case 0,1:
+                            serviceLevel=kMenuAdjStd+serviceIdx
+                            If serviceLevel = kMenuAdjStd Then serviceIdx=0 Else serviceIdx = MinFetDMDSetting
+                            CreateServiceDMDScene serviceLevel
+                            StartServiceMenu 0
+					    Case 2: 		' Go Up
+                            serviceLevel=kMenuNone : serviceIdx=0
+                            StartServiceMenu 11
+                            Exit sub 
+					    Case 3:
+                            StartServiceMenu 8		' Exit 
+                            Exit sub 
+					    Case else: 
+						    PlaySoundVol "sfx-deny", VolSfx
+					End Select
+				case kMenuAdjStd,kMenuAdjGame:
+					if DMDMenu(serviceIdx).ValType="FUN" then		' Function
+                        Select Case DMDMenu(serviceIdx).StdIdx
+                            Case 0: reseths
+                            Case 1: ClearAll
+                        End Select
+						UpdateServiceDMDScene "<DONE>"
+					else 
+						if bServiceEdit=False then 	' Start Editing  
+							bServiceEdit=True
+                            serviceOrigValue=DMDStd(DMDMenu(serviceIdx).StdIdx)
+							UpdateServiceDMDScene GetTextForAdjustment(serviceIdx)
+						else 							' Save the change 
+							bServiceEdit=False
+							UpdateServiceDMDScene GetTextForAdjustment(serviceIdx)
+						End if 
+					End if 
+			End Select 
+		elseif serviceLevel<>kMenuNone then 
+			if bServiceEdit = False then 
+				if keycode=ServiceUpKey then 	' Left
+					PlaySoundVol "stern-svc-minus", VolSfx
+					serviceIdx=serviceIdx-1
+					if serviceIdx<0 then serviceIdx=0
+				elseif keycode=ServiceDownKey then 	' Right 
+					PlaySoundVol "stern-svc-plus", VolSfx
+					serviceIdx=serviceIdx+1
+				End if
+
+				select case serviceLevel
+					case kMenuTop:
+						if serviceIdx>6 then serviceIdx=0
+						UpdateServiceDMDScene ""
+					case kMenuAdj:
+						if serviceIdx>4 then serviceIdx=0
+						UpdateServiceDMDScene ""
+					case kMenuAdjStd
+                        if serviceIdx > MaxStdDMDSetting Then serviceIdx = MaxStdDMDSetting
+                        if DMDMenu(serviceIdx).ValType<>"FUN" then
+							UpdateServiceDMDScene GetTextForAdjustment(serviceIdx)
+						else 
+							UpdateServiceDMDScene "<EXECUTE>"
+						End if 
+                    case kMenuAdjGame:
+                        if serviceIdx < MinFetDMDSetting Then serviceIdx = MinFetDMDSetting
+                        If serviceIdx > MaxFetDMDSetting Then serviceIdx = MaxFetDMDSetting
+                        UpdateServiceDMDScene GetTextForAdjustment(serviceIdx)
+				End Select
+			else
+        
+            ' ******************************************************    HANDLE EDIT MODE
+				dataType=mid(DMDMenu(serviceIdx).ValType, 1, 3)
+				minVal=-1
+				maxVal=-1
+				if Instr(DMDMenu(serviceIdx).ValType, "[")<> 0 then 
+					TmpStr =mid(DMDMenu(serviceIdx).ValType, 5, Len(DMDMenu(serviceIdx).ValType)-5)
+					values = Split(TmpStr, ":")
+					if dataType="INT" or dataType="PCT" then 
+						minVal=CLNG(values(0))
+						maxVal=CLNG(values(1))
+					End if 
+				End if
+
+				direction=0
+				if keycode=ServiceUpKey then 	' Left
+					PlaySoundVol "stern-svc-minus", VolSfx
+					direction=-1
+				elseif keycode=ServiceDownKey then 	' Right 
+					PlaySoundVol "stern-svc-plus", VolSfx
+					direction=1
+				End if
+				if direction<>0 then 
+					if dataType="INT" or dataType="PCT" then                            
+                        NewVal=DMDStd(DMDMenu(serviceIdx).StdIdx) + (direction*DMDMenu(serviceIdx).Increment)
+                        if minVal=-1 or (NewVal <= maxVal and NewVal >= minVal) then 
+                            DMDStd(DMDMenu(serviceIdx).StdIdx)=DMDStd(DMDMenu(serviceIdx).StdIdx) + (direction*DMDMenu(serviceIdx).Increment)
+                            SaveValue TableName, "DMDStd_"&DMDMenu(serviceIdx).StdIdx, DMDStd(DMDMenu(serviceIdx).StdIdx)	' SAVE 
+                            if DMDMenu(serviceIdx).StdIdx<>kDMDStd_Initials and DMDMenu(serviceIdx).StdIdx<>kDMDStd_LeftStartReset then 
+                                SaveValue TableName, "dmdCriticalChanged", "True"		' SAVE
+                                dmdCriticalChanged=True
+                            End if 
+                        end if 
+                        displayText=DMDStd(DMDMenu(serviceIdx).StdIdx)
+						
+					elseif dataType="LST" then 
+                        For i = 0 to ubound(values)
+                            valuesLst=Split(values(i), ",")
+'debug.print "EDIT LST:" & valuesLst(0) & " " & valuesLst(1) & " val: " & DMDStd(DMDMenu(serviceIdx).StdIdx) & " idx:" & i & " ubound:" & ubound(values)
+                            if DMDStd(DMDMenu(serviceIdx).StdIdx)&"" = valuesLst(0) and direction=1 then
+                                If i <  ubound(values) Then valuesLst=Split(values(i+1), ",") Else  valuesLst=Split(values(0), ",")
+                                DMDStd(DMDMenu(serviceIdx).StdIdx)=valuesLst(0)
+                                SaveValue TableName, "DMDStd_"&DMDMenu(serviceIdx).StdIdx, DMDStd(DMDMenu(serviceIdx).StdIdx)	' SAVE 
+                                displayText=valuesLst(1)
+                                Exit For
+                            elseif DMDStd(DMDMenu(serviceIdx).StdIdx)&"" = valuesLst(0) and direction=-1 then 
+                                If i > lbound(values) Then valuesLst=Split(values(i-1), ",") Else valuesLst=Split(values(ubound(values)), ",")
+                                DMDStd(DMDMenu(serviceIdx).StdIdx)=valuesLst(0)
+                                SaveValue TableName, "DMDStd_"&DMDMenu(serviceIdx).StdIdx, DMDStd(DMDMenu(serviceIdx).StdIdx)	' SAVE 
+                                displayText=valuesLst(1)
+                                Exit For
+                            End if 
+                        Next 
+                    elseif dataType="BOO" then 'Boolean
+                        If DMDStd(DMDMenu(serviceIdx).StdIdx) = 1 Then
+                            DMDStd(DMDMenu(serviceIdx).StdIdx) = 0 : displayText = "OFF"
+                        Else
+                            DMDStd(DMDMenu(serviceIdx).StdIdx) = 1 : displayText = "ON"
+                        End if
+                        SaveValue TableName, "DMDStd_"&DMDMenu(serviceIdx).StdIdx, DMDStd(DMDMenu(serviceIdx).StdIdx)	' SAVE
+					End if 
+
+					if displayText<>"" then UpdateServiceDMDScene displayText
+				End If
+				if DMDMenu(serviceIdx).StdIdx = kDMDStd_BallsPerGame Then BallsPerGame = DMDStd(kDMDStd_BallsPerGame) 
+			End if 
+		End if
+	elseif keycode=ServiceUpKey or keycode=ServiceDownKey then 		' If you press 8 & 9 without being in service you do volume 
+		if keycode=ServiceUpKey and MasterVol>0 then 	' Left
+			MasterVol=MasterVol-1
+			PlaySoundVol "stern-svc-minus", VolSfx
+		elseif keycode=ServiceDownKey and MasterVol<100 then 	' Right 
+			PlaySoundVol "stern-svc-plus", VolSfx
+			MasterVol=MasterVol+1
+		End if
+
+		'VolBGVideo = cVolBGVideo * (MasterVol/100.0)
+		VolBGMusic = cVolBGMusic * (MasterVol/100.0)
+		VolDef 	 = cVolDef * (MasterVol/100.0)
+		VolSfx 	 = cVolSfx * (MasterVol/100.0)
+
+		if bServiceVol=False then
+			bServiceVol=True 
+			serviceSaveAttract=bAttractMode
+			bAttractMode=False
+            tmrDMDUpdate.Enabled = False
+            tmrAttractModeScene.Enabled = False
+            CreateServiceDMDScene 0
+		End if 
+
+		UpdateServiceDMDScene
+
+		tmrService.Enabled = False 
+		tmrService.Interval = 5000
+		tmrService.Enabled = True 
+	End if 
+End Sub
+
+Sub tmrService_Timer()
+	tmrService.Enabled = False 	
+
+	bServiceVol=False 
+	bAttractMode=serviceSaveAttract
+	if bAttractMode then 
+		StartAttractMode
+    Else
+        tmrDMDUpdate.Enabled = true
+	End if 
+End Sub
+
+' Decode the ValType from the feature definition array to extract what kind of setting it is
+' If it's INT or PCT, just pass back the current value as the text
+' If it's LST, look up the current value in the LST to find the string equiv
+' If it's BOOL, convert to "OFF" or "ON"
+Function GetTextForAdjustment(idx)
+    Dim txt,dataType,values,valuesLst,TmpStr,i
+    txt = DMDStd(DMDMenu(idx).StdIdx) ' For INT and PCT types
+
+    dataType=mid(DMDMenu(serviceIdx).ValType, 1, 3) ' First 3 chars of valType
+    if Instr(DMDMenu(serviceIdx).ValType, "[")<> 0 then 
+        TmpStr =mid(DMDMenu(serviceIdx).ValType, 5, Len(DMDMenu(serviceIdx).ValType)-5)
+        values = Split(TmpStr, ":")	
+    End if
+    
+    Select Case dataType
+        Case "BOO": If DMDStd(DMDMenu(idx).StdIdx) <> 0 Then txt = "ON" Else txt = "OFF"
+        Case "LST"
+            For i = 0 to ubound(values)
+				valuesLst=Split(values(i), ",")
+                If DMDStd(DMDMenu(idx).StdIdx)&"" = valuesLst(0) Then txt = valuesLst(1) : Exit For
+            Next
+    End Select
+    debug.print "DataType: "&dataType&"  Returning "&txt
+    GetTextForAdjustment = txt
+End Function
+
+Class DMDSettings
+	Public Name 
+	Public StdIdx
+	Public Deflt
+	Public ValType					' bool, pct
+	Public Increment			' value to increment by
+    Sub Class_Initialize
+        me.Name="EMPTY"
+    End Sub
+	Public sub Setup(Name, StdIdx, Deflt, ValType, Increment)
+		me.name=name
+		me.StdIdx=StdIdx
+        me.Deflt = Deflt
+		me.ValType=ValType
+		me.Increment=Increment
+	End sub 
+End Class 
+
+' Set this according to the size of your settings list
+Dim MaxStdDMDSetting,MinFetDMDSetting,MaxFetDMDSetting : MaxStdDMDSetting = 27
+Dim DMDMenu(60)				' MaxDMDSetting
+Dim dmdChanged:dmdChanged=False							' Did we change a value 
+Dim dmdCriticalChanged:dmdCriticalChanged=False			' Did we change a critical value 
+
+' Indexes into the DMDStd array, where the actual value is stored. These indexes could just as easily
+' count up from 0, but these values were taken from Pinball Browser and match the actual game
+Const kDMDStd_ExtraBallLimit = &H3B
+Const kDMDStd_ExtraBallPCT = &H3C
+Const kDMDStd_MatchPCT = &H3D           '√
+Const kDMDStd_TiltWarn = &H3F
+Const kDMDStd_TiltDebounce = &H40
+Const kDMDStd_LeftStartReset = &H46     '√
+Const kDMDStd_BallSave = &H4C           '√
+Const kDMDStd_BallSaveExtend = &H4D     '√
+Const kDMDStd_ReplayType = &H2C         '√
+Const kDMDStd_AutoReplayStart = &H30    '√
+Const kDMDStd_BallsPerGame = &H3E       '√
+Const kDMDStd_FreePlay = &H42           '√
+Const kDMDStd_HighScoreGC = &H54        '√
+Const kDMDStd_HighScore1 = &H55         '√
+Const kDMDStd_HighScore2 = &H56         '√
+Const kDMDStd_HighScore3 = &H57         '√
+Const kDMDStd_HighScore4 = &H58         '√
+Const kDMDStd_HighScoreAward = &H59     '√
+Const kDMDStd_GCAwards = &H5A           '√
+Const kDMDStd_HS1Awards = &H5B          '√
+Const kDMDStd_HS2Awards = &H5C          '√
+Const kDMDStd_HS3Awards = &H5D          '√
+Const kDMDStd_HS4Awards = &H5E          '√
+Const kDMDStd_Initials = &H5F           '√
+Const kDMDStd_MusicAttenuation = &H60
+Const kDMDStd_SpeechAttenuation = &H61
+
+Const kDMDStd_LastStdSetting = &H67
+
+'Table-specific indexes below here
+Const kDMDFet_HouseCompleteExtraBall = &H68     '√
+Const kDMDFet_CasualPlayerMode = &H6C
+Const kDMDFet_PlayerHouseChoice = &H6D          '√
+Const kDMDFet_DisableRampDropTarget = &H71
+Const kDMDFet_ActionButtonAction = &H73   ' Toggle between house actions or "Iron Bank" (pre v1.37 behaviour)
+Const kDMDFet_LannisterButtonsPerGame = &H74    '√
+Const kDMDFet_TargaryenFreezeTime = &H75        '√
+Const kDMDFet_TargaryenHousePower = &H76        '√ toggle between 1, 2 or all dragons completed. 1 or 2 scores 30M per at start of game
+Const kDMDFet_DireWolfFrequency = &H77 ' Start Action button: 1-5 per game, 1 per ball, or 0
+Const kDMDFet_SwordsUnlockMultiplier = &H78     '√
+Const kDMDFet_RamHitsForMult = &H79
+Const kDMDFet_TwoBankDifficulty = &H7A
+Const kDMDFet_BWMB_SaveTimer = &H7D             '√
+Const kDMDFet_WallMB_SaveTimer = &H7E           '√
+Const kDMDFet_HOTKMB_SaveTimer = &H7F           '√
+Const kDMDFet_ITMB_SaveTimer = &H80             '√
+Const kDMDFet_MMMB_SaveTimer = &H81             '√
+Const kDMDFet_WHCMB_SaveTimer = &H82            '√
+Const kDMDFet_CMB_SaveTimer = &H83              '√
+Const kDMDFet_CastleLoopCompletesHouse = &H85
+Const kDMDFet_InactivityPauseTimer = &H96
+Const kDMDFet_ReduceWHCLamps = &H97
+Const kDMDFet_MidnightMadness = &H98
+
+
+Sub DMDSettingsInit()
+	Dim i
+	Dim x
+
+	For i = 0 to 60
+		set DMDMenu(i)=new DMDSettings
+    Next
+		
+        '  Name, Index, Default, Variable type
+    DMDMenu(0).Setup "HSTD  INITIALS", 						kDMDStd_Initials	,	3,		"LST[3,3 INITIALS:10,10 LETTER NAME]", 1 
+    DMDMenu(1).Setup "EXTRA  BALL  LIMIT", 					kDMDStd_ExtraBallLimit,	5,		"INT[0:9]", 1 
+    DMDMenu(2).Setup "EXTRA  BALL  PERCENT", 				kDMDStd_ExtraBallPCT,	25,		"PCT[0:50]", 1 
+    DMDMenu(3).Setup "MATCH  PERCENT", 						kDMDStd_MatchPCT,		9,		"PCT[0:10]", 1 
+    DMDMenu(4).Setup "LEFT+START  RESETS", 					kDMDStd_LeftStartReset,	2,		"LST[0,DISABLED:1,ALWAYS:2,FREE PLAY]", 1 
+    DMDMenu(5).Setup "BALL  SAVE  SECONDS", 					kDMDStd_BallSave,		5,		"INT[0:15]", 1 
+    DMDMenu(6).Setup "BALL  SAVE  EXTEND  SEC", 				kDMDStd_BallSaveExtend,	3,		"INT", 1 
+    DMDMenu(7).Setup "TILT  WARNINGS", 						kDMDStd_TiltWarn	,	2,		"INT[0:3]", 1 
+    DMDMenu(8).Setup "TILT  DEBOUNCE", 						kDMDStd_TiltDebounce,	1000,	"INT[750:1500]", 1 
+    DMDMenu(9).Setup "REPLAY  TYPE", 						kDMDStd_ReplayType,	    1,		"LST[1,EXTRA GAME:2,EXTRA BALL]", 1 
+    DMDMenu(10).Setup "AUTO  REPLAY  START", 					kDMDStd_AutoReplayStart,300000000,"INT[10000000:1000000000]", 5000000
+    DMDMenu(11).Setup "BALL  PER  GAME",                      kDMDStd_BallsPerGame,   3,     "INT[3:5]", 1
+    DMDMenu(12).Setup "FREE  PLAY",                          kDMDStd_FreePlay,       0,     "BOOL", 1
+    DMDMenu(13).Setup "GRAND  CHAMPION  SCORE",               kDMDStd_HighScoreGC,    750000000,     "INT[10000000:1000000000]", 5000000
+    DMDMenu(14).Setup "HIGH  SCORE  1",                       kDMDStd_HighScore1,     500000000,     "INT[10000000:1000000000]", 5000000
+    DMDMenu(15).Setup "HIGH  SCORE  2",                       kDMDStd_HighScore2,     400000000,     "INT[10000000:1000000000]", 5000000
+    DMDMenu(16).Setup "HIGH  SCORE  3",                       kDMDStd_HighScore3,     300000000,     "INT[10000000:1000000000]", 5000000
+    DMDMenu(17).Setup "HIGH  SCORE  4",                       kDMDStd_HighScore4,     200000000,     "INT[10000000:1000000000]", 5000000
+    DMDMenu(18).Setup "HIGH  SCORE  AWARDS",                  kDMDStd_HighScoreAward, 1,      "BOOL", 1
+    DMDMenu(19).Setup "GRAND CHAMPION  AWARDS",              kDMDStd_GCAwards,       1,     "LST[0,0 CREDITS:1,1 CREDIT:2,2 CREDITS:3,3 CREDITS:4,4 CREDITS]", 1
+    DMDMenu(20).Setup "HIGH  SCORE  1  AWARDS",                kDMDStd_HS1Awards,      1,     "LST[0,0 CREDITS:1,1 CREDIT:2,2 CREDITS:3,3 CREDITS]", 1
+    DMDMenu(21).Setup "HIGH  SCORE  2  AWARDS",                kDMDStd_HS2Awards,      0,     "LST[0,0 CREDITS:1,1 CREDIT:2,2 CREDITS]", 1
+    DMDMenu(22).Setup "HIGH  SCORE  3  AWARDS",                kDMDStd_HS3Awards,      0,     "LST[0,0 CREDITS:1,1 CREDIT]", 1
+    DMDMenu(23).Setup "HIGH  SCORE  4  AWARDS",                kDMDStd_HS4Awards,      0,     "LST[0,0 CREDITS:1,1 CREDIT]", 1
+    DMDMenu(24).Setup "MUSIC  ATTENUATION",                  kDMDStd_MusicAttenuation,0,    "INT[-60:60]", 5
+    DMDMenu(25).Setup "SPEECH  ATTENUATION",                 kDMDStd_SpeechAttenuation,0,   "INT[-60:60]", 5
+    DMDMenu(26).Setup "CLEAR  HIGHSCORE", 					0,		0,						"FUN", 1 
+	DMDMenu(27).Setup "RESET  ALL  SETTINGS", 				1,		1,			            "FUN", 1 
+
+    '***********************
+    'Table-Specific Settings
+    '***********************
+
+    MinFetDMDSetting = 30
+    DMDMenu(30).Setup "HOUSE  COMPLETE  EXTRA  BALL",         kDMDFet_HouseCompleteExtraBall,   8,      "LST[2,2:3,3:4,4:5,5:6,6:7,7:8,AUTO]", 1
+    DMDMenu(31).Setup "CASUAL  PLAYER  MODE",                 kDMDFet_CasualPlayerMode,         0,      "BOOL", 1
+    DMDMenu(32).Setup "PLAYER  HOUSE  CHOICE",                kDMDFet_PlayerHouseChoice,        0,      "LST[0,PLAYERS CHOICE:1,STARK:2,BARATHEON:3,LANNISTER:4,GREYJOY:5,TYRELL:6,MARTELL:7,TARGARYEN:8,RANDOM]", 1
+    DMDMenu(33).Setup "DISABLE  RAMP  DROP  TARGET",          kDMDFet_DisableRampDropTarget,    0,      "BOOL", 1
+    DMDMenu(34).Setup "ACTION  BUTTON  ACTION",               kDMDFet_ActionButtonAction,       1,      "LST[0,IRON BANK:1,HOUSE POWER]", 1
+    DMDMenu(35).Setup "LANNISTER  BUTTONS  PER  GAME",        kDMDFet_LannisterButtonsPerGame,  8,      "INT[4:12]", 1
+    DMDMenu(36).Setup "TARGARYEN  FREEZE  TIME",              kDMDFet_TargaryenFreezeTime,      12,     "INT[4:16]", 1
+    DMDMenu(37).Setup "TARGARYEN  HOUSE  POWER",              kDMDFet_TargaryenHousePower,      3,      "LST[1,ONE DRAGON:2,TWO DRAGONS:3,COMPLETED]", 1
+    DMDMenu(38).Setup "DIRE  WOLF  FREQUENCY",                kDMDFet_DireWolfFrequency,        6,      "LST[0,DISABLED:1,1 PER GAME:2,2 PER GAME:3,3 PER GAME:4,4 PER GAME:5,5 PER GAME:6,1 PER BALL", 1
+    DMDMenu(39).Setup "SWORDS  UNLOCK  MULTIPLIER  X",        kDMDFet_SwordsUnlockMultiplier,   1,      "INT[0:2]", 1
+    DMDMenu(40).Setup "BATTERING  RAM  HITS  FOR  MULTIPLIER",kDMDFet_RamHitsForMult,           1,      "INT[0:2]", 1
+    DMDMenu(41).Setup "TWO  BANK  DIFFICULTY",                kDMDFet_TwoBankDifficulty,        1,      "LST[0,EASY:1,NORMAL:2,HARD]", 1
+    DMDMenu(42).Setup "BLACKWATER  BALL  SAVE  TIMER",        kDMDFet_BWMB_SaveTimer,           10,     "INT[5:60]", 1
+    DMDMenu(43).Setup "WALL  MULTIBALL  BALL  SAVE  TIMER",   kDMDFet_WallMB_SaveTimer,         20,     "INT[5:60]", 1
+    DMDMenu(44).Setup "HAND  OF  THE  KING  BALL  SAVE  TIMER",kDMDFet_HOTKMB_SaveTimer,        20,     "INT[5:60]", 1
+    DMDMenu(45).Setup "IRON  THRONE  BALL  SAVE  TIMER",      kDMDFet_ITMB_SaveTimer,           25,     "INT[5:60]", 1
+    DMDMenu(46).Setup "MIDNIGHT  MADNESS  BALL  SAVE  TIMER", kDMDFet_MMMB_SaveTimer,           12,     "INT[5:60]", 1
+    DMDMenu(47).Setup "WINTER  HAS  COME  BALL  SAVE  TIMER", kDMDFet_WHCMB_SaveTimer,          15,     "INT[5:60]", 1
+    DMDMenu(48).Setup "CASTLE  MULTIBALL  BALL  SAVE  TIMER", kDMDFet_CMB_SaveTimer,            15,     "INT[5:60]", 1
+    DMDMenu(49).Setup "CASTLE  LOOP  COMPLETES  HOUSE",       kDMDFet_CastleLoopCompletesHouse, 1,      "BOOL", 1
+    DMDMenu(50).Setup "ALLOW  INACTIVITY  TO  PAUSE  TIMERS", kDMDFet_InactivityPauseTimer,     1,      "BOOL", 1
+    DMDMenu(51).Setup "REDUCE  WINTER  IS  COMING  FLASHERS", kDMDFet_ReduceWHCLamps,           0,      "BOOL", 1
+    DMDMenu(52).Setup "MIDNIGHT  MADNESS",                    kDMDFet_MidnightMadness,          1,      "BOOL", 1
+    MaxFetDMDSetting = 52
+
+    '** End Table-specific settings **
+
+    ' Load Values from NVRAM. If not set, load default from array
+    For i = 0 to MaxFetDMDSetting
+        If DMDMenu(i).name <> "EMPTY" Then
+            x = LoadValue(TableName, "DMDStd_"&DMDMenu(i).StdIdx)
+            If (x <> "") Then 
+                DMDStd(DMDMenu(i).StdIdx) = x
+            Else
+                DMDStd(DMDMenu(i).StdIdx) = DMDMenu(i).Deflt
+            End If
+        End if
+    Next
+  	x = LoadValue(TableName, "dmdCriticalChanged"):	If(x<>"") Then dmdCriticalChanged=True
+
+    BallsPerGame = DMDStd(kDMDStd_BallsPerGame)
+
+
+End Sub 
+Dim DMDStd(200)
+
+' Create the FlexDMD scene based on what service menu level we're at
+
+Dim SvcScene
+Sub CreateServiceDMDScene(lvl)
+    Dim scene,i,max,offset,SvcFontSm,SvcFontBg
+    offset=0
+    Set SvcFontSm = FlexDMD.NewFont("FlexDMD.Resources.udmd-f4by5.fnt", vbWhite, vbWhite, 0)
+    Set SvcFontBg = FlexDMD.NewFont("udmd-f7by10.fnt",vbWhite,vbWhite,0)
+    Set scene = FlexDMD.NewGroup("service")
+    If bServiceVol Then ' Not in Service menu, just adjusting volume
+        scene.AddActor FlexDMD.NewLabel("svcl1",SvcFontSm,"USE +/- TO ADJUST VOLUME")
+        scene.GetLabel("svcl1").SetAlignedPosition 64,0,FlexDMD_Align_Top
+        scene.AddActor FlexDMD.NewLabel("svcl2",SvcFontBg,"VOLUME "&MasterVol)
+        scene.GetLabel("svcl2").SetAlignedPosition 64,14,FlexDMD_Align_Top
+    Else
+        Select Case lvl
+            Case kMenuNone
+                scene.AddActor FlexDMD.NewLabel("svcl1",SvcFontSm,"GAME OF THRONES PREMIUM"&vbLf&"V1.37.0    "&myVersion&"  SYS. 2.31.0")
+                scene.GetLabel("svcl1").SetAlignedPosition 64,0,FlexDMD_Align_Top
+                scene.AddActor FlexDMD.NewLabel("svcl2",SvcFontBg,"SERVICE MENU")
+                scene.GetLabel("svcl2").SetAlignedPosition 64,14,FlexDMD_Align_Top
+                scene.AddActor FlexDMD.NewLabel("svcl3",SvcFontSm,"PRESS SELECT TO CONTINUE")
+                scene.GetLabel("svcl3").SetAlignedPosition 64,25,FlexDMD_Align_Top
+            Case kMenuTop,kMenuAdj  ' one of the icon levels. Create row of icons
+                If lvl=kMenuTop Then 
+                    max = 6 
+                    scene.AddActor FlexDMD.NewLabel("svcl4",SvcFontSm,TopArray(0))
+                else 
+                    max = 4 : offset=17
+                    scene.AddActor FlexDMD.NewLabel("svcl4",SvcFontSm,AdjArray(0))
+                End if
+                For i = 0 to max
+                    scene.AddActor FlexDMD.NewImage("iconoff"&i,"got-svciconoff"&lvl&i&".png")
+                    With scene.GetImage("iconoff"&i)
+                        .SetAlignedPosition offset+i*17,0,FlexDMD_Align_TopLeft
+                        if i = 0 Then .Visible = 0
+                    End With
+                    scene.AddActor FlexDMD.NewImage("iconon"&i,"got-svciconon"&lvl&i&".png")
+                    With scene.GetImage("iconon"&i)
+                        .SetAlignedPosition offset+i*17,0,FlexDMD_Align_TopLeft
+                        If i > 0 Then .Visible = 0
+                    End With
+                Next
+                scene.GetImage("iconoff0").Visible = 0
+                scene.GetLabel("svcl4").SetAlignedPosition 64,25,FlexDMD_Align_Top
+            Case kMenuAdjStd,kMenuAdjGame ' Adjustment level, create the base adjustment screen
+                scene.AddActor FlexDMD.NewLabel("svcl1",SvcFontSm,"ADJUSTMENT")
+                scene.GetLabel("svcl1").SetAlignedPosition 64,0,FlexDMD_Align_Top
+                scene.AddActor FlexDMD.NewLabel("svcl2",FlexDMD.NewFont("udmd-f3by7.fnt",vbWhite,vbWhite,0),"SETTING NAME")
+                scene.GetLabel("svcl2").SetAlignedPosition 64,7,FlexDMD_Align_Top
+                scene.AddActor FlexDMD.NewLabel("svcl3",FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt",vbWhite,vbWhite,0),"VALUE")
+                scene.GetLabel("svcl3").SetAlignedPosition 64,16,FlexDMD_Align_Top
+                scene.AddActor FlexDMD.NewLabel("svcl4",SvcFontSm,"INSTALLED/FACTORY DEFAULT")
+                scene.GetLabel("svcl4").SetAlignedPosition 64,25,FlexDMD_Align_Top
+        End Select
+    End if
+    Set SvcScene = scene
+    DMDDisplayScene SvcScene
+End Sub
+
+Sub UpdateServiceDMDScene(line3)
+    Dim max,i
+    If serviceLevel = kMenuTop Then max = 6 else max = 4
+    FlexDMD.LockRenderThread
+    If bServiceVol Then ' Just update the Volume level
+        With scene.GetLabel("svcl2")
+            .Text = "VOLUME "&MasterVol
+            .SetAlignedPosition 64,14,FlexDMD_Align_Top
+        End With
+    Else
+        If serviceLevel = kMenuTop Or serviceLevel = kMenuAdj Then
+            For i = 0 to max
+                With SvcScene.GetImage("iconon"&i)
+                    If i=serviceIdx Then .Visible=1 Else .Visible=0
+                End With
+                With SvcScene.GetImage("iconoff"&i)
+                    If i=serviceIdx Then .Visible=0 Else .Visible=1
+                End With
+            Next
+        End If
+        Select Case serviceLevel
+            Case kMenuTop: 
+                SvcScene.GetLabel("svcl4").Text = TopArray(serviceIdx)
+                SvcScene.GetLabel("svcl4").SetAlignedPosition 64,25,FlexDMD_Align_Top
+            Case kMenuAdj: 
+                SvcScene.GetLabel("svcl4").Text = AdjArray(serviceIdx)
+                SvcScene.GetLabel("svcl4").SetAlignedPosition 64,25,FlexDMD_Align_Top
+            Case kMenuAdjStd,kMenuAdjGame
+                With SvcScene.GetLabel("svcl1")
+                    if serviceIdx < MinFetDMDSetting Then
+                        .Text = "STANDARD ADJUSTMENT #" & serviceIdx & "(" & DMDMenu(serviceIdx).StdIdx & ")"
+                    Elseif DMDMenu(serviceIdx).ValType<>"FUN" then 
+                        .Text = "GAME ADJUSTMENT #" & serviceIdx & "(" & DMDMenu(serviceIdx).StdIdx & ")"
+                    Else
+                        .Text = "GAME FUNCTION #" & serviceIdx
+                    End If
+                    .SetAlignedPosition 64,0,FlexDMD_Align_Top
+                End With
+                With SvcScene.GetLabel("svcl2")
+                    .Text = DMDMenu(serviceIdx).Name
+                    .SetAlignedPosition 64,7,FlexDMD_Align_Top
+                End With
+                With SvcScene.GetLabel("svcl3")
+                    .Text = line3
+                    .SetAlignedPosition 64,16,FlexDMD_Align_Top
+                End with
+                If bServiceEdit Then 
+                   With SvcScene.GetLabel("svcl2")
+                        .ClearActions()
+                        .Visible=1
+                    End With
+                    With SvcScene.GetLabel("svcl3")
+                        .ClearActions()
+                        .Visible=1
+                    End With
+                    DelayBlinkActor SvcScene.GetLabel("svcl3"),0.75,0.25,999
+                Else
+                    With SvcScene.GetLabel("svcl3")
+                        .ClearActions()
+                        .Visible=1
+                    End With
+                    With SvcScene.GetLabel("svcl2")
+                        .ClearActions()
+                        .Visible=1
+                    End With
+                    DelayBlinkActor SvcScene.GetLabel("svcl2"),0.75,0.25,999
+                End If
+                With SvcScene.GetLabel("svcl4")
+                    If CInt(DMDStd(DMDMenu(serviceIdx).StdIdx)) = DMDMenu(serviceIdx).Deflt Then .Visible = 1 Else .Visible = 0
+                End With
+        End Select
+    End if
+    FlexDMD.UnlockRenderThread
+End Sub
+
+
+'  END DAPHISHBOWL - STERN DMD
+
     
 
 '*********
@@ -3238,18 +3769,6 @@ Sub NxtLUT:LUTImage = (LUTImage + 1)MOD 16: table1.ColorGradeImage = "LUT"&LUTIm
 
 Sub UpdateLUT
     table1.ColorGradeImage = "LUT"&LUTImage
-    ' Select Case LutImage
-    '     Case 0:table1.ColorGradeImage = "LUT0"
-    '     Case 1:table1.ColorGradeImage = "LUT1"
-    '     Case 2:table1.ColorGradeImage = "LUT2"
-    '     Case 3:table1.ColorGradeImage = "LUT3"
-    '     Case 4:table1.ColorGradeImage = "LUT4"
-    '     Case 5:table1.ColorGradeImage = "LUT5"
-    '     Case 6:table1.ColorGradeImage = "LUT6"
-    '     Case 7:table1.ColorGradeImage = "LUT7"
-    '     Case 8:table1.ColorGradeImage = "LUT8"
-    '     Case 9:table1.ColorGradeImage = "LUT9"
-    ' End Select
 End Sub
 
 
@@ -3725,7 +4244,7 @@ Sub SetLamp(id,state)
     Select Case state
         Case 0: id.state = 0
         Case 1: id.state = 1
-        Case 3: id.state = 1 : vpmTimer.addTimer 33,id.name&".state=0 '"
+        Case 3: id.state = 1 : vpmTimer.addTimer 16,id.name&".state=0 '"
     End Select
 End Sub
 
@@ -3760,7 +4279,7 @@ Sub Drain_Hit()
     If(bGameInPLay = True)AND(Tilted = False)Then
 
         ' is the ball saver active, (or ready to be activated but the ball sewered right away)
-        If(bBallSaverActive = True and bEarlyEject = False) Or (bBallSaverReady = True AND BallSaverTime <> 0 And bBallSaverActive = False) Then
+        If(bBallSaverActive = True and bEarlyEject = False) Or (bBallSaverReady = True AND DMDStd(kDMDStd_BallSave) <> 0 And bBallSaverActive = False) Then
             DoBallSaved 0
         Else
         	bEarlyEject = False
@@ -4100,6 +4619,7 @@ Dim ITHighScore(4)
 Dim HotkHighScore(4)
 Dim WHCHighScore(4)
 Dim bMysterySJPMode
+Dim RandomHouse
 
 HouseColor = Array(white,white,yellow,red,purple,green,amber,blue)
 ' Assignment of centre playfield shields
@@ -4399,9 +4919,9 @@ Class cHouse
         If h = Greyjoy Then 
             bCompleted(h) = True 
         ElseIf h = Targaryen Then
-            Select Case TargaryenDragonsCompleted
-                Case 1: MyBattleState(Targaryen).State = 5 : BattleReady = True
-                Case 2: MyBattleState(Targaryen).State = 10 : BattleReady = True
+            Select Case DMDStd(kDMDFet__TargaryenHousePower)
+                Case 1: MyBattleState(Targaryen).State = 5 : BattleReady = True : Score(CurrentPlayer) = Score(CurrentPlayer) + 30000000
+                Case 2: MyBattleState(Targaryen).State = 10 : BattleReady = True : Score(CurrentPlayer) = Score(CurrentPlayer) + 60000000
                 Case 3: bCompleted(Targaryen) = True
             End Select
         Else
@@ -4458,7 +4978,7 @@ Class cHouse
         Select Case ActionAbility
             Case Stark: If ActionButtonUsed Or PlayerMode <> 1 Then HasActionAbility = 0
             Case Baratheon: If ActionButtonUsed Or bLoLLit Then HasActionAbility = 0
-            Case Lannister: If ActionButtonUsed >=12 Then HasActionAbility = 0
+            Case Lannister: If ActionButtonUsed >= DMDStd(kDMDFet_LannisterButtonsPerGame) Or CurrentGold < ((PlayfieldMultiplierVal+1) * 600) Then HasActionAbility = 0
             Case Tyrell,Targaryen: If ActionButtonUsed Then HasActionAbility = 0
             Case Martell: If ActionButtonUsed Or (bMultiBallMode = False And bITMBActive = False) Then HasActionAbility = 0
         End Select
@@ -5013,6 +5533,8 @@ Class cHouse
             bCompleted(h) = True
             CompletedHouses = CompletedHouses + 1
             DoSwordsAreLit
+            If (DMDStd(kDMDFet_HouseCompleteExtraBall)=8 And CompletedHouses=3) Or _ 
+                DMDStd(kDMDFet_HouseCompleteExtraBall) = CompletedHouses Then DoEBisLit 
             If CompletedHouses = 3 Then DoEBisLit
             If CompletedHouses = 4 Then 
                 For i = 1 to 7
@@ -5757,7 +6279,7 @@ Class cHouse
                 ActionButtonUsed = True
                 SetGameTimer tmrLoLSave,120
             Case Lannister
-                If ActionButtonUsed >= 12 Or PlayfieldMultiplierVal = 5 Or PlayfieldMultiplierVal >= SwordsCollected+3 Or PlayerMode < 0 Or PlayerMode > 1 Then Exit Sub
+                If ActionButtonUsed >= DMDStd(kDMDFet_LannisterButtonsPerGame) Or PlayfieldMultiplierVal = 5 Or PlayfieldMultiplierVal >= SwordsCollected*DMDStd(kDMDFet_SwordsUnlockMultiplier)+3 Or PlayerMode < 0 Or PlayerMode > 1 Then Exit Sub
                 If CurrentGold < ((PlayfieldMultiplierVal+1) * 600) Then Exit Sub 'Not enough gold.
                 PlayfieldMultiplierVal = PlayfieldMultiplierVal + 1
                 SetGameTimer tmrPFMultiplier,800-(PlayfieldMultiplierVal*100)
@@ -6939,7 +7461,7 @@ Sub VPObjects_Init
     Dim i
     BumperWeightTotal = 0
     For i = 1 To BumperAwards:BumperWeightTotal = BumperWeightTotal + PictoPops(i)(2): Next
-    ReplayScore = BaseReplayScore
+    ReplayScore = DMDStd(kDMDStd_AutoReplayStart)
     SetDefaultPlayfieldLights   ' Sets all playfield lights to their default colours
     vpmTimer.AddTimer 1000,"PlaySoundVol ""say-whathouse"",VolCallout '"
 End Sub
@@ -6996,6 +7518,7 @@ Sub ResetForNewGame()
         Set House(i) = New cHouse
         Set PlayerState(i) = New cPState
     Next
+    if DMDStd(kDMDFet_PlayerHouseChoice)=8 Then RandomHouse = RndNbr(7)
 
     ' initialise any other flags
     Tilt = 0
@@ -7101,17 +7624,35 @@ Sub ResetForNewPlayerBall()
     FreezeAllGameTimers ' First score will thaw them
 
     if (House(CurrentPlayer).MyHouse = 0) Then
-        PlayerMode = -1
-        SelectedHouse = 1
-        FlashShields SelectedHouse,1
-        SetLockbarLight
-        If CurrentPlayer = 1 Then
-            PlaySoundVol "say-choose-your-house2",VolCallout
-        Else
-            PlaySoundVol "player"&CurrentPlayer,VolDef
-            vpmTimer.AddTimer 1500,"PlaySoundVol ""say-choose-your-house2"",VolCallout '"
-        End If
-        ChooseHouse 0
+        Select Case DMDStd(kDMDFet_PlayerHouseChoice)
+            Case 0
+                PlayerMode = -1
+                SelectedHouse = 1
+                FlashShields SelectedHouse,1
+                SetLockbarLight
+                If CurrentPlayer = 1 Then
+                    PlaySoundVol "say-choose-your-house2",VolCallout
+                Else
+                    PlaySoundVol "player"&CurrentPlayer,VolDef
+                    vpmTimer.AddTimer 1500,"PlaySoundVol ""say-choose-your-house2"",VolCallout '"
+                End If
+                ChooseHouse 0
+            Case 8
+                House(CurrentPlayer).MyHouse = RandomHouse
+                House(CurrentPlayer).ResetLights
+                PlayerMode = 0
+                DMDFlush
+                DMDLocalScore
+                SetLockbarLight
+            Case Else
+                House(CurrentPlayer).MyHouse = DMDStd(kDMDFet_PlayerHouseChoice)
+                House(CurrentPlayer).ResetLights
+                PlayerMode = 0
+                DMDFlush
+                ' TODO: Display additional text about house chosen on ball launch
+                DMDLocalScore
+                SetLockbarLight
+        End Select
     Else 
         PlayerState(CurrentPlayer).Restore
         PlayerMode = 0
@@ -7256,7 +7797,7 @@ End Sub
 '
 Sub BallSaveTimer
     ' clear the flag 
-    SetGameTimer tmrBallSaverGrace, 30  ' 3 second grace for Ball Saver
+    SetGameTimer tmrBallSaverGrace, DMDStd(kDMDStd_BallSaveExtend)*10  ' 3 second grace for Ball Saver
     If ExtraBallsAwards(CurrentPlayer) = 0 Then LightShootAgain.State = 0 Else LightShootAgain.State = 1
    
 End Sub
@@ -7283,8 +7824,8 @@ Sub AddScoreNoX(points)
     If (Tilted = False) Then
         ' if there is a need for a ball saver, then start off a timer
         ' only start if it is ready, and it is currently not running, else it will reset the time period
-        If(bBallSaverReady = True)AND(BallSaverTime <> 0)And(bBallSaverActive = False)Then
-            EnableBallSaver BallSaverTime
+        If(bBallSaverReady = True)AND(DMDStd(kDMDStd_BallSave) <> 0)And(bBallSaverActive = False)Then
+            EnableBallSaver DMDStd(kDMDStd_BallSave)
         End If
 
         If Score(CurrentPlayer) < ReplayScore And Score(CurrentPlayer) + points > ReplayScore Then 
@@ -7722,32 +8263,40 @@ Sub EndOfBallComplete()
 
         Dim t : t = False
         For i = 1 to 4
-            If ReplayAwarded(i) Then ReplayScore = ReplayScore + BaseReplayScore : t = True : Exit For
+            If ReplayAwarded(i) Then ReplayScore = ReplayScore + DMDStd(kDMDStd_AutoReplayStart) : t = True : Exit For
         Next
-        If t = False Then ReplayScore = BaseReplayScore
+        If t = False Then ReplayScore = DMDStd(kDMDStd_AutoReplayStart)
 
 		' Do Match end score code
 		Match=10 * INT(RND * 9)
-		'Match = Score(CurrentPlayer) mod 100		' Force Match for testing 
+		t=false
         For i = 1 to PlayersPlayingGame
-            if BigMod(Score(CurrentPlayer), 100) = Match then									' Handles large scores 
-                vpmtimer.addtimer 5500+i*200, "PlayYouMatched '"
+            if BigMod(Score(i), 100) = Match then
+                ' This approximates the Match Percent setting, but if a previous player already
+                ' matched with this number, we can't not award  it to another player that has the
+                ' same match
+                if t=true Or RndNbr(10) <= DMDStd(kDMDStd_MatchPCT) Then
+                    vpmtimer.addtimer 5500+i*200, "PlayYouMatched '"
+                    t=true
+                End If
             End If
         Next
+        
+        ' In case the Match Percent test resulted in a match not being awarded even though they matched,
+        ' ensure that the numbers don't match if it wasn't awarded
+        If t=false Then
+            Do
+                For i = 1 to PlayersPlayingGame
+                    if BigMod(Score(i), 100) = Match then t=true : Exit For
+                Next
+                if t=true Then Match=10 * INT(RND * 9)
+            Loop While t
+        End If
 
         DMDDoMatchScene Match
-		'if Match = 0 then 
-	'		playmedia "Match-00.mp4", "PupVideos", pOverVid, "", -1, "", 1, 1
-		'Else
-		'	playmedia "Match-"&Match&".mp4", "PupVideos", pOverVid, "", -1, "", 1, 1
-		'End If
-		'vpmtimer.addtimer 100, "PlaySoundVol ""Match-Score"", VolDef '"
-        ' set the machine into game over mode
-		'if osbactive <> 0 then 	' Orbital takes more time 
-		'	vpmtimer.addtimer 9000, "if bShowMatch then EndOfGame() '"
-		'else 
-			vpmtimer.addtimer 9500, "if bShowMatch then EndOfGame() '"
-		'End If 
+		
+		vpmtimer.addtimer 9500, "if bShowMatch then EndOfGame() '"
+		
 
     ' you may wish to put a Game Over message on the desktop/backglass
 
@@ -7852,7 +8401,7 @@ Sub PlayModeSong
     End If
     If mysong = "" Then
         If Song = "got-track1" Or Song = "got-track2" Or Song = "got-track3" Then Exit Sub
-        i = BallsPerGame - BallsRemaining(CurrentPlayer) + 1
+        i = BallsPerGame - BallsRemaining(CurrentPlayer) + 1 : if i > 3 then i = 3
         mysong = "got-track"&i
     End If
     If Song <> mysong Then PlaySong mysong
@@ -8449,7 +8998,7 @@ Sub IncreaseComboMultiplier(h)
     c = ComboLaneMap(h)
     If c = 0 And h <> 0 Then Exit Sub  ' Target bank was hit - they don't increase multipliers
     If bHotkMBActive Then max = 6 Else max = 5 ' Max is 6X during HOTK
-    If max > 3+SwordsCollected Then max = 3+SwordsCollected
+    If max > 3+SwordsCollected*DMDStd(kDMDFet_SwordsUnlockMultiplier) Then max = 3+SwordsCollected*DMDStd(kDMDFet_SwordsUnlockMultiplier)
     If c = 0 Then 
         For i = 1 to 5
             If ComboMultiplier(i) > x Then x = ComboMultiplier(i)
@@ -9267,7 +9816,7 @@ Sub BatteringRam_Hit
     ' Hits advance state. A hit on state 3 awards PF multiplier. Timer resets state to 0
     Select Case PFMState
         Case 0
-            If PlayfieldMultiplierVal < 3 Or (PlayfieldMultiplierVal < 3 + SwordsCollected And PlayfieldMultiplierVal < 5) Then
+            If PlayfieldMultiplierVal < 3 Or (PlayfieldMultiplierVal < 3 + SwordsCollected*DMDStd(kDMDFet_SwordsUnlockMultiplier) And PlayfieldMultiplierVal < 5) Then
                 SetGameTimer tmrPFMState,200    ' 20 seconds
                 line1 = ""
             End If
@@ -9294,7 +9843,7 @@ Sub BatteringRam_Hit
                 line1 = ""
             End If
     End Select
-    If PFMState <> 0 Or (PlayfieldMultiplierVal < 3 Or (PlayfieldMultiplierVal < 3 + SwordsCollected And PlayfieldMultiplierVal < 5) ) Then
+    If PFMState <> 0 Or (PlayfieldMultiplierVal < 3 Or (PlayfieldMultiplierVal < 3 + SwordsCollected*DMDStd(kDMDFet_SwordsUnlockMultiplier) And PlayfieldMultiplierVal < 5) ) Then
         PFMState = PFMState + 1 : If PFMState = 4 Then PFMState = 0
         If bWildfireLit = False Then DoBatteringRamScene line1
     End If
@@ -9562,7 +10111,7 @@ Function MysteryAwardGoNoGo(aw)
         Case 5: If bWildfireLit Then MysteryAwardGoNoGo = False
         Case 6: If bLockIsLit Then MysteryAwardGoNoGo = False
         Case 8: If bSwordLit Then MysteryAwardGoNoGo = False
-        Case 9: If PlayfieldMultiplierVal = 5 Or PlayfieldMultiplierVal >= 3+SwordsCollected Or PFMState > 1 Then MysteryAwardGoNoGo = False
+        Case 9: If PlayfieldMultiplierVal = 5 Or PlayfieldMultiplierVal >= 3+SwordsCollected*DMDStd(kDMDFet_SwordsUnlockMultiplier) Or PFMState > 1 Then MysteryAwardGoNoGo = False
         Case 10: If SwordsCollected > 10 Then MysteryAwardGoNoGo = False
         Case 11: If House(CurrentPlayer).UPFLevel = 4 Then MysteryAwardGoNoGo = False
         Case 14: If BonusMultiplier(CurrentPlayer) >= 19 Then MysteryAwardGoNoGo = False
@@ -9986,7 +10535,7 @@ Sub StartBWMultiball
     House(CurrentPlayer).SetBWJackpots
     BlackwaterScore = 10000000
     DMDCreateBWMBScoreScene
-    EnableBallSaver 27  ' 20 seconds plus the 5 second delay before MB starts plus 5 second grace
+    EnableBallSaver DMDStd(kDMDFet_BWMB_SaveTimer)+5 ' feature setting plus the 5 second delay before MB starts
 End Sub
 
 Sub StartCastleMultiball
@@ -10011,7 +10560,7 @@ Sub StartCastleMultiball
     StartDragonWings true
     DoCastleMBSeq ' light seq
     DMDCreateCastleMBScoreScene ' alternate scoring scene
-    EnableBallSaver 25
+    EnableBallSaver DMDStd(kDMDFet_CMB_SaveTimer)
     SetTopGates ' all shots go to upper PF
     PlayModeSong
     StartNonBWMB 2
@@ -10041,7 +10590,7 @@ Sub StartWallMB
         DMDEnqueueScene scene,0,2000,8000,2000,"gotfx-wallmbintro"
     End If
     PlaySoundVol "say-wallmb-start"&RndNbr(3),VolCallout
-    EnableBallSaver 20
+    EnableBallSaver DMDStd(kDMDFet_WallMB_SaveTimer)
     SetPlayfieldLights
     House(CurrentPlayer).SetUPFState true
     House(CurrentPlayer).ResetForWallMB
@@ -10059,7 +10608,7 @@ End Sub
 Sub StartWHCMB(shot)
     bMultiBallMode = True
     bWHCMBActive = True
-    EnableBallSaver 31
+    EnableBallSaver DMDStd(kDMDFet_WHCMB_SaveTimer)
     WHCMBScore = 0
     Dim balls : balls = 3
     'If shot = Lannister Then balls = 4   ' Changed for tmrBallLockCheck
@@ -10249,7 +10798,7 @@ Sub StartIronThroneMB
     ResetDropTargets
     ResetHotkLights
     ITScore = 0
-    EnableBallSaver 25
+    EnableBallSaver DMDStd(kDMDFet_ITMB_SaveTimer)
     bBallReleasing = True
     vpmTimer.AddTimer 4000, "ReleaseLockedBall 1 : StartNonBWMB 1 : bHotkIntroRunning = False '"
     If bUseFlexDMD Then
@@ -10324,7 +10873,7 @@ Sub StartMidnightMadnessMB
     bMadnessMB = 2
     bMultiBallMode = True
     AddMultiballFast 6
-    EnableBallSaver 45
+    EnableBallSaver DMDStd(kDMDFet_MMMB_SaveTimer)
     PlayModeSong
     DMDCreateMadnessMBScoreScene
     tmrMadnessMBToggle.Interval = 300
@@ -10557,7 +11106,7 @@ Sub TargaryenFreezeAllTimers
     For i = 6 to MaxTimers
         If i <> tmrBallSave And i <> tmrBallSaveSpeedUp And i <> tmrTargaryenFreeze Then TimerFlags(i) = TimerFlags(i) Or 4
     Next
-    SetGameTimer tmrTargaryenFreeze,TargaryenFreezeLength*10
+    SetGameTimer tmrTargaryenFreeze,DMDStd(kDMDFet_TargaryenFreezeTime)*10
 End Sub
  
 ' Check the location of all balls on the playfield to see if any are stuck on the ramp
@@ -10926,6 +11475,7 @@ Sub DoAwardExtraBall
 End Sub
 
 Sub DoAwardReplay
+    If DMDStd(kDMDStd_ReplayType) = 2 Then DoAwardExtraBall : Exit Sub
     Dim scene
     'PlaySound SoundFXDOF("fx_Knocker", 122, DOFPulse, DOFKnocker)
     vpmTimer.AddTimer 3000, "DOF 122,DOFPulse : KnockerSolenoid '"
@@ -11607,7 +12157,7 @@ Sub InstantInfo
             If bGameInPlay = False Then InfoPage = 29 : InstantInfo : Exit Sub 
             format=8:font="udmd-f6by8.fnt" 
             line1="BALL "&BallsPerGame-BallsRemaining(CurrentPlayer)+1
-            If bFreePlay Then 
+            If DMDStd(kDMDStd_FreePlay) Then 
                 line2 = "FREE PLAY" 
             Else
                 Line2 = "CREDITS "&Credits
@@ -11684,7 +12234,7 @@ Sub InstantInfo
             format=12:font="udmd-f6by8.fnt"
             line1="SWORD COLLECTION"
             line2="SWORDS: "&SwordsCollected
-            If SwordsCollected < 3 Then line3="NEXT UNLOCKS "&SwordsCollected+3&"X TIMES MULTIPLIER" Else line3=""
+            If SwordsCollected*DMDStd(kDMDFet_SwordsUnlockMultiplier) < 3 Then line3="NEXT UNLOCKS "&SwordsCollected*DMDStd(kDMDFet_SwordsUnlockMultiplier)+3&"X TIMES MULTIPLIER" Else line3=""
         Case 22
             format=11:font="udmd-f6by8.fnt"
             line1="SPINNER"
@@ -11795,13 +12345,19 @@ End Sub
 '***************************
 
 Function GameCheckHighScore(score)
-    If score > HighScore(1) Then GameCheckHighScore=2 : Exit Function
+    If DMDStd(kDMDStd_HighScoreAward) = 0 Then GameCheckHighScore=0 : Exit Function
+    ' Did Player beat GC or high score 1-4? If so, award 0 or more credits based on Service Menu setting
+    If score > HighScore(0) Then GameCheckHighScore= 1 + DMDStd(kDMDStd_GCAwards) : Exit Function
+    If score > HighScore(1) Then GameCheckHighScore= 1 + DMDStd(kDMDStd_HS1Awards) : Exit Function
+    If score > HighScore(2) Then GameCheckHighScore= 1 + DMDStd(kDMDStd_HS2Awards) : Exit Function
+    If score > HighScore(3) Then GameCheckHighScore= 1 + DMDStd(kDMDStd_HS3Awards) : Exit Function
+    If score > HighScore(4) Then GameCheckHighScore= 1 + DMDStd(kDMDStd_HS4Awards) : Exit Function
     GameCheckHighScore=1
-    ' Did player beat high scores 2-4, or their house's high score?
-    If score > HighScore(4) Or score > HighScore(4+SelectedHouse) Then GameCheckHighScore=1 : Exit Function
+    ' Did player beat their house's high score?
+    If score > HighScore(4+SelectedHouse) Then Exit Function
     If  WHCHighScore(CurrentPlayer) > HighScore(12) Or _
         HotkHighScore(CurrentPlayer) > HighScore(13) Or _
-        ITHighScore(CurrentPlayer) > HighScore(14) Then GameCheckHighScore=1 : Exit Function
+        ITHighScore(CurrentPlayer) > HighScore(14) Then Exit Function
     GameCheckHighScore=0
 End Function
 
@@ -11944,10 +12500,10 @@ Sub tmrAttractModeScene_Timer
         Case 4
             format=7:font="udmd-f11by18.fnt":line1=FormatScore(Score(1)):skipifnoflex=False  ' Last score
             If Score(1) > 999999999 Then font="udmd-f7by10.fnt"
-            If bFreePlay Then line2 = "FREE PLAY" Else Line2 = "CREDITS "&Credits
+            If DMDStd(kDMDStd_FreePlay) Then line2 = "FREE PLAY" Else Line2 = "CREDITS "&Credits
         Case 5
             format=1:font="udmd-f7by10.fnt":skipifnoflex=False
-            If bFreePlay Then 
+            If DMDStd(kDMDStd_FreePlay) Then 
                 line1 = "FREE PLAY" 
             ElseIf Credits > 0 Then 
                 Line1 = "CREDITS "&Credits
@@ -12166,6 +12722,24 @@ End Sub
 '**************************
 ' Game-specific DMD support
 '**************************
+
+' This just warms the filesystem cache by preloading all of the images used in
+' animation sequences. Alternatively we could actually precreate the scenes and
+' store them in array to be referenced in the game
+Dim SequenceScene(30)
+Sub PreloadImageSequenceScenes
+    Dim scene
+    Set scene = NewSceneFromImageSequenceRange("clock","wallclock",1,340,25,0,1)
+    Set scene = NewSceneFromImageSequence("hitscenefire","cmbsjpfire",52,25,0,0)
+    Set scene = NewSceneFromImageSequence("itfg","itintro",110,20,0,0)
+    Set scene = NewSceneFromImageSequence("img1","bonusx",50,20,2,0)
+    Set scene = NewSceneFromImageSequence("hitscenefire","cmbsjpfire",52,25,0,0)
+    Set scene = NewSceneFromImageSequence("hitscenevid","got-targaryenqualify1",32,25,0,0)
+    Set scene = NewSceneFromImageSequence("hitscenevid","got-targaryenqualify2",77,25,0,0)
+    Set scene = NewSceneFromImageSequence("hitscenevid","got-targaryenqualify3",62,25,0,0)
+    Set scene = NewSceneFromImageSequence("img1","match",280,30,0,0)
+End Sub
+
 
 ' The SuperJackpot scene is pretty complicated, but a highlight of the real table, so
 ' we need to try and reproduce it.
@@ -13483,7 +14057,7 @@ Sub DMDLocalScore
             ' Ball, credits
             ScoreScene.AddActor FlexDMD.NewLabel("Ball", ComboFont, "BALL 1")
             ScoreScene.AddActor FlexDMD.NewLabel("Credit", ComboFont, "CREDITS 0")
-            If bFreePlay Then ScoreScene.GetLabel("Credit").Text = "Free Play"
+            If DMDStd(kDMDStd_FreePlay) Then ScoreScene.GetLabel("Credit").Text = "Free Play"
             ' Align them
             ScoreScene.GetLabel("Ball").SetAlignedPosition 32,20, FlexDMD_Align_Center
             ScoreScene.GetLabel("Credit").SetAlignedPosition 96,20, FlexDMD_Align_Center
@@ -13500,7 +14074,7 @@ Sub DMDLocalScore
         ' Update fields
         If bAlternateScoreScene = False or (AlternateScoreSceneMask And 1) = 1 Then ScoreScene.GetLabel("Score").Text = FormatScore(Score(CurrentPlayer))
         If bAlternateScoreScene = False or (AlternateScoreSceneMask And 2) = 2 Then ScoreScene.GetLabel("Ball").Text = "BALL " & CStr(BallsPerGame - BallsRemaining(CurrentPlayer) + 1)
-        If bFreePlay = False And (bAlternateScoreScene = False or (AlternateScoreSceneMask And 4) = 4) Then 
+        If DMDStd(kDMDStd_FreePlay) = False And (bAlternateScoreScene = False or (AlternateScoreSceneMask And 4) = 4) Then 
             With ScoreScene.GetLabel("Credit")
                 .Text = "CREDITS " & CStr(Credits)
                 .SetAlignedPosition 96,20, FlexDMD_Align_Center
@@ -14368,3 +14942,4 @@ End Function
 ' 104 - In Iron Throne mode, don't add extra balls after the 7 main castles are done
 '       Use flippers to advance through Attract mode
 ' 105 - oqqsan LAMPZ / inserts and extra lights / working rgb .. some colors need "help"
+' 106 - Add Daphishbowl's Service Menu, refactored for FlexDMD. Integration Service Menu options into code
