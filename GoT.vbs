@@ -1,3 +1,28 @@
+' Version Log
+' 100 - Initial beta release
+' 101 - Fix playfield friction, flipper geometry, move rubbers to separate layer, 
+'       fix FlexDMD and StartTGHurryUp script bugs, add cabinet-mode option to hide side-rails
+'       Add quick-restart (FreePlay mode only, hold left flipper and hit Start to restart game)
+'       Add flipper fast-forward through battle intro scenes
+' 102 - replace rubber post walls with primitives, add nfozzy flipper physics to upper PF flippers, import VPW physics materials,
+'       adjust Bumper and Sling strengths to match VPW ref, fix battering ram impact math, add ball saver grace period,
+'       add random house option, fix speech in Choose House, fix minor Iron Throne mode bugs, add high score saving to HotK, WHC, IT modes,
+'       fix Award Replay to run after Extra Ball or Bonus awarded, write Mystery SuperJackpot support
+'       write Bonus Hold support
+'       Switched to VPW LUTs. Hold left magnasave and press right magnasave to toggle through
+' 103 - "Choose Random" moved to between Martell and Targaryen, fix UFP scoring bug, fix stacked battle not ending properly on drain,
+'       fix Targaryen HurryUp bug. Award held bonus immediatley if on last ball. Pause battle mode timers when ball is in the bumpers.
+'       Add Hound callout for timer countdown during BW Super Jackpot. Add flipper speeches during Attract Mode
+'       Add Midnight Madness multiball. Make sure your system clock is set
+'		Add Spinner and Bumper Flashers
+' 104 - In Iron Throne mode, don't add extra balls after the 7 main castles are done
+'       Use flippers to advance through Attract mode
+' 105 - oqqsan LAMPZ / inserts and extra lights / working rgb .. some colors need "help"
+' 106 - Add Daphishbowl's Service Menu, refactored for FlexDMD. Integration Service Menu options into code
+' 109 - Tomate Blender work, Niwak VLM Toolkit integration work started
+' 110 - fix up missing/misnamed primitives, add code to animate all versions of 3D prims
+
+
 'On the DOF website put Exxx
 '101 Left Flipper
 '102 Right Flipper
@@ -2355,14 +2380,12 @@ Sub HighScoreEntryInit()
     hsLetterFlash = 0
 
     hsMaxDigits = DMDStd(kDMDStd_Initials)
-    hsText = "> ___ <" : hsX = 40 : hsStart = "> " : hsEnd = " <"
     For i = 0 to hsMaxDigits-1 : hsEnteredDigits(i) = " " : Next
     hsCurrentDigit = 0
 
     hsValidLetters = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<" ' < is back arrow
     if hsMaxDigits > 3 Then 
         hsValidLetters = hsValidLetters + "~" ' Add the ~ key to the end to exit long initials entry
-        hsText = "" : hsStart="" : hsEnd=""
         hsX = 10
     End If
     hsCurrentLetter = 1
@@ -2414,7 +2437,7 @@ Sub EnterHighScoreKey(keycode)
             if hsMaxDigits = 10 And (mid(hsValidLetters, hsCurrentLetter, 1) = "~") Then HighScoreCommitName() : Exit Sub
             hsEnteredDigits(hsCurrentDigit) = mid(hsValidLetters, hsCurrentLetter, 1)
             hsCurrentDigit = hsCurrentDigit + 1
-            if(hsCurrentDigit = 3 And hsMaxDigits = 3)then
+            if(hsCurrentDigit = 3 And hsMaxDigits = 3) Or (hsCurrentDigit = 10 And hsMaxDigits = 10)then
                 HighScoreCommitName()
             else
                 HighScoreDisplayNameNow()
@@ -3940,6 +3963,7 @@ Sub GiOn
     For each bulb in aGiLights
         bulb.State = 1
     Next
+    ShadowGI.visible= 1
     GameGiOn
 End Sub
 
@@ -3949,6 +3973,7 @@ Sub GiOff
     For each bulb in aGiLights
         bulb.State = 0
     Next
+    ShadowGI.visible= 0
     GameGiOff
 End Sub
 
@@ -4077,8 +4102,8 @@ End Sub
 
 Sub Realtime_Timer
     RollingUpdate
-    LeftFlipperTop.RotZ = LeftFlipper.CurrentAngle
-    RightFlipperTop.RotZ = RightFlipper.CurrentAngle
+'    LeftFlipperTop.RotZ = LeftFlipper.CurrentAngle
+'    RightFlipperTop.RotZ = RightFlipper.CurrentAngle
     LeftUFlipperTop.RotZ = LeftUFlipper.CurrentAngle
     RightUFlipperTop.RotZ = RightUFlipper.CurrentAngle
 ' add any other real time update subs, like gates or diverters, flippers
@@ -4842,7 +4867,7 @@ Class cHouse
 		ResetHouse
         HouseSelected = 0
         bBattleReady = False
-        LockWall.collidable = False : Lockwall.Uservalue = 0 : LockPost.TransZ = 0 : MoveSword True
+        LockWall.collidable = False : Lockwall.Uservalue = 0 : LockPost False : MoveSword True
         UPFState = 0
         UPFLevel = 1
         UPFMultiplier = 1
@@ -4934,10 +4959,10 @@ Class cHouse
         if bMultiBallMode = False Then 
             bBattleReady = e
             if (e) Then 
-                LockWall.collidable = True : Lockwall.Uservalue = 1 : LockPost.TransZ = -60
+                LockWall.collidable = True : Lockwall.Uservalue = 1 : LockPost True
                 SetLightColor li108,white,2
             ElseIf RealBallsInLock = 0 And bLockIsLit = False And PlayerMode <> -2 Then
-                LockWall.collidable = False : Lockwall.Uservalue = 0 : LockPost.TransZ = 0
+                LockWall.collidable = False : Lockwall.Uservalue = 0 : LockPost False
             End if
             If e=False And bITMBReady = False and bHotkMBReady = False then li108.State=0
         End If
@@ -8255,7 +8280,7 @@ Sub EndOfBallComplete()
 
         ' Drop the lock walls to release any locked balls
         SwordWall.collidable = False : MoveSword True
-        LockWall.collidable = False : Lockwall.Uservalue = 0 : LockPost.TransZ = 0
+        LockWall.collidable = False : Lockwall.Uservalue = 0 : LockPost False
         BallsInLock = 0 : RealBallsInLock = 0
 
 		bGameInPLay = False									' EndOfGame sets this but need to set early to disable flippers 
@@ -8339,7 +8364,7 @@ Sub EndOfGame()
 
 	' Drop the lock walls just in case the ball is behind it (just in Case)
 	SwordWall.collidable = False : MoveSword True
-    LockWall.collidable = False : Lockwall.Uservalue = 0 : LockPost.TransZ = 0
+    LockWall.collidable = False : Lockwall.Uservalue = 0 : LockPost False
 
     PlaySoundVol "got-track-gameover",VolDef/8
     i = RndNbr(12)
@@ -9178,18 +9203,21 @@ Sub Target9_Dropped 'LoL target 1
     PlaySoundAt "DTDrop", Target9
     If Tilted Or BallSearchCnt > 0 Then Exit Sub
     DoTargetsDropped
+drop9.visible=False
 End Sub
 
 Sub Target8_Dropped 'LoL target 2
     PlaySoundAt "DTDrop", Target8
     If Tilted Or BallSearchCnt > 0 Then Exit Sub
     DoTargetsDropped
+drop8.visible=False
 End Sub
 
 Sub Target7_Dropped 'LoL target 3
     PlaySoundAt "DTDrop", Target7
     If Tilted Or BallSearchCnt > 0 Then Exit Sub
     DoTargetsDropped
+drop7.visible=False
 End Sub
 
 Sub DoTargetsDropped
@@ -9249,6 +9277,9 @@ Sub ResetDropTargets
         Target7.IsDropped = 0
         Target8.IsDropped = 0
         Target9.IsDropped = 0
+        drop7.visible=True
+        drop8.visible=True
+        drop9.visible=True
     End If
     DroppedTargets = 0
     SetTargetLights
@@ -9336,7 +9367,7 @@ Sub LightLock
     SetLightColor li111,darkgreen,2
 
     ' Enable the lock wall
-    LockWall.collidable = 1 : Lockwall.Uservalue = 1 : LockPost.TransZ = -60
+    LockWall.collidable = 1 : Lockwall.Uservalue = 1 : LockPost True
     If RealBallsInLock > 0 Then SwordWall.collidable = 1
 
     i = RndNbr(3)
@@ -9995,8 +10026,15 @@ Sub tmrDragonWings_Timer
     i = tmrDragonWings.UserValue
     i = i + 1
     If i > 18 Then i = 1
-    DragonRightWing.ObjRotY = WingSteps(Abs(i))
-    DragonLeftWing.ObjRotY = WingSteps(Abs(i))*-1
+    Rwing_BM_Dark_Room.ObjRotY = WingSteps(Abs(i))
+    Rwing_LM_GI2.ObjRotY = WingSteps(Abs(i))
+    Rwing_LM_Inserts.ObjRotY = WingSteps(Abs(i))
+    Rwing_LM_Lit_Room.ObjRotY = WingSteps(Abs(i))
+    Lwing_BM_Dark_Room.ObjRotY = WingSteps(Abs(i))*-1
+    Lwing_LM_GI2.ObjRotY = WingSteps(Abs(i))*-1
+    Lwing_LM_Flashers.ObjRotY = WingSteps(Abs(i))*-1
+    Lwing_LM_Inserts.ObjRotY = WingSteps(Abs(i))*-1
+    Lwing_LM_Lit_Room.ObjRotY = WingSteps(Abs(i))*-1
     tmrDragonWings.UserValue = i
     If i = 0 Then tmrDragonWings.Enabled = False : StopSound "gotfx-dragonwings"
 End Sub
@@ -10232,12 +10270,15 @@ End Sub
 '**************
 'Bumper Hits
 '**************
+Dim bring1, bring2, bring3
 Sub Bumper1_Hit
     If Tilted then Exit Sub
     'PlaySoundAt SoundFXDOF("fx_bumper1", 107, DOFPulse, DOFContactors),Bumper1
     RandomSoundBumperTop Bumper1
     DOF 107, DOFPulse
     doPictoPops 0
+    bring1=1
+    tmrBumperRing1.enabled=1
 End Sub
 
 Sub Bumper2_Hit
@@ -10246,6 +10287,8 @@ Sub Bumper2_Hit
     RandomSoundBumperMiddle Bumper2
     DOF 108, DOFPulse
     doPictoPops 1
+    bring2=1
+    tmrBumperRing2.enabled=1
 End Sub
 
 Sub Bumper3_Hit
@@ -10254,6 +10297,42 @@ Sub Bumper3_Hit
     RandomSoundBumperBottom Bumper3
     DOF 109, DOFPulse
     doPictoPops 2
+    bring3=1
+    tmrBumperRing3.enabled=1
+End Sub
+
+' On Bumper hit, Move the locations of the Bumper ring lightmap/bakemap prims
+Sub tmrBumperRing1_Timer
+    Dim z,b
+    Select Case bring1
+        Case 1:z = -30:bring1 = 2
+        Case 2:z = -20:bring1 = 3
+        Case 3:z = -10:bring1 = 4
+        Case 4:z = -0:Me.Enabled = 0
+    End Select
+    For Each b in Bumper_Ring_BL : b.TransZ = z : Next
+End Sub
+
+Sub tmrBumperRing2_Timer
+    Dim z,b
+    Select Case bring2
+        Case 1:z = -30:bring2 = 2
+        Case 2:z = -20:bring2 = 3
+        Case 3:z = -10:bring2 = 4
+        Case 4:z = 0:Me.Enabled = 0
+    End Select
+    For Each b in Bumper_Ring_001_BL : b.TransZ = z : Next
+End Sub
+
+Sub tmrBumperRing3_Timer
+    Dim z,b
+    Select Case bring3
+        Case 1:z = -30:bring3 = 2
+        Case 2:z = -20:bring3 = 3
+        Case 3:z = -10:bring3 = 4
+        Case 4:z = 0:Me.Enabled = 0
+    End Select
+    For Each b in Bumper_Ring_002_BL : b.TransZ = z : Next
 End Sub
 
 '***** Bumper Light Timers - Turn bumpers back on when they're done flashing ******
@@ -10659,7 +10738,7 @@ Sub CheckForHotkOrITReady
     End If
     If Lockwall.Uservalue = 0 Then
         LockWall.Collidable = True : Lockwall.Uservalue = 1
-        LockPost.TransZ = -60
+        LockPost True
     End If
     DMDCreateReadyScene readyscene
     SavePlayfieldLightState
@@ -10847,7 +10926,7 @@ Sub StartMidnightMadnessMBIntro
     GiIntensity 2
     ' Drop the lock walls to release any locked balls
     SwordWall.collidable = False : MoveSword True
-    LockWall.collidable = False : Lockwall.Uservalue = 0 : LockPost.TransZ = 0
+    LockWall.collidable = False : Lockwall.Uservalue = 0 : LockPost False
     RealBallsInLock = 0
     If bDebug Then Wall075.collidable = False
 
@@ -10935,7 +11014,7 @@ Sub ReleaseLockedBall(sword)
     SwordWall.UserValue = sword
     LockWall.Collidable = False : Lockwall.Uservalue = 0
     'Move the actuator primitive down
-    LockPost.TransZ = 0
+    LockPost False
     'PlaySoundAt "fx_kicker",sw46
     SoundSaucerKick 0, sw46
     If sword Then
@@ -10946,16 +11025,35 @@ Sub ReleaseLockedBall(sword)
 End Sub
 
 Sub MoveSword(up)
-    If up Then
-        LockSword.ObjRotY = -30
-        SwordScrew.TransY = -12 : SwordScrew.TransX=-3
-        SwordActuator.TransX = -12 : SwordActuator.TransZ = -3
-    Else
-        LockSword.ObjRotY = 0
-        SwordScrew.TransY = 0 : SwordScrew.TransX=0
-        SwordActuator.TransX = 0 : SwordActuator.TransZ = 0
-    End If
+    Dim X,Y,Z : X=0:Y=0:Z=0
+    If up Then X=-12:Y=-30:Z=-3 
+    Sword_BM_Dark_Room.ObjRotY = Y
+    Sword_LM_Flashers.ObjRotY = Y
+    Sword_LM_GI1.ObjRotY = Y
+    Sword_LM_Inserts.ObjRotY = Y
+    Sword_LM_Lit_Room.ObjRotY = Y
+    SwordActuator_BM_Dark_Room.TransX = X
+    SwordActuator_LM_Flashers.TransX = X
+    SwordActuator_LM_GI1.TransX = X
+    SwordActuator_LM_Inserts.TransX = X
+    SwordActuator_LM_Lit_Room.TransX = X
+    SwordActuator_BM_Dark_Room.TransZ = Z
+    SwordActuator_LM_Flashers.TransZ = Z
+    SwordActuator_LM_GI1.TransZ = Z
+    SwordActuator_LM_Inserts.TransZ = Z
+    SwordActuator_LM_Lit_Room.TransZ = Z
 End Sub
+
+Sub LockPost(up)
+    Dim Z
+    If up then Z = 60 Else Z = 0
+    lockpost_001_BM_Dark_Room.TransZ = Z
+    lockpost_001_LM_Flashers.TransZ = Z
+    lockpost_001_LM_GI1.TransZ = Z
+    lockpost_001_LM_Inserts.TransZ = Z
+    lockpost_001_LM_Lit_Room.TransZ = Z
+End Sub
+    
 
 ' Called after the release solenoid has been down for ~500ms. Re-opens the invisible sword wall to let the
 ' next ball through
@@ -10964,7 +11062,7 @@ Sub SwordWall_Timer
     If tmrBWmultiballRelease.Enabled = False Then bBallReleasing = False
     If RealBallsInLock > 0 or MultiballBallsLocked > 0 Or ((House(CurrentPlayer).bBattleReady Or bLockIsLit Or bHotkMBReady or bITMBReady) And Not bMultiBallMode) Then 
         LockWall.Collidable = True : Lockwall.Uservalue = 1
-        LockPost.TransZ = -60
+        LockPost True
     End If
     SwordWall.Collidable = False
     If SwordWall.UserValue = 1 Then
@@ -14297,7 +14395,7 @@ Sub LampTimer2_Timer()
     li189bloom.colorfull=li189.colorfull : p189on.color = li189.colorfull
     li192bloom.colorfull=li192.colorfull : p192on.color = li192.colorfull
     li195bloom.colorfull=li195.colorfull : p195on.color = li195.colorfull
-    li198bloom.colorfull=li198.colorfull : p198on.color = li198.colorfull
+'    li198bloom.colorfull=li198.colorfull : p198on.color = li198.colorfull
     li201bloom.colorfull=li201.colorfull : p201on.color = li201.colorfull
     li204bloom.colorfull=li204.colorfull : p204on.color = li204.colorfull
     li207bloom.colorfull=li207.colorfull : p207on.color = li207.colorfull
@@ -14320,10 +14418,10 @@ Function FlashLevelToIndex(Input, MaxSize)
 	FlashLevelToIndex = cInt(MaxSize * Input)
 End Function
 
-Sub UpdateLightmap(lightmap, intensity, ByVal aLvl)  ' additiveblend prims
-	if Lampz.UseFunction then aLvl = Lampz.FilterOut(aLvl)    'Callbacks don't get this filter automatically
-    lightmap.Opacity = aLvl * intensity
-End Sub
+'Sub UpdateLightmap(lightmap, intensity, ByVal aLvl)  ' additiveblend prims
+'	if Lampz.UseFunction then aLvl = Lampz.FilterOut(aLvl)    'Callbacks don't get this filter automatically
+'    lightmap.Opacity = aLvl * intensity
+'End Sub
 
 '***Material Swap***
 'Fade material for green, red, yellow colored Bulb prims
@@ -14641,6 +14739,8 @@ Sub InitLampsNF()
     Lampz.FadeSpeedUp(70) = 100
     Lampz.FadeSpeedDown(70) = 5
 	
+    ' Init Blender lightmaps
+    LampzHelper
 	
 
 	'Turn off all lamps on startup
@@ -14922,24 +15022,544 @@ End Function
 ' Nice-To-Haves
 ' - fix blink patterns. Some lights do "110" pattern rather than 10
 
-' Version Log
-' 100 - Initial beta release
-' 101 - Fix playfield friction, flipper geometry, move rubbers to separate layer, 
-'       fix FlexDMD and StartTGHurryUp script bugs, add cabinet-mode option to hide side-rails
-'       Add quick-restart (FreePlay mode only, hold left flipper and hit Start to restart game)
-'       Add flipper fast-forward through battle intro scenes
-' 102 - replace rubber post walls with primitives, add nfozzy flipper physics to upper PF flippers, import VPW physics materials,
-'       adjust Bumper and Sling strengths to match VPW ref, fix battering ram impact math, add ball saver grace period,
-'       add random house option, fix speech in Choose House, fix minor Iron Throne mode bugs, add high score saving to HotK, WHC, IT modes,
-'       fix Award Replay to run after Extra Ball or Bonus awarded, write Mystery SuperJackpot support
-'       write Bonus Hold support
-'       Switched to VPW LUTs. Hold left magnasave and press right magnasave to toggle through
-' 103 - "Choose Random" moved to between Martell and Targaryen, fix UFP scoring bug, fix stacked battle not ending properly on drain,
-'       fix Targaryen HurryUp bug. Award held bonus immediatley if on last ball. Pause battle mode timers when ball is in the bumpers.
-'       Add Hound callout for timer countdown during BW Super Jackpot. Add flipper speeches during Attract Mode
-'       Add Midnight Madness multiball. Make sure your system clock is set
-'		Add Spinner and Bumper Flashers
-' 104 - In Iron Throne mode, don't add extra balls after the 7 main castles are done
-'       Use flippers to advance through Attract mode
-' 105 - oqqsan LAMPZ / inserts and extra lights / working rgb .. some colors need "help"
-' 106 - Add Daphishbowl's Service Menu, refactored for FlexDMD. Integration Service Menu options into code
+' ===============================================================
+' ZVLM       Virtual Pinball X Light Mapper generated code
+'
+' This file provide default implementation and template to add bakemap
+' & lightmap synchronization for position and lighting.
+'
+' Lines ending with a comment starting with "' VLM." are meant to
+' be copy/pasted ONLY ONCE, since the toolkit will take care of
+' updating them directly in your table script, each time an
+' export is made.
+
+
+' ===============================================================
+' The following code can be copy/pasted to have premade array for
+' movable objects:
+' - _LM suffixed arrays contains the lightmaps
+' - _BM suffixed arrays contains the bakemap
+' - _BL suffixed arrays contains both the bakemap & the lightmaps
+Dim Bumper_Ring_LM: Bumper_Ring_LM=Array(Bumper_Ring_LM_Flashers, Bumper_Ring_LM_GI2, Bumper_Ring_LM_Inserts, Bumper_Ring_LM_Lit_Room) ' VLM.Array;LM;Bumper_Ring_LM
+Dim Bumper_Ring_BM: Bumper_Ring_BM=Array(Bumper_Ring_BM_Dark_Room) ' VLM.Array;BM;Bumper_Ring_BM
+Dim Bumper_Ring_BL: Bumper_Ring_BL=Array(Bumper_Ring_BM_Dark_Room, Bumper_Ring_LM_Flashers, Bumper_Ring_LM_GI2, Bumper_Ring_LM_Inserts, Bumper_Ring_LM_Lit_Room) ' VLM.Array;All;Bumper_Ring_BL
+Dim Bumper_Ring_001_LM: Bumper_Ring_001_LM=Array(Bumper_Ring_001_LM_Flashers, Bumper_Ring_001_LM_GI2, Bumper_Ring_001_LM_Inserts, Bumper_Ring_001_LM_Lit_Room) ' VLM.Array;LM;Bumper_Ring_001_LM
+Dim Bumper_Ring_001_BM: Bumper_Ring_001_BM=Array(Bumper_Ring_001_BM_Dark_Room) ' VLM.Array;BM;Bumper_Ring_001_BM
+Dim Bumper_Ring_001_BL: Bumper_Ring_001_BL=Array(Bumper_Ring_001_BM_Dark_Room, Bumper_Ring_001_LM_Flashers, Bumper_Ring_001_LM_GI2, Bumper_Ring_001_LM_Inserts, Bumper_Ring_001_LM_Lit_Room) ' VLM.Array;All;Bumper_Ring_001_BL
+Dim Bumper_Ring_002_LM: Bumper_Ring_002_LM=Array(Bumper_Ring_002_LM_Flashers, Bumper_Ring_002_LM_GI2, Bumper_Ring_002_LM_Inserts, Bumper_Ring_002_LM_Lit_Room) ' VLM.Array;LM;Bumper_Ring_002_LM
+Dim Bumper_Ring_002_BM: Bumper_Ring_002_BM=Array(Bumper_Ring_002_BM_Dark_Room) ' VLM.Array;BM;Bumper_Ring_002_BM
+Dim Bumper_Ring_002_BL: Bumper_Ring_002_BL=Array(Bumper_Ring_002_BM_Dark_Room, Bumper_Ring_002_LM_Flashers, Bumper_Ring_002_LM_GI2, Bumper_Ring_002_LM_Inserts, Bumper_Ring_002_LM_Lit_Room) ' VLM.Array;All;Bumper_Ring_002_BL
+Dim Gates_001_LM: Gates_001_LM=Array(Gates_001_LM_Flashers, Gates_001_LM_GI2, Gates_001_LM_Lit_Room, Gates_001_LM_Upper_GI) ' VLM.Array;LM;Gates_001_LM
+Dim Gates_001_BM: Gates_001_BM=Array(Gates_001_BM_Dark_Room) ' VLM.Array;BM;Gates_001_BM
+Dim Gates_001_BL: Gates_001_BL=Array(Gates_001_BM_Dark_Room, Gates_001_LM_Flashers, Gates_001_LM_GI2, Gates_001_LM_Lit_Room, Gates_001_LM_Upper_GI) ' VLM.Array;All;Gates_001_BL
+Dim targets_LM_LM_LM: targets_LM_LM_LM=Array() ' VLM.Array;LM;targets_LM_LM_LM
+Dim targets_BM: targets_BM=Array(targets_BM_Dark_Room) ' VLM.Array;BM;targets_BM
+Dim targets_BL: targets_BL=Array(targets_BM_Dark_Room, targets_LM_Inserts, targets_LM_Lit_Room, targets_LM_Upper_GI) ' VLM.Array;All;targets_BL
+Dim targets_001_LM: targets_001_LM=Array(targets_001_LM_Flashers, targets_001_LM_GI1, targets_001_LM_GI3, targets_001_LM_Inserts, targets_001_LM_Lit_Room) ' VLM.Array;LM;targets_001_LM
+Dim targets_001_BM: targets_001_BM=Array(targets_001_BM_Dark_Room) ' VLM.Array;BM;targets_001_BM
+Dim targets_001_BL: targets_001_BL=Array(targets_001_BM_Dark_Room, targets_001_LM_Flashers, targets_001_LM_GI1, targets_001_LM_GI3, targets_001_LM_Inserts, targets_001_LM_Lit_Room) ' VLM.Array;All;targets_001_BL
+Dim targets_002_LM: targets_002_LM=Array(targets_002_LM_Flashers, targets_002_LM_GI1, targets_002_LM_GI3, targets_002_LM_Inserts, targets_002_LM_Lit_Room) ' VLM.Array;LM;targets_002_LM
+Dim targets_002_BM: targets_002_BM=Array(targets_002_BM_Dark_Room) ' VLM.Array;BM;targets_002_BM
+Dim targets_002_BL: targets_002_BL=Array(targets_002_BM_Dark_Room, targets_002_LM_Flashers, targets_002_LM_GI1, targets_002_LM_GI3, targets_002_LM_Inserts, targets_002_LM_Lit_Room) ' VLM.Array;All;targets_002_BL
+Dim targets_003_LM: targets_003_LM=Array(targets_003_LM_Flashers, targets_003_LM_GI3, targets_003_LM_Inserts, targets_003_LM_Lit_Room) ' VLM.Array;LM;targets_003_LM
+Dim targets_003_BM: targets_003_BM=Array(targets_003_BM_Dark_Room) ' VLM.Array;BM;targets_003_BM
+Dim targets_003_BL: targets_003_BL=Array(targets_003_BM_Dark_Room, targets_003_LM_Flashers, targets_003_LM_GI3, targets_003_LM_Inserts, targets_003_LM_Lit_Room) ' VLM.Array;All;targets_003_BL
+
+
+' ===============================================================
+' The following code can be copy/pasted if using Lampz fading system
+' It links each Lampz lamp/flasher to the corresponding light and lightmap
+
+Sub UpdateLightMap(lightmap, intensity, ByVal aLvl)
+   if Lampz.UseFunction then aLvl = Lampz.FilterOut(aLvl)	'Callbacks don't get this filter automatically
+'   lightmap.Opacity = aLvl * intensity
+End Sub
+
+Sub LampzHelper
+	' Lampz.MassAssign(150) = L150 ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap Playfield_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap Layer1_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap Layer3_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap Layer4_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap Layer5_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap Bumper_Ring_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap Bumper_Ring_001_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap Bumper_Ring_002_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap Gates_001_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap LFlogo_001_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap LFlogo_003_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap LSling1_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap LSling2_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap Lwing_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap Rwing_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap Plastic_door_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap RFlogo_001_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap RFlogo_003_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap RSling1_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap RSling2_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap RorbitSW31_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap Spinners_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap Target90_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap lockpost_001_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap metalPlates_002_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap outlane_left_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap outlane_right_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap ram_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap sw1_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap sw2_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap sw3_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap sw4_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap sw53_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap sw77_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap sw78_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap sw79_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap sw83_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap sw84_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap swordactuator_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap sword_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap targets_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap targets_001_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap targets_002_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap targets_003_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap targets_004_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap targets_005_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap targets_006_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap targets_007_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap targets_008_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap targets_009_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap targets_010_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap targets_011_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	Lampz.Callback(140) = "UpdateLightMap targets_012_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	' Sync on LightShootAgain ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap Playfield_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap Layer1_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap Layer3_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap Layer4_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap Layer5_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap Bumper_Ring_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap Bumper_Ring_001_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap Bumper_Ring_002_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap LFlogo_001_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap LFlogo_003_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap LSling1_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap LSling2_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap Lwing_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap Rwing_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap Plastic_door_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap RFlogo_001_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap RFlogo_003_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap RSling1_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap RSling2_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap RorbitSW31_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap Spinners_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap Target90_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap lockpost_001_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap outlane_left_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap outlane_right_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap ram_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap sw1_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap sw2_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap sw3_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap sw4_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap sw53_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap sw54_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap sw77_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap sw78_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap sw83_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap sw84_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap swordactuator_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap sword_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap targets_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap targets_001_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap targets_002_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap targets_003_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap targets_004_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap targets_005_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap targets_006_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap targets_007_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap targets_008_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap targets_009_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap targets_010_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap targets_011_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	Lampz.Callback(0) = "UpdateLightMap targets_012_LM_Inserts, 100.0, " ' VLM.Lampz;Inserts
+	' Lampz.MassAssign(125) = f25 ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap Playfield_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap Layer1_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap Layer2_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap Layer3_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap Layer4_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap Layer5_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap Bumper_Ring_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap Bumper_Ring_001_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap Bumper_Ring_002_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap Gates_001_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap LFlogo_001_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap LFlogo_003_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap LSling2_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap Lwing_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap Plastic_door_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap RFlogo_001_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap RFlogo_003_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap RSling2_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap RorbitSW31_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap Spinners_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap Target90_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap lockpost_001_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap metalPlates_002_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap outlane_left_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap outlane_right_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap ram_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap sw53_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap sw54_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap sw84_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap swordactuator_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap sword_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap targets_001_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap targets_002_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap targets_003_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap targets_004_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap targets_005_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap targets_006_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap targets_007_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap targets_008_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap targets_009_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	Lampz.Callback(125) = "UpdateLightMap targets_010_LM_Flashers, 100.0, " ' VLM.Lampz;Flashers
+	' Sync on gi010 ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap Playfield_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap Layer3_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap LFlogo_003_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap LSling1_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap LSling2_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap RFlogo_003_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap RSling1_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap RSling2_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap Target90_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap lockpost_001_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap outlane_left_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap outlane_right_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap ram_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap sw1_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap sw2_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap sw3_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap sw4_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap swordactuator_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap sword_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap targets_001_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap targets_002_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap targets_008_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap targets_009_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	Lampz.Callback(0) = "UpdateLightMap targets_010_LM_GI1, 100.0, " ' VLM.Lampz;GI1
+	' Sync on gi026 ' VLM.Lampz;GI3
+	Lampz.Callback(0) = "UpdateLightMap Playfield_LM_GI3, 100.0, " ' VLM.Lampz;GI3
+	Lampz.Callback(0) = "UpdateLightMap Layer1_LM_GI3, 100.0, " ' VLM.Lampz;GI3
+	Lampz.Callback(0) = "UpdateLightMap Layer3_LM_GI3, 100.0, " ' VLM.Lampz;GI3
+	Lampz.Callback(0) = "UpdateLightMap Layer4_LM_GI3, 100.0, " ' VLM.Lampz;GI3
+	Lampz.Callback(0) = "UpdateLightMap Layer5_LM_GI3, 100.0, " ' VLM.Lampz;GI3
+	Lampz.Callback(0) = "UpdateLightMap LorbitSW30_LM_GI3, 100.0, " ' VLM.Lampz;GI3
+	Lampz.Callback(0) = "UpdateLightMap Spinners_LM_GI3, 100.0, " ' VLM.Lampz;GI3
+	Lampz.Callback(0) = "UpdateLightMap metalPlates_002_LM_GI3, 100.0, " ' VLM.Lampz;GI3
+	Lampz.Callback(0) = "UpdateLightMap ram_LM_GI3, 100.0, " ' VLM.Lampz;GI3
+	Lampz.Callback(0) = "UpdateLightMap targets_001_LM_GI3, 100.0, " ' VLM.Lampz;GI3
+	Lampz.Callback(0) = "UpdateLightMap targets_002_LM_GI3, 100.0, " ' VLM.Lampz;GI3
+	Lampz.Callback(0) = "UpdateLightMap targets_003_LM_GI3, 100.0, " ' VLM.Lampz;GI3
+	Lampz.Callback(0) = "UpdateLightMap targets_004_LM_GI3, 100.0, " ' VLM.Lampz;GI3
+	Lampz.Callback(0) = "UpdateLightMap targets_005_LM_GI3, 100.0, " ' VLM.Lampz;GI3
+	Lampz.Callback(0) = "UpdateLightMap targets_006_LM_GI3, 100.0, " ' VLM.Lampz;GI3
+	' Sync on gi035 ' VLM.Lampz;Upper GI
+	Lampz.Callback(0) = "UpdateLightMap Playfield_LM_Upper_GI, 100.0, " ' VLM.Lampz;Upper GI
+	Lampz.Callback(0) = "UpdateLightMap Layer1_LM_Upper_GI, 100.0, " ' VLM.Lampz;Upper GI
+	Lampz.Callback(0) = "UpdateLightMap Layer4_LM_Upper_GI, 100.0, " ' VLM.Lampz;Upper GI
+	Lampz.Callback(0) = "UpdateLightMap Gates_001_LM_Upper_GI, 100.0, " ' VLM.Lampz;Upper GI
+	Lampz.Callback(0) = "UpdateLightMap LFlogo_001_LM_Upper_GI, 100.0, " ' VLM.Lampz;Upper GI
+	Lampz.Callback(0) = "UpdateLightMap RFlogo_001_LM_Upper_GI, 100.0, " ' VLM.Lampz;Upper GI
+	Lampz.Callback(0) = "UpdateLightMap sw83_LM_Upper_GI, 100.0, " ' VLM.Lampz;Upper GI
+	Lampz.Callback(0) = "UpdateLightMap sw84_LM_Upper_GI, 100.0, " ' VLM.Lampz;Upper GI
+	Lampz.Callback(0) = "UpdateLightMap targets_LM_Upper_GI, 100.0, " ' VLM.Lampz;Upper GI
+	Lampz.Callback(0) = "UpdateLightMap targets_011_LM_Upper_GI, 100.0, " ' VLM.Lampz;Upper GI
+	Lampz.Callback(0) = "UpdateLightMap targets_012_LM_Upper_GI, 100.0, " ' VLM.Lampz;Upper GI
+	' Sync on gi035 ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap Playfield_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap Layer1_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap Layer2_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap Layer3_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap Layer4_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap Layer5_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap Bumper_Ring_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap Bumper_Ring_001_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap Bumper_Ring_002_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap Gates_001_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap Lwing_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap Rwing_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap Plastic_door_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap RFlogo_001_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap RorbitSW31_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap metalPlates_002_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap ram_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap sw53_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap sw54_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap sw77_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap sw78_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap sw79_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap targets_007_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+	Lampz.Callback(0) = "UpdateLightMap targets_008_LM_GI2, 100.0, " ' VLM.Lampz;GI2
+End Sub
+
+
+' ===============================================================
+' The following code can serve as a base for movable position synchronization.
+' You will need to adapt the part of the transform you want to synchronize
+' and the source on which you want it to be synchronized.
+
+Sub MovableHelper
+    Dim lfa,rfa,x1,x2,y,z,t
+    lfa = LeftFlipper.CurrentAngle + 90
+    rfa = RightFlipper.CurrentAngle - 30
+
+    ' Upper PF flippers
+    LFlogo_001_BM_Dark_Room.RotZ = lfa ' VLM.Props;BM;1;LFlogo.001
+	LFlogo_001_LM_Lit_Room.RotZ = lfa ' VLM.Props;LM;1;LFlogo.001
+	LFlogo_001_LM_Inserts.RotZ = lfa ' VLM.Props;LM;1;LFlogo.001
+	LFlogo_001_LM_Flashers.RotZ = lfa ' VLM.Props;LM;1;LFlogo.001
+	LFlogo_001_LM_Upper_GI.RotZ = lfa ' VLM.Props;LM;1;LFlogo.001
+    RFlogo_001_BM_Dark_Room.RotZ = rfa ' VLM.Props;BM;1;RFlogo.001
+	RFlogo_001_LM_Lit_Room.RotZ = rfa ' VLM.Props;LM;1;RFlogo.001
+	RFlogo_001_LM_Inserts.RotZ = rfa ' VLM.Props;LM;1;RFlogo.001
+	RFlogo_001_LM_Flashers.RotZ = rfa ' VLM.Props;LM;1;RFlogo.001
+	RFlogo_001_LM_Upper_GI.RotZ = rfa ' VLM.Props;LM;1;RFlogo.001
+	RFlogo_001_LM_GI2.RotZ = rfa ' VLM.Props;LM;1;RFlogo.001
+
+    ' Main FP flippers
+	LFlogo_003_BM_Dark_Room.RotZ = lfa ' VLM.Props;BM;1;LFlogo.003
+	LFlogo_003_LM_Lit_Room.RotZ = lfa ' VLM.Props;LM;1;LFlogo.003
+	LFlogo_003_LM_Inserts.RotZ = lfa ' VLM.Props;LM;1;LFlogo.003
+	LFlogo_003_LM_Flashers.RotZ = lfa ' VLM.Props;LM;1;LFlogo.003
+	LFlogo_003_LM_GI1.RotZ = lfa ' VLM.Props;LM;1;LFlogo.003
+	RFlogo_003_BM_Dark_Room.RotZ = rfa ' VLM.Props;BM;1;RFlogo.003
+	RFlogo_003_LM_Lit_Room.RotZ = rfa ' VLM.Props;LM;1;RFlogo.003
+	RFlogo_003_LM_Inserts.RotZ = rfa ' VLM.Props;LM;1;RFlogo.003
+	RFlogo_003_LM_Flashers.RotZ = rfa ' VLM.Props;LM;1;RFlogo.003
+	RFlogo_003_LM_GI1.RotZ = rfa ' VLM.Props;LM;1;RFlogo.003
+
+    ' Slings
+    x1 = LeftSling4.visible
+    x2 = LeftSling3.visible
+    LSling1_BM_Dark_Room.Visible = x1 ' VLM.Props;BM;1;LSling1
+	LSling1_LM_Lit_Room.Visible = x1 ' VLM.Props;LM;1;LSling1
+	LSling1_LM_Inserts.Visible = x1 ' VLM.Props;LM;1;LSling1
+	LSling1_LM_GI1.Visible = x1 ' VLM.Props;LM;1;LSling1
+	LSling2_BM_Dark_Room.Visible = x2 ' VLM.Props;BM;1;LSling2
+	LSling2_LM_Lit_Room.Visible = x2 ' VLM.Props;LM;1;LSling2
+	LSling2_LM_Inserts.Visible = x2 ' VLM.Props;LM;1;LSling2
+	LSling2_LM_Flashers.Visible = x2 ' VLM.Props;LM;1;LSling2
+	LSling2_LM_GI1.Visible = x2 ' VLM.Props;LM;1;LSling2
+
+    x1 = RightSling4.visible
+    x2 = RightSling3.visible
+	RSling1_BM_Dark_Room.Visible = x1 ' VLM.Props;BM;1;RSling1
+	RSling1_LM_Lit_Room.Visible = x1 ' VLM.Props;LM;1;RSling1
+	RSling1_LM_Inserts.Visible = x1 ' VLM.Props;LM;1;RSling1
+	RSling1_LM_GI1.Visible = x1 ' VLM.Props;LM;1;RSling1
+	RSling2_BM_Dark_Room.Visible = x2 ' VLM.Props;BM;1;RSling2
+	RSling2_LM_Lit_Room.Visible = x2 ' VLM.Props;LM;1;RSling2
+	RSling2_LM_Inserts.Visible = x2 ' VLM.Props;LM;1;RSling2
+	RSling2_LM_Flashers.Visible = x2 ' VLM.Props;LM;1;RSling2
+	RSling2_LM_GI1.Visible = x2 ' VLM.Props;LM;1;RSling2
+
+    ' Battering ram
+    y = Ram.TransZ
+    ram_BM_Dark_Room.transy= y ' VLM.Props;BM;1;ram
+	ram_LM_Lit_Room.transy= y ' VLM.Props;LM;1;ram
+	ram_LM_Inserts.transy= y ' VLM.Props;LM;1;ram
+	ram_LM_Flashers.transy= y ' VLM.Props;LM;1;ram
+	ram_LM_GI1.transy= y ' VLM.Props;LM;1;ram
+	ram_LM_GI3.transy= y ' VLM.Props;LM;1;ram
+	ram_LM_GI2.transy= y ' VLM.Props;LM;1;ram
+
+    ' Left Orbit Spinner
+    Dim a:a=Spinner001.currentAngle
+    Spinners_BM_Dark_Room.ObjRotX = a ' VLM.Props;BM;1;Spinners
+	Spinners_LM_Lit_Room.ObjRotX = a ' VLM.Props;LM;1;Spinners
+	Spinners_LM_Inserts.ObjRotX = a ' VLM.Props;LM;1;Spinners
+	Spinners_LM_Flashers.ObjRotX = a ' VLM.Props;LM;1;Spinners
+	Spinners_LM_GI3.ObjRotX = a ' VLM.Props;LM;1;Spinners
+
+    ' Castle Gate drop target
+    If Target90.IsDropped Then z=-50 Else z=0
+    Target90_BM_Dark_Room.transz = z ' VLM.Props;BM;1;Target90
+	Target90_LM_Lit_Room.transz = z ' VLM.Props;LM;1;Target90
+	Target90_LM_Inserts.transz = z ' VLM.Props;LM;1;Target90
+	Target90_LM_Flashers.transz = z ' VLM.Props;LM;1;Target90
+	Target90_LM_GI1.transz = z ' VLM.Props;LM;1;Target90
+
+    ' LoL Drop Targets
+    If Target9.IsDropped Then z=-50 Else z=0
+    For each t in targets_001_BL : t.transz = z : Next
+    If Target8.IsDropped Then z=-50 Else z=0
+    For each t in targets_002_BL : t.transz = z : Next
+    If Target7.IsDropped Then z=-50 Else z=0
+    For each t in targets_003_BL : t.transz = z : Next
+
+    ' Right Ramp top gate
+    a = Gate001.currentAngle
+    For each t in Gates_001_BL : t.RotZ=a : Next
+
+End Sub
+
+
+' ===============================================================
+' The following code can be copy/pasted to disable baked lights
+' Lights are not removed on export since they are needed for ball
+' reflections and may be used for lightmap synchronisation.
+
+Sub HideLightHelper
+	L150.Visible = False
+	LightShootAgain.Visible = False
+	f25.Visible = False
+	gi002.Visible = False
+	gi003.Visible = False
+	gi004.Visible = False
+	gi005.Visible = False
+	gi010.Visible = False
+	gi012.Visible = False
+	gi016.Visible = False
+	gi018.Visible = False
+	gi019.Visible = False
+	gi020.Visible = False
+	gi024.Visible = False
+	gi026.Visible = False
+	gi027.Visible = False
+	gi028.Visible = False
+	gi029.Visible = False
+	gi030.Visible = False
+	gi033.Visible = False
+	gi035.Visible = False
+	gi036.Visible = False
+	gi037.Visible = False
+	gi038.Visible = False
+	gi045.Visible = False
+	gi049.Visible = False
+	gi050.Visible = False
+	gi057.Visible = False
+	gi058.Visible = False
+	gi059.Visible = False
+	l103.Visible = False
+	li101.Visible = False
+	li104.Visible = False
+	li105.Visible = False
+	li108.Visible = False
+	li11.Visible = False
+	li111.Visible = False
+	li114.Visible = False
+	li117.Visible = False
+	li120.Visible = False
+	li123.Visible = False
+	li126.Visible = False
+	li129.Visible = False
+	li132.Visible = False
+	li135.Visible = False
+	li138.Visible = False
+	li14.Visible = False
+	li141.Visible = False
+	li144.Visible = False
+	li147.Visible = False
+	li150.Visible = False
+	li153.Visible = False
+	li156.Visible = False
+	li159.Visible = False
+	li162.Visible = False
+	li165.Visible = False
+	li168.Visible = False
+	li17.Visible = False
+	li171.Visible = False
+	li174.Visible = False
+	li20.Visible = False
+	li23.Visible = False
+	li26.Visible = False
+	li29.Visible = False
+	li32.Visible = False
+	li35.Visible = False
+	li38.Visible = False
+	li41.Visible = False
+	li44.Visible = False
+	li47.Visible = False
+	li50.Visible = False
+	li53.Visible = False
+	li56.Visible = False
+	li59.Visible = False
+	li62.Visible = False
+	li65.Visible = False
+	li71.Visible = False
+	li74.Visible = False
+	li77.Visible = False
+	li80.Visible = False
+	li83.Visible = False
+	li86.Visible = False
+	li89.Visible = False
+	li92.Visible = False
+	li95.Visible = False
+	li98.Visible = False
+End Sub
+
+
+' ===============================================================
+' The following provides a basic synchronization mechanism were
+' lightmaps are synchronized to corresponding VPX light or flasher,
+' using a simple realtime timer called VLMTimer. This works great
+' as a starting point but Lampz direct lightmap fading shoudl be prefered.
+
+Sub VLMTimer_Timer
+	Playfield_LM_Lit_Room.Visible = False
+	Movables_LM_Lit_Room.Visible = False
+	Playfield_LM_Lit_Room_001.Visible = False
+	Playfield_LM_Lit_Room_002.Visible = False
+	Playfield_LM_Lit_Room_003.Visible = False
+	Movables_LM_Lit_Room_001.Visible = False
+	UpdateLightMapFromLight LightShootAgain, Playfield_LM_Inserts, 100.0, False
+	UpdateLightMapFromLight LightShootAgain, Movables_LM_Inserts, 100.0, False
+	UpdateLightMapFromLight LightShootAgain, Playfield_LM_Inserts_001, 100.0, False
+	UpdateLightMapFromLight LightShootAgain, Movables_LM_Inserts_001, 100.0, False
+	Playfield_LM_Flashers.Visible = False
+	Movables_LM_Flashers.Visible = False
+	Playfield_LM_Flashers_001.Visible = False
+	Movables_LM_Flashers_001.Visible = False
+	UpdateLightMapFromLight gi010, Playfield_LM_GI1, 100.0, False
+	UpdateLightMapFromLight gi010, Movables_LM_GI1, 100.0, False
+	UpdateLightMapFromLight gi026, Playfield_LM_GI3, 100.0, False
+	UpdateLightMapFromLight gi026, Movables_LM_GI3, 100.0, False
+	UpdateLightMapFromLight gi035, Playfield_LM_Upper_GI, 100.0, False
+	UpdateLightMapFromLight gi035, Movables_LM_Upper_GI, 100.0, False
+	UpdateLightMapFromLight gi035, Playfield_LM_GI2, 100.0, False
+	UpdateLightMapFromLight gi035, Movables_LM_GI2, 100.0, False
+	UpdateLightMapFromLight gi035, Playfield_LM_GI2_001, 100.0, False
+End Sub
+
+Function LightFade(light, is_on, percent)
+	If is_on Then
+		LightFade = percent*percent*(3 - 2*percent) ' Smoothstep
+	Else
+		LightFade = 1 - Sqr(1 - percent*percent) ' 
+	End If
+End Function
+
+Sub UpdateLightMapFromFlasher(flasher, lightmap, intensity_scale, sync_color)
+	If flasher.Visible Then
+		If sync_color Then lightmap.Color = flasher.Color
+		lightmap.Opacity = intensity_scale * flasher.IntensityScale * flasher.Opacity / 1000.0
+	Else
+		lightmap.Opacity = 0
+	End If
+End Sub
+
+Sub UpdateLightMapFromLight(light, lightmap, intensity_scale, sync_color)
+	light.FadeSpeedUp = light.Intensity / 50 '100
+	light.FadeSpeedDown = light.Intensity / 200
+	If sync_color Then lightmap.Color = light.Colorfull
+	Dim t: t = LightFade(light, light.GetInPlayStateBool(), light.GetInPlayIntensity() / (light.Intensity * light.IntensityScale))
+	lightmap.Opacity = intensity_scale * light.IntensityScale * t
+End Sub
+
+Sub FrameTimer_Timer
+    MovableHelper
+End Sub
+
+
