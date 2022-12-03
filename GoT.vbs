@@ -56,6 +56,7 @@
 ' 120 - apophis - Physics review and update (materials, scripts, settings). Added slingshot corrections. New droptarget sound effects. Added dynamic shadows and flipper shadows.
 ' 121 - apophis - Small tweaks to make post pass work well and to make right ramp backhand shot more reliable.
 ' 121a - apophis - Added primitive ramp from tomate. Ramp triggers and gates  referenced to correct surface heights. PF friction set to 0.22
+' 122 - Fix Castle loop not resetting UPF lights; Possible fix for 'out of stack space' error; misc bug fixes
 '
 'On the DOF website put Exxx
 '101 Left Flipper
@@ -103,8 +104,6 @@ Const cVolCallout = 0.9   ' Volume of voice callouts
 Const cVolDef = 0.5		 ' Volume for GoT sound effects
 Const cVolSfx = 0.2		 ' Volume for table "physical" Sound effects (non Fleep sounds)
 Const cVolTable = 0.2   ' Used by Daphishbowl's Service menu
-
-
 '*** Fleep ****
 '///////////////////////-----General Sound Options-----///////////////////////
 '// VolumeDial:
@@ -115,7 +114,7 @@ Const VolumeDial = 0.8
 Const BallRollVolume = 0.5
 
 '////// Cabinet Options
-Const bHaveLockbarButton = False    ' Set to true if you have a lockdown bar button. Will disable the flasher on the apron
+Const bHaveLockbarButton = true    ' Set to true if you have a lockdown bar button. Will disable the flasher on the apron
 Const bCabinetMode = False          ' Set to true to hide side rails
 Const DMDMode = 1                   ' Use FlexDMD (currently the only option supported)
 Const bUsePlungerForSternKey = False ' If true, use the plunger key for the Action/Select button. 
@@ -1088,12 +1087,12 @@ End Sub
 '/////////////////////////////  FLIPPER BATS SOUND SUBROUTINES  ////////////////////////////
 '/////////////////////////////  FLIPPER BATS SOLENOID ATTACK SOUND  ////////////////////////////
 Sub SoundFlipperUpAttackLeft(flipper)
-	FlipperUpAttackLeftSoundLevel = RndNum(FlipperUpAttackMinimumSoundLevel, FlipperUpAttackMaximumSoundLevel)
+    FlipperUpAttackLeftSoundLevel = RndNum(FlipperUpAttackMinimumSoundLevel, FlipperUpAttackMaximumSoundLevel)
 	PlaySoundAtLevelStatic SoundFX("Flipper_Attack-L01",DOFFlippers), FlipperUpAttackLeftSoundLevel, flipper
 End Sub
 
 Sub SoundFlipperUpAttackRight(flipper)
-	FlipperUpAttackRightSoundLevel = RndNum(FlipperUpAttackMinimumSoundLevel, FlipperUpAttackMaximumSoundLevel)
+    FlipperUpAttackRightSoundLevel = RndNum(FlipperUpAttackMinimumSoundLevel, FlipperUpAttackMaximumSoundLevel)
 	PlaySoundAtLevelStatic SoundFX("Flipper_Attack-R01",DOFFlippers), FlipperUpAttackLeftSoundLevel, flipper
 End Sub
 
@@ -1188,7 +1187,7 @@ End Sub
 
 '/////////////////////////////  WALL IMPACTS  ////////////////////////////
 Sub Walls_Hit(idx)
-    RandomSoundWall()
+        RandomSoundWall()
 End Sub
 
 Sub RandomSoundWall()
@@ -1528,13 +1527,13 @@ End Sub
 '		End If
 
 ' *** Required Functions, enable these if they are not already present elswhere in your table
-Function max(a,b)
-	if a > b then 
-		max = a
-	Else
-		max = b
-	end if
-end Function
+' Function max(a,b)
+' 	if a > b then 
+' 		max = a
+' 	Else
+' 		max = b
+' 	end if
+' end Function
 
 'Function Distance(ax,ay,bx,by)
 '	Distance = SQR((ax - bx)^2 + (ay - by)^2)
@@ -1819,7 +1818,7 @@ Sub RollingUpdate()
 	For b = UBound(BOT) + 1 to tnob - 1
 		' Comment the next line if you are not implementing Dyanmic Ball Shadows
 		If AmbientBallShadowOn = 0 Then BallShadowA(b).visible = 0
-		rolling(b) = False
+        rolling(b) = False
 		StopSound("BallRoll_" & b)
 	Next
 
@@ -1840,7 +1839,7 @@ Sub RollingUpdate()
 			End If
 		End If
 
-		' Ball Drop Sounds
+   		' Ball Drop Sounds
 		If BOT(b).VelZ < -1 and BOT(b).z < 55 and BOT(b).z > 27 Then 'height adjust for ball drop sounds
 			If DropCount(b) >= 5 Then
 				DropCount(b) = 0
@@ -1854,7 +1853,7 @@ Sub RollingUpdate()
 		If DropCount(b) < 5 Then
 			DropCount(b) = DropCount(b) + 1
 		End If
-
+        
 		' "Static" Ball Shadows
 		' Comment the next If block, if you are not implementing the Dyanmic Ball Shadows
 		If AmbientBallShadowOn = 0 Then
@@ -2094,7 +2093,7 @@ Class FlipperPolarity
 	Public TimeDelay        'delay before trigger turns off and polarity is disabled TODO set time!
 	private Flipper, FlipperStart,FlipperEnd, FlipperEndY, LR, PartialFlipCoef
 	Private Balls(20), balldata(20)
-
+        
 	dim PolarityIn, PolarityOut
 	dim VelocityIn, VelocityOut
 	dim YcoefIn, YcoefOut
@@ -2102,14 +2101,14 @@ Class FlipperPolarity
 		redim PolarityIn(0) : redim PolarityOut(0) : redim VelocityIn(0) : redim VelocityOut(0) : redim YcoefIn(0) : redim YcoefOut(0)
 		Enabled = True : TimeDelay = 50 : LR = 1:  dim x : for x = 0 to uBound(balls) : balls(x) = Empty : set Balldata(x) = new SpoofBall : next 
 	End Sub
-
+        
 	Public Property let Object(aInput) : Set Flipper = aInput : StartPoint = Flipper.x : End Property
 	Public Property Let StartPoint(aInput) : if IsObject(aInput) then FlipperStart = aInput.x else FlipperStart = aInput : end if : End Property
 	Public Property Get StartPoint : StartPoint = FlipperStart : End Property
 	Public Property Let EndPoint(aInput) : FlipperEnd = aInput.x: FlipperEndY = aInput.y: End Property
 	Public Property Get EndPoint : EndPoint = FlipperEnd : End Property        
 	Public Property Get EndPointY: EndPointY = FlipperEndY : End Property
-
+        
 	Public Sub AddPoint(aChooseArray, aIDX, aX, aY) 'Index #, X position, (in) y Position (out) 
 		Select Case aChooseArray
 			case "Polarity" : ShuffleArrays PolarityIn, PolarityOut, 1 : PolarityIn(aIDX) = aX : PolarityOut(aIDX) = aY : ShuffleArrays PolarityIn, PolarityOut, 0
@@ -2125,25 +2124,25 @@ Class FlipperPolarity
 			case "Polarity" : a1 = PolarityIn : a2 = PolarityOut
 			Case "Velocity" : a1 = VelocityIn : a2 = VelocityOut
 			Case "Ycoef" : a1 = YcoefIn : a2 = YcoefOut 
-				case else :tbpl.text = "wrong string" : exit sub
+			case else :tbpl.text = "wrong string" : exit sub
 		End Select
 		dim str, x : for x = 0 to uBound(a1) : str = str & aChooseArray & " x: " & round(a1(x),4) & ", " & round(a2(x),4) & vbnewline : next
 		tbpl.text = str
 	End Sub
-
+        
 	Public Sub AddBall(aBall) : dim x : for x = 0 to uBound(balls) : if IsEmpty(balls(x)) then set balls(x) = aBall : exit sub :end if : Next  : End Sub
 
 	Private Sub RemoveBall(aBall)
 		dim x : for x = 0 to uBound(balls)
-			if TypeName(balls(x) ) = "IBall" then 
-				if aBall.ID = Balls(x).ID Then
-					balls(x) = Empty
-					Balldata(x).Reset
-				End If
+		if TypeName(balls(x) ) = "IBall" then 
+			if aBall.ID = Balls(x).ID Then
+				balls(x) = Empty
+				Balldata(x).Reset
 			End If
+		End If
 		Next
 	End Sub
-
+        
 	Public Sub Fire() 
 		Flipper.RotateToEnd
 		processballs
@@ -2168,7 +2167,7 @@ Class FlipperPolarity
 		PartialFlipCoef = abs(PartialFlipCoef-1)
 	End Sub
 	Private Function FlipperOn() : if gameTime < FlipAt+TimeDelay then FlipperOn = True : End If : End Function        'Timer shutoff for polaritycorrect
-
+        
 	Public Sub PolarityCorrect(aBall)
 		if FlipperOn() then 
 			dim tmp, BallPos, x, IDX, Ycoef : Ycoef = 1
@@ -2191,7 +2190,7 @@ Class FlipperPolarity
 			If BallPos = 0 Then 'no ball data meaning the ball is entering and exiting pretty close to the same position, use current values.
 				BallPos = PSlope(aBall.x, FlipperStart, 0, FlipperEnd, 1)
 				if ballpos > 0.65 then  Ycoef = LinearEnvelope(aBall.Y, YcoefIn, YcoefOut)                                                'find safety coefficient 'ycoef' data
-			End If
+ 			End If
 
 			'Velocity correction
 			if not IsEmpty(VelocityIn(0) ) then
@@ -2204,11 +2203,11 @@ Class FlipperPolarity
 				if Enabled then aBall.Vely = aBall.Vely*VelCoef
 			End If
 
-			'Polarity Correction (optional now)
+                        'Polarity Correction (optional now)
 			if not IsEmpty(PolarityIn(0) ) then
 				If StartPoint > EndPoint then LR = -1        'Reverse polarity if left flipper
 				dim AddX : AddX = LinearEnvelope(BallPos, PolarityIn, PolarityOut) * LR
-
+        
 				if Enabled then aBall.VelX = aBall.VelX + 1 * (AddX*ycoef*PartialFlipcoef)
 			End If
 		End If
@@ -2256,7 +2255,7 @@ End Sub
 
 ' Used for flipper correction, rubber dampeners, and drop targets
 Function BallSpeed(ball) 'Calculates the ball speed
-	BallSpeed = SQR(ball.VelX^2 + ball.VelY^2 + ball.VelZ^2)
+    BallSpeed = SQR(ball.VelX^2 + ball.VelY^2 + ball.VelZ^2)
 End Function
 
 ' Used for flipper correction and rubber dampeners
@@ -2324,7 +2323,7 @@ Dim ULFEOSNudge, URFEOSNudge
 
 Sub FlipperNudge(Flipper1, Endangle1, EOSNudge1, Flipper2, EndAngle2)
 	Dim b, BOT
-	BOT = GetBalls
+    BOT = GetBalls
 
 	If Flipper1.currentangle = Endangle1 and EOSNudge1 <> 1 Then
 		EOSNudge1 = 1
@@ -2495,7 +2494,7 @@ Sub FlipperDeactivate(Flipper, FlipperPress)
 	Flipper.eostorqueangle = EOSA
 	Flipper.eostorque = EOST*EOSReturn/FReturn
 
-
+        
 	If Abs(Flipper.currentangle) <= Abs(Flipper.endangle) + 0.1 Then
 		Dim b, BOT
 		BOT = GetBalls
@@ -2546,12 +2545,12 @@ Const LiveDistanceMin = 30  'minimum distance in vp units from flipper base live
 Const LiveDistanceMax = 114  'maximum distance in vp units from flipper base live catch dampening will occur (tip protection)
 
 Sub CheckLiveCatch(ball, Flipper, FCount, parm) 'Experimental new live catch
-	Dim Dir
-	Dir = Flipper.startangle/Abs(Flipper.startangle)    '-1 for Right Flipper
-	Dim LiveCatchBounce                                                                                                                        'If live catch is not perfect, it won't freeze ball totally
-	Dim CatchTime : CatchTime = GameTime - FCount
+    Dim Dir
+    Dir = Flipper.startangle/Abs(Flipper.startangle)    '-1 for Right Flipper
+    Dim LiveCatchBounce                                                                                                                        'If live catch is not perfect, it won't freeze ball totally
+    Dim CatchTime : CatchTime = GameTime - FCount
 
-	if CatchTime <= LiveCatch and parm > 6 and ABS(Flipper.x - ball.x) > LiveDistanceMin and ABS(Flipper.x - ball.x) < LiveDistanceMax Then
+    if CatchTime <= LiveCatch and parm > 6 and ABS(Flipper.x - ball.x) > LiveDistanceMin and ABS(Flipper.x - ball.x) < LiveDistanceMax Then
 		if CatchTime <= LiveCatch*0.5 Then                                                'Perfect catch only when catch time happens in the beginning of the window
 			LiveCatchBounce = 0
 		else
@@ -2565,7 +2564,7 @@ Sub CheckLiveCatch(ball, Flipper, FCount, parm) 'Experimental new live catch
 		ball.angmomz= 0
     Else
         If Abs(Flipper.currentangle) <= Abs(Flipper.endangle) + 1 Then FlippersD.Dampenf Activeball, parm
-	End If
+    End If
 End Sub
 
 '****************************************************************************
@@ -2641,24 +2640,24 @@ Class Dampener
 		if threshold then if BallSpeed(aBall) < threshold then exit sub end if end if
 		dim RealCOR, DesiredCOR, str, coef
 		DesiredCor = LinearEnvelope(cor.ballvel(aBall.id), ModIn, ModOut )
-		RealCOR = BallSpeed(aBall) / (cor.ballvel(aBall.id)+0.0001)
+        RealCOR = BallSpeed(aBall) / (cor.ballvel(aBall.id)+0.0001)
 		coef = desiredcor / realcor 
 		if debugOn then str = name & " in vel:" & round(cor.ballvel(aBall.id),2 ) & vbnewline & "desired cor: " & round(desiredcor,4) & vbnewline & _
 		"actual cor: " & round(realCOR,4) & vbnewline & "ballspeed coef: " & round(coef, 3) & vbnewline 
 		if Print then debug.print Round(cor.ballvel(aBall.id),2) & ", " & round(desiredcor,3)
-
+		
 		aBall.velx = aBall.velx * coef : aBall.vely = aBall.vely * coef
 		if debugOn then TBPout.text = str
 	End Sub
 
 	public sub Dampenf(aBall, parm) 'Rubberizer is handle here
-		dim RealCOR, DesiredCOR, str, coef
-		DesiredCor = LinearEnvelope(cor.ballvel(aBall.id), ModIn, ModOut )
-		RealCOR = BallSpeed(aBall) / (cor.ballvel(aBall.id)+0.0001)
-		coef = desiredcor / realcor 
-		If abs(aball.velx) < 2 and aball.vely < 0 and aball.vely > -3.75 then 
-			aBall.velx = aBall.velx * coef : aBall.vely = aBall.vely * coef
-		End If
+			dim RealCOR, DesiredCOR, str, coef
+			DesiredCor = LinearEnvelope(cor.ballvel(aBall.id), ModIn, ModOut )
+            RealCOR = BallSpeed(aBall) / (cor.ballvel(aBall.id)+0.0001)
+			coef = desiredcor / realcor 
+			If abs(aball.velx) < 2 and aball.vely < 0 and aball.vely > -3.75 then 
+				aBall.velx = aBall.velx * coef : aBall.vely = aBall.vely * coef
+			End If
 	End Sub
 
 	Public Sub CopyCoef(aObj, aCoef) 'alternative addpoints, copy with coef
@@ -2674,10 +2673,13 @@ Class Dampener
 		dim str, x : for x = 0 to uBound(a1) : str = str & x & ": " & round(a1(x),4) & ", " & round(a2(x),4) & vbnewline : next
 		TBPout.text = str
 	End Sub
-
+	
 End Class
 
 
+
+'Sub aGates_Hit(idx):PlaySoundAtBall "fx_Gate4":End Sub
+'Sub aRollovers_Hit(idx):PlaySoundAtBall "fx_sensor":End Sub
 '******************************************************
 ' VPW TargetBouncer for targets and posts by Iaakki, Wrd1972, Apophis
 '******************************************************
@@ -2895,6 +2897,8 @@ Sub HighScoreEntryInit()
     if hsMaxDigits > 3 Then 
         hsValidLetters = hsValidLetters + "~" ' Add the ~ key to the end to exit long initials entry
         hsX = 10
+    Else
+        hsX = 49
     End If
     hsCurrentLetter = 1
     If bUseFlexDMD Then
@@ -4615,7 +4619,7 @@ End Sub
 'used for all the real time updates
 
 Sub Realtime_Timer
-	If DynamicBallShadowsOn Or AmbientBallShadowOn Then DynamicBSUpdate 'update ball shadows
+    If DynamicBallShadowsOn Or AmbientBallShadowOn Then DynamicBSUpdate 'update ball shadows
     RollingUpdate
 '    LeftFlipperTop.RotZ = LeftFlipper.CurrentAngle
 '    RightFlipperTop.RotZ = RightFlipper.CurrentAngle
@@ -6367,7 +6371,8 @@ Class cHouse
                                 FormatScore(25000000*CastlesCollected*UPFMultiplier*PlayfieldMultiplierVal),UPFMultiplier,10
                         PlaySoundVol "say-castlecollected",VolCallout
                     End If
-                    If UPFState = 1 Then UPFShotMask = UPFBattleShotMask : SetUPFLights
+                    If UPFState = 1 Then UPFShotMask = UPFBattleShotMask
+                    SetUPFLights
                 ElseIf PlayerMode = 1 Then
                     ' Castle wasn't lit but we're in battle mode
                     House(CurrentPlayer).BattleState(HouseBattle1).RegisterCastleHit
@@ -6493,7 +6498,7 @@ Class cHouse
             UPFLevel=1
         Else
             'PlaySoundAt SoundFXDOF("DTReset", 119, DOFPulse, DOFcontactors), Target90
-			DOF 119, DOFPulse
+            DOF 119, DOFPulse
 			RandomSoundDropTargetReset Target90
             DTRaise 4 : TargetState(4) = 0
         End If
@@ -8363,7 +8368,10 @@ Sub AddScore(points)
 End Sub
 
 Sub AddScoreNoX(points)
-    ResetBallSearch
+    tmrBallSearch.Enabled = False	' Reset Ball Search
+    tmrBallSearch.Interval = 20000
+	BallSearchCnt=0
+	tmrBallSearch.Enabled = True
     'TODO: GoT allows you to hit certain targets without validating the playfield and starting timers
     ThawAllGameTimers
     If bPlayfieldValidated = False Then bPlayfieldValidated = True : PlayModeSong
@@ -8383,7 +8391,6 @@ Sub AddScoreNoX(points)
 
         ' update the score display
         DMDLocalScore
-
     End If
 End Sub
 
@@ -8822,6 +8829,7 @@ Sub EndOfBallComplete()
                 ' matched with this number, we can't not award  it to another player that has the
                 ' same match
                 if t=true Or RndNbr(10) <= DMDStd(kDMDStd_MatchPCT) Then
+                    Credits = Credits + 1
                     vpmtimer.addtimer 5500+i*200, "PlayYouMatched '"
                     t=true
                 End If
@@ -8902,7 +8910,7 @@ Sub PlayYouMatched
 	'PlaySoundVol "YouMatchedPlayAgain", VolDef
 	DOF 140, DOFOn
 	DMDFlush
-	DMD "_", CL(1, "CREDITS: " & Credits), "", eNone, eNone, eNone, 500, True, ""
+	DMD "_", CL(1, "CREDITS: " & Credits), "", eNone, eNone, eNone, 2500, True, ""
     KnockerSolenoid
 End Sub 
 
@@ -9245,7 +9253,7 @@ Sub SetLockbarLight
     'DOF for Lockbar button light
     If bHaveLockbarButton Then
         LockbarFlasher.visible = 0
-        lockbarlightbase.visible = 0
+        'lockbarlightbase.visible = 0
     End If
     Dim dofnum
     Select Case st
@@ -9713,14 +9721,19 @@ Function CheckLocalKeydown(ByVal keycode)
             ChooseHouse(keycode)
         ElseIf PlayerMode = -2 Then 
             ChooseBattle(keycode)
-        ElseIf PlayerMode = -2.1 Then
-            tmrStartBattleModeScene_Timer
-        ElseIf bWallMBActive And tmrStartWallMB.Enabled <> 0 Then
-            ' Skip Wall MB Intro Scene
-            tmrStartWallMB_Timer
-        ElseIf bBWMultiballActive And tmrBWmultiballRelease.Interval=5000 And tmrBWmultiballRelease.Enabled <> 0 Then
-            ' Skip BWMB Intro
-            tmrBWmultiballRelease_Timer
+        End If
+        ' Check for both flippers pushed
+        If ((LFPress=1 and keycode = RightFlipperKey) Or (RFPress=1 And keycode = LeftFlipperKey)) Then
+            If PlayerMode = -2.1 Then
+                tmrStartBattleModeScene_Timer
+                tmrStartBattleModeScene_Timer ' called twice, once for each potentially stacked battle. The second call launches battle mode
+            ElseIf bWallMBActive And tmrStartWallMB.Enabled <> 0 Then
+                ' Skip Wall MB Intro Scene
+                tmrStartWallMB_Timer
+            ElseIf bBWMultiballActive And tmrBWmultiballRelease.Interval=5000 And tmrBWmultiballRelease.Enabled <> 0 Then
+                ' Skip BWMB Intro
+                tmrBWmultiballRelease_Timer
+            End If
         End If    
     End If
 End Function
@@ -9859,7 +9872,7 @@ Sub DoTargetsDropped
         SpinnerValue = SpinnerValue + (SpinnerAddValue * RndNbr(4) * Int((SpinnerLevel+2)/3) * Int((SpinnerLevel+2)/3))
         If SpinnerValue > (10000 * Int((SpinnerLevel+2)/3+1) * Int((SpinnerLevel+2)/3+1)) Then SpinnerValue = (10000 * Int((SpinnerLevel+2)/3+1) * Int((SpinnerLevel+2)/3+1))
     End If
-    If DroppedTargets = 3 Or (TargetState(0)=1 AND  TargetState(1)=1 AND  TargetState(2)=1) Then
+    If DroppedTargets = 3 Or (TargetState(1)=1 AND  TargetState(2)=1 AND  TargetState(3)=1) Then
         ' Target bank completed
         AddBonus 100000
         If PlayerMode = 0 And bMultiBallMode = False Then LoLTargetsCompleted = LoLTargetsCompleted + 1
@@ -9878,11 +9891,10 @@ End Sub
 Sub ResetDropTargets
     ' PlaySoundAt "fx_resetdrop", Target010
     Dim t,b
-    If TargetState(0)=1 OR  TargetState(1)=1 OR  TargetState(2)=1 Then
+    If TargetState(1)=1 OR  TargetState(2)=1 OR  TargetState(3)=1 Then
         DTRaise 1 : TargetState(1) = 0
         DTRaise 2 : TargetState(2) = 0
         DTRaise 3 : TargetState(3) = 0
-		RandomSoundDropTargetReset targets_002_BM_Dark_Room
     End If
     DroppedTargets = 0
     SetTargetLights
@@ -10212,6 +10224,7 @@ End Sub
 
 Sub KickerIT_Hit
     Dim delay
+    RandomSoundMetal
     SoundSaucerLock KickerIT
     if bMadnessMB > 0 Then
         IronThroneKickout
@@ -10379,7 +10392,7 @@ End Sub
 
 ' Left Inlane
 Sub sw1_Hit
-	activeball.angmomz = 0: activeball.vely = activeball.vely*0.8
+    activeball.angmomz = 0: activeball.vely = activeball.vely*0.8
     UpdateWires 1,true
     If Tilted then Exit Sub
     AddScore 560
@@ -10389,7 +10402,7 @@ End Sub
 
 ' Right Inlane
 Sub sw2_Hit
-	activeball.angmomz = 0: activeball.vely = activeball.vely*0.8
+    activeball.angmomz = 0: activeball.vely = activeball.vely*0.8
     UpdateWires 2,true
     If Tilted then Exit Sub
     AddScore 560
@@ -14271,7 +14284,7 @@ Sub DMDSpinnerScene(spinval)
         
         With SpinScene.GetLabel("level")
             .Text = "LEVEL "&SpinnerLevel
-            .SetAlignedPosition 64,12, FlexDMD_Align_Center
+            .SetAlignedPosition 64,13, FlexDMD_Align_Center
         End With
         With SpinScene.GetLabel("value")
             .Text = FormatScore(AccumulatedSpinnerValue)
@@ -14979,7 +14992,7 @@ Const DTDropUnits = 44 'VP units primitive drops so top of at or below the playf
 Const DTDropUpUnits = 5 'VP units primitive raises above the up position on drops up
 Const DTMaxBend = 6 'max degrees primitive rotates when hit
 Const DTDropDelay = 10 'time in milliseconds before target drops (due to friction/impact of the ball)
-Const DTRaiseDelay = 30 'time in milliseconds before target drops back to normal up position after the solenoid fires to raise the target
+Const DTRaiseDelay = 10 'time in milliseconds before target drops back to normal up position after the solenoid fires to raise the target
 Const DTBrickVel = 30 'velocity at which the target will brick, set to '0' to disable brick
 
 Const DTEnableBrick = 0 'Set to 0 to disable bricking, 1 to enable bricking
@@ -15005,7 +15018,7 @@ Sub DTHit(switch)
 		DTBallPhysics Activeball, DTArray(i)(2).rotz, DTMass
 	End If
     debug.print "post-state: "&DTArray(i)(4)
-	DoDTAnim
+	'DoDTAnim - No need for this, it's called on a timer every 10ms
 End Sub
 
 Sub DTRaise(switch)
@@ -15365,7 +15378,7 @@ Function STAnimate(primary, prim, switch,  animate)
 	If animate = 1 Then
 		primary.collidable = 0
 		prim.transy = -STMaxOffset
-		STAction switch
+        STAction switch
 		STAnimate = 2
 		Exit Function
 	elseif animate = 2 Then
@@ -15413,21 +15426,21 @@ LampTimer.Enabled = 1
 
 
 Sub LampTimer_Timer()
-	'apophis - Use the InPlayState of the 1st light in the Lampz.obj array to set the Lampz.state
-	dim idx : for idx = 0 to 69 ' Table-specific - don't update the Flashers or GI here
-		if Lampz.IsLight(idx) then 
-			if IsArray(Lampz.obj(idx)) then
-				dim tmp : tmp = Lampz.obj(idx)
-				Lampz.state(idx) = tmp(0).GetInPlayStateBool
-				'debug.print tmp(0).name & " " &  tmp(0).GetInPlayStateBool & " " & tmp(0).IntensityScale  & vbnewline
-				Lampz.SetColor(idx) = tmp(0).colorfull ' Also set color for RGB changeable lights
-			Else
-				Lampz.state(idx) = Lampz.obj(idx).GetInPlayStateBool
-				Lampz.SetColor(idx) = Lampz.obj(idx).colorfull ' Also set color for RGB changeable lights
-				'debug.print Lampz.obj(idx).name & " " &  Lampz.obj(idx).GetInPlayStateBool & " " & Lampz.obj(idx).IntensityScale  & vbnewline
-			end if
-		end if
-	Next
+    'apophis - Use the InPlayState of the 1st light in the Lampz.obj array to set the Lampz.state
+    dim idx : for idx = 0 to 69 ' Table-specific - don't update the Flashers or GI here
+        if Lampz.IsLight(idx) then 
+            if IsArray(Lampz.obj(idx)) then
+                dim tmp : tmp = Lampz.obj(idx)
+                Lampz.state(idx) = tmp(0).GetInPlayStateBool
+                'debug.print tmp(0).name & " " &  tmp(0).GetInPlayStateBool & " " & tmp(0).IntensityScale  & vbnewline
+                Lampz.SetColor(idx) = tmp(0).colorfull ' Also set color for RGB changeable lights
+            Else
+                Lampz.state(idx) = Lampz.obj(idx).GetInPlayStateBool
+                Lampz.SetColor(idx) = Lampz.obj(idx).colorfull ' Also set color for RGB changeable lights
+                'debug.print Lampz.obj(idx).name & " " &  Lampz.obj(idx).GetInPlayStateBool & " " & Lampz.obj(idx).IntensityScale  & vbnewline
+            end if
+        end if
+    Next
 
 	Lampz.Update1	'update (fading logic only)
 End Sub
@@ -17090,12 +17103,19 @@ End Sub
 ' Coding
 '-------
 ' Need to implement Options FlexDMD table overlay
+' Check timing for how long score stays on the screen at the end of a game. If you get a high score, probably want it to cycle through which scores you got before moving to Attract mode
+' Match sometimes stays on screen for too little time - maybe when getting a high score?
+' Game froze when PSD was entering his initials once
+' Text explaining battle needs to stay on screen longer. Watch video to see how they do it
+' ball save doesn't always work, even when lit
+' √? Castle loop was lit, scored 'breach!', but didn't update the lights afterwards
+' flashing 'light shoot again' is getting turned on for battles, but shouldn't - may be the real cause of ball save not working
+' √? During Baratheon battle, one target got knocked down. Then when other two were knocked down, didn't reset.
+' √? If you press action button during battle instructions, it goes straight to battle and bypasses intro music, but still sits on the ball for 5 seconds
 ' √? UPF can't handle multiball and battle at the same time - needs refactoring
 ' √? Need to implement timer to reset Wildfire targets to unlit after 2 BWMBs completed. Timer needs to be cleared at end-of-ball
 ' √? fix font-centering of 10-char highscore usernames
 '
-'
-' - if you press action button during battle instructions, it goes straight to battle and bypasses intro music, but still sits on the ball for 5 seconds
 '
 ' - Need to allow for Blackwater to be stacked with WHC - it CAN happen.
 
