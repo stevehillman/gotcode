@@ -25,6 +25,7 @@
 ' 112 - renamed flashers and moved RMEK LMEK to movable collection
 ' 113 - Wired all the new Blender images into Lampz
 ' 114 - new batch added, upper pf inserts, gates, dragon mouth light, lateral castle plastics fixed in blender
+' 116 - Sixtoe - Fix ghost ball issue, significant refactoring of physics level objects, removal of old non-used assets, filled in lots of ball trap holes, removed secondary GI bits and peices, removed lots of old primitives, removed duplicates, hopefully haven't broken anything...
 
 'On the DOF website put Exxx
 '101 Left Flipper
@@ -2386,7 +2387,7 @@ Sub HighScoreEntryInit()
     hsLetterFlash = 0
 
     hsMaxDigits = DMDStd(kDMDStd_Initials)
-    For i = 0 to hsMaxDigits-1 : hsEnteredDigits(i) = " " : Next
+    For i = 0 to hsMaxDigits-1 : hsEnteredDigits(i) = "" : Next
     hsCurrentDigit = 0
 
     hsValidLetters = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<" ' < is back arrow
@@ -2450,7 +2451,7 @@ Sub EnterHighScoreKey(keycode)
             end if
         else
             playsound "fx_Esc"
-            hsEnteredDigits(hsCurrentDigit) = " "
+            hsEnteredDigits(hsCurrentDigit) = ""
             if(hsCurrentDigit> 0)then
                 hsCurrentDigit = hsCurrentDigit - 1
             end if
@@ -3969,8 +3970,8 @@ Sub GiOn
     For each bulb in aGiLights
         bulb.State = 1
     Next
-    ShadowGI.visible= 1
-    GameGiOn
+'    ShadowGI.visible= 1
+'    GameGiOn
 End Sub
 
 Sub GiOff
@@ -3979,8 +3980,8 @@ Sub GiOff
     For each bulb in aGiLights
         bulb.State = 0
     Next
-    ShadowGI.visible= 0
-    GameGiOff
+'    ShadowGI.visible= 0
+'    GameGiOff
 End Sub
 
 ' GI, light & flashers sequence effects
@@ -4083,8 +4084,8 @@ Sub RestorePlayfieldLightState(state)
         i = i + 1
     Next
     For i = 0 to 69
-        Lampz.FadeSpeedUp(i) = LightSaveState(0,3)
-        Lampz.FadeSpeedDown(i) = LightSaveState(0,4)
+        Lampz.FadeSpeedUp(i) = 1/2 ' Value copied from Lampz.init
+        Lampz.FadeSpeedDown(i) = 1/10
     Next
 End Sub
 
@@ -4513,7 +4514,7 @@ Dim BattleObjectivesShort
 Dim QAnimateTimes       ' Length of each qualifying shot's animation time
 Dim SwordNames
 Dim bMadnessMB
-Dim bGameJustPlayed : bGameJustPlayed = true
+Dim bGameJustPlayed : bGameJustPlayed = false
 
 ' Global variables with player data - saved across balls and between players
 Dim PlayerMode          ' Current player's mode. 0=normal, -1 = select house, -2 = select battle, -3 = select mystery, 1 = in battle
@@ -4725,7 +4726,11 @@ Class cPState
 
     Public Sub Save
         Dim i
-        bWFTargets(0) = bWildfireTargets(0):bWFTargets(1) = bWildfireTargets(1)
+        If BWMultiballsCompleted < 2 Then 
+            bWFTargets(0) = bWildfireTargets(0):bWFTargets(1) = bWildfireTargets(1)
+        Else
+            bWFTargets(0) = 0 : bWFTargets(1) = 0
+        End If
         WFTargetsCompleted = WildfireTargetsCompleted
         LTargetsCompleted = LoLTargetsCompleted
         myLoLLit = bLoLLit
@@ -8142,6 +8147,8 @@ Sub EndOfBall()
     If HouseBattle1 > 0 Then BattleModeTimer1
     EndHurryUp
     PlayerMode = 0
+
+    Target43_TimerEnabled = 0
     
     ' only process any of this if the table is not tilted.  (the tilt recovery
     ' mechanism will handle any extra balls or end of game)
@@ -8598,23 +8605,23 @@ Sub SetMystery
     End If
 End Sub
 
-Sub GameGiOn
-    Fi001.Visible = 1
-    Fi002.Visible = 1
-    Fi003.Visible = 1
-    Fi004.Visible = 1
-    Fi005.Visible = 1
-    Fi006.Visible = 1
-End Sub
+'Sub GameGiOn
+'    Fi001.Visible = 1
+'    Fi002.Visible = 1
+'    Fi003.Visible = 1
+'    Fi004.Visible = 1
+'    Fi005.Visible = 1
+'    Fi006.Visible = 1
+'End Sub
 
-Sub GameGiOff
-    Fi001.Visible = 0
-    Fi002.Visible = 0
-    Fi003.Visible = 0
-    Fi004.Visible = 0
-    Fi005.Visible = 0
-    Fi006.Visible = 0
-End Sub
+'Sub GameGiOff
+'    Fi001.Visible = 0
+'    Fi002.Visible = 0
+'    Fi003.Visible = 0
+'    Fi004.Visible = 0
+'    Fi005.Visible = 0
+'    Fi006.Visible = 0
+'End Sub
 
 ' This is called by LampTimer_Timer, which is in the generic code section
 ' This sub is table-specific and updates the lamps specific to this table
@@ -9409,7 +9416,8 @@ Sub doWFTargetHit(t)
         li80.TimerEnabled = True
         bWildfireTargets(0)=False:bWildfireTargets(1)=False
         If PlayerMode <> 1 Then House(CurrentPlayer).RegisterHit(Tyrell)
-        DoWildfileLit
+        DoWildfireLit
+        Target43_TimerEnabled = 0
     Else
         AddBonus 10000
         Select Case t
@@ -9420,8 +9428,15 @@ Sub doWFTargetHit(t)
                 SetLightColor li83,green,1
                 FlashForMs li83,1000,100,2
         End Select
+        If BWMultiballsCompleted > 2 Then Target43_TimerInterval = 30000 : Target43_TimerEnabled = 1
     End If
     LastSwitchHit = "wftarget"&t
+End Sub
+
+' This sub fires if the Wildfire targets time-out before completion
+Sub Target43_Timer
+    If BWMultiballsCompleted > 2 Then bWildFireTargets(0) = False : bWildfireTargets(1) = False : SetWildfireLights
+    Me.TimerEnable = 0
 End Sub
 
 'WF target light timer
@@ -9870,7 +9885,7 @@ Sub BatteringRam_Hit
     ' Slow the ball down, to simulate hitting a big battering ram
     ActiveBall.AngMomY = ActiveBall.AngMomY / 1+(Rnd*3)
 
-    Ram.TransZ = 5 : BatteringRam.TimerEnabled = 1
+    ram_BM_Dark_Room.TransZ = -5 : BatteringRam.TimerEnabled = 1
     If ABS(ActiveBall.VelY) < 10 Then BatteringRam.UserValue = 3 : Exit Sub
     BatteringRam.UserValue = 1
     SetFlasher fl243,6 ' Flash the battering ram Flasher
@@ -9966,11 +9981,11 @@ Sub BatteringRam_Timer
     Dim Z
     Select Case Me.UserValue
         Case 0: Me.TimerEnabled = 0 : Exit Sub  ' Called by accident?
-        Case 1: Z = 10
-        Case 2: Z = 5
+        Case 1: Z = -10
+        Case 2: Z = -5
         Case 3: Z = 0
     End Select
-    Ram.TransZ = Z
+    ram_BM_Dark_Room.TransZ = Z
     If Z = 0 Then 
         Me.UserValue = 0 : Me.TimerEnabled = 0 
     Else
@@ -10301,7 +10316,7 @@ Sub SelectMysteryAward
             DMD "",HouseToUCString(i)&" IS LIT","",eNone,eNone,eNone,1000,True,""
         Case 3: IncreaseBonusMultiplier 1  ' +1X
         Case 4: IncreaseWallJackpot
-        Case 5: DoWildfileLit
+        Case 5: DoWildfireLit
         Case 6: LightLock
         Case 7: TotalWildfire = TotalWildfire + 5: House(CurrentPlayer).AddWildfire 5  ' Increase wildfire. TODO: Should play a scene
         Case 8: DoSwordsAreLit
@@ -10564,7 +10579,7 @@ Sub doPictoPops(b)
         Case 13: DoEBisLit : bPictoEBAwarded = True
         Case 14: DoLordOfLight False
         Case 15: bMysteryLit = True : SetMystery
-        Case 16: DoWildfileLit
+        Case 16: DoWildfireLit
         Case 17
             AwardSpecial
     End Select
@@ -11588,7 +11603,7 @@ Sub DoSwordsAreLit
     End If
 End Sub
 
-Sub DoWildfileLit
+Sub DoWildfireLit
     Dim scene
     bWildfireLit = True : SetLightColor li126, darkgreen, 1
     If bUseFlexDMD Then
@@ -15271,43 +15286,43 @@ Sub InitLampsNF()
     ' UPF
     Lampz.MassAssign(53)= li180
 	Lampz.MassAssign(53)= li180bloom
-	Lampz.Callback(53) = "UpdateLightMap  p180on, 600,"
+	Lampz.Callback(53) = "DisableLighting  p180on, 600,"
     Lampz.MassAssign(54)= li183
 	Lampz.MassAssign(54)= li183bloom
-	Lampz.Callback(54) = "UpdateLightMap  p183on, 600,"
+	Lampz.Callback(54) = "DisableLighting  p183on, 600,"
     Lampz.MassAssign(55)= li186
 	Lampz.MassAssign(55)= li186bloom
-	Lampz.Callback(55) = "UpdateLightMap  p186on, 600,"
+	Lampz.Callback(55) = "DisableLighting  p186on, 600,"
     Lampz.MassAssign(56)= li189
 	Lampz.MassAssign(56)= li189bloom
-	Lampz.Callback(56) = "UpdateLightMap  p189on, 600,"
+	Lampz.Callback(56) = "DisableLighting  p189on, 600,"
     Lampz.MassAssign(57)= li192
 	Lampz.MassAssign(57)= li192bloom
-	Lampz.Callback(57) = "UpdateLightMap  p192on, 600,"
+	Lampz.Callback(57) = "DisableLighting  p192on, 600,"
     Lampz.MassAssign(58)= li195
 	Lampz.MassAssign(58)= li195bloom
-	Lampz.Callback(58) = "UpdateLightMap  p195on, 600,"
+	Lampz.Callback(58) = "DisableLighting  p195on, 600,"
     Lampz.MassAssign(59)= li198
 	Lampz.MassAssign(59)= li198bloom
-	Lampz.Callback(59) = "UpdateLightMap  p198on, 200,"
+	Lampz.Callback(59) = "DisableLighting  p198on, 300,"
     Lampz.MassAssign(60)= li201
 	Lampz.MassAssign(60)= li201bloom
-	Lampz.Callback(60) = "UpdateLightMap  p201on, 300,"
+	Lampz.Callback(60) = "DisableLighting  p201on, 300,"
     Lampz.MassAssign(61)= li204
 	Lampz.MassAssign(61)= li204bloom
-	Lampz.Callback(61) = "UpdateLightMap  p204on, 300,"
+	Lampz.Callback(61) = "DisableLighting  p204on, 300,"
     Lampz.MassAssign(62)= li207
 	Lampz.MassAssign(62)= li207bloom
-	Lampz.Callback(62) = "UpdateLightMap  p207on, 300,"
+	Lampz.Callback(62) = "DisableLighting  p207on, 300,"
     Lampz.MassAssign(63)= li210
 	Lampz.MassAssign(63)= li210bloom
-	Lampz.Callback(63) = "UpdateLightMap  p210on, 300,"
+	Lampz.Callback(63) = "DisableLighting  p210on, 300,"
     Lampz.MassAssign(64)= li213
 	Lampz.MassAssign(64)= li213bloom
-	Lampz.Callback(64) = "UpdateLightMap  p213on, 300,"
+	Lampz.Callback(64) = "DisableLighting  p213on, 300,"
     Lampz.MassAssign(65)= li216
 	Lampz.MassAssign(65)= li216bloom
-	Lampz.Callback(65) = "UpdateLightMap  p216on, 300,"
+	Lampz.Callback(65) = "DisableLighting  p216on, 300,"
     'Bumpers
     Lampz.MassAssign(66)= li168
 	Lampz.MassAssign(66)= li168a
@@ -16284,7 +16299,7 @@ Sub MovableHelper
     For each f in REMK_BL : f.RotX = x2 : Next
 
     ' Battering ram
-   y = Ram.TransZ
+    y = ram_BM_Dark_Room.TransZ
     For each f in ram_BL : f.transy = y : Next
 
     ' Left Orbit Spinner
@@ -16316,37 +16331,37 @@ Sub HideLightHelper
 	LightShootAgain.Visible = False
 	'f25.Visible = False
     'GI bottom
-	' gi002.Visible = False
-	' gi003.Visible = False
-	' gi004.Visible = False
-	' gi005.Visible = False
-	' gi010.Visible = False
-	' gi012.Visible = False
-	' gi016.Visible = False
-    ' gi017.Visible = False
-	' gi018.Visible = False
-	' gi019.Visible = False
-	' gi020.Visible = False
-	' gi024.Visible = False
-	' gi026.Visible = False
-	' gi027.Visible = False
-	' gi028.Visible = False
-	' gi029.Visible = False
-	' gi030.Visible = False
-	' gi033.Visible = False
-	' gi035.Visible = False
-	' gi036.Visible = False
-	' gi037.Visible = False
-	' gi038.Visible = False
-	' gi045.Visible = False
-	' gi049.Visible = False
-	' gi050.Visible = False
-	' gi057.Visible = False
-	' gi058.Visible = False
-	' gi059.Visible = False
-    ' ' GI top
-    ' Dim g
-    ' For each g in aGiLights : g.Visible = False : Next
+	gi002.Visible = False
+	gi003.Visible = False
+	gi004.Visible = False
+	gi005.Visible = False
+	gi010.Visible = False
+	gi012.Visible = False
+	gi016.Visible = False
+    gi017.Visible = False
+	gi018.Visible = False
+	gi019.Visible = False
+	gi020.Visible = False
+	gi024.Visible = False
+	gi026.Visible = False
+	gi027.Visible = False
+	gi028.Visible = False
+	gi029.Visible = False
+	gi030.Visible = False
+	gi033.Visible = False
+	gi035.Visible = False
+	gi036.Visible = False
+	gi037.Visible = False
+	gi038.Visible = False
+	gi045.Visible = False
+	gi049.Visible = False
+	gi050.Visible = False
+	gi057.Visible = False
+	gi058.Visible = False
+	gi059.Visible = False
+    ' GI top
+    Dim g
+    For each g in aGiLights : g.Visible = False : Next
 	'l103.Visible = False
 	li101.Visible = False
 	'li104.Visible = False
@@ -16403,6 +16418,35 @@ Sub HideLightHelper
 	li92.Visible = False
 	li95.Visible = False
 	li98.Visible = False
+    'UpperPF
+    ' li180.Visible = False
+    ' li183.Visible = False
+    ' li186.Visible = False
+    ' li189.Visible = False
+    ' li192.Visible = False
+    ' li195.Visible = False
+    ' li198.Visible = False
+    ' li201.Visible = False
+    ' li204.Visible = False
+    ' li207.Visible = False
+    ' li210.Visible = False
+    ' li213.Visible = False
+    ' li216.Visible = False
+    ' li180bloom.Visible = False
+    ' li183bloom.Visible = False
+    ' li186bloom.Visible = False
+    ' li189bloom.Visible = False
+    ' li192bloom.Visible = False
+    ' li195bloom.Visible = False
+    ' li198bloom.Visible = False
+    ' li201bloom.Visible = False
+    ' li204bloom.Visible = False
+    ' li207bloom.Visible = False
+    ' li210bloom.Visible = False
+    ' li213bloom.Visible = False
+    ' li216bloom.Visible = False
+
+    'li32bloom.Visible = False
 End Sub
 
 
@@ -16477,7 +16521,6 @@ End Sub
 ' Visuals
 '--------
 ' Bumper caps are maybe too dim?
-' "ghost art" on top of ball - almost looks like ball is semi-transparent
 '
 '
 '
@@ -16485,15 +16528,12 @@ End Sub
 '-------
 ' Need to implement Options FlexDMD table overlay
 ' UPF can't handle multiball and battle at the same time - needs refactoring
-' Before first BWMB, a hit to an already-lit wildfire target will light Lock.
-' Need to implement timer to reset Wildfire targets to unlit after 2 BWMBs completed. Timer needs to be cleared at end-of-ball
-' fix font-centering of 10-char highscore usernames
+' √? Need to implement timer to reset Wildfire targets to unlit after 2 BWMBs completed. Timer needs to be cleared at end-of-ball
+' √? fix font-centering of 10-char highscore usernames
 '
 '
 ' - if you press action button during battle instructions, it goes straight to battle and bypasses intro music, but still sits on the ball for 5 seconds
-''
-' 
-
+'
 ' - Need to allow for Blackwater to be stacked with WHC - it CAN happen.
 
 ' - When I got a high score, it didn't say anything. And it didn't pause after I entered them.
