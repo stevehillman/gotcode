@@ -1,3 +1,25 @@
+'        ,@@@*********@@@@                                                                                                                    
+'     .@@%              (&         %            @              &    %%%%%%%%%%,                                                               
+'    @@@                          @@#           @@.          .@@      @@*    /                                                                
+'   (@@                          @% @/          @@@%        #@@@      @@*           .@@&@(   (@@@@@                                           
+'   @@@                         #@  /@*        #@ &@@      @@ &@.     @@/....@    &&  %*   @  @                                               
+'   (@@,               @@@     /@@@@@@@*       @%  /@@    @&   @&     @@/    @    @   %*   &# @@@..                                           
+'    @@@,              @@@    ,@      @@/      @    .@@  @/    @@     @@/          @  %*   @  @                                               
+'     &@@@             @@@   .@        @@@    ,@      @@@      @@.    @@/     (       #@(    . .                                              
+'       #@@@@          @@@             @@@@@(%@@@#     ,       @@@@% %@@@@@@@@,                                                               
+'           *@@@@@@@@@@/                                                                                                                      
+'                           @@&##################################################################################################%@*          
+'                          ,@       .@@@                                                                                          @.          
+'                                   .@@@  ...  .      ...  . .&&&&&&%*             &@@@@@(        &          .%###(  &&&&&&&&&@      .&@@@@,  
+'                                   .@@@    @@*         #@@    (@@    &@@      @@   , (@   @@     @@@           @.     @@     (    @@     /   
+'                                   .@@@    @@*         #@@    (@@     @@,   *@@    , (@    (@%   @ #@@/        @.     @@          @@(        
+'                                   .@@@    @@&%%%%%%%%%@@@    (@@     @*    @@     , (@     @@,  @   ,@@@      @.     @@,,,,#@      @@@      
+'                                   .@@@    @@,         #@@    (@@@@@@@      @@.    , (@     &@(  @      @@@    @.     @@     .        %@@&   
+'                                   .@@@    @@,         #@@    (@@    #@@    .@@    , (@     @@   @.       @@@, @.     @@                (@@  
+'                                   .@@@    @@,         #@@    (@@      @@@    /@&  , (@   /@/    @,         *@@@      @@      *          @,  
+'                                   .@@@  .&@@@&,      &@@@@* @@@@@*      /@@@(.   &@@@@@@.     @@&&@/          @    *@@@@@@@@@    &@@@@(     
+'                                 #%#((#%@#                                                                                                   
+'
 ' Version Log
 ' 100 - Initial beta release
 ' 101 - Fix playfield friction, flipper geometry, move rubbers to separate layer, 
@@ -25,7 +47,10 @@
 ' 112 - renamed flashers and moved RMEK LMEK to movable collection
 ' 113 - Wired all the new Blender images into Lampz
 ' 114 - new batch added, upper pf inserts, gates, dragon mouth light, lateral castle plastics fixed in blender
+' 115 - Code new Blender lightmaps
 ' 116 - Sixtoe - Fix ghost ball issue, significant refactoring of physics level objects, removal of old non-used assets, filled in lots of ball trap holes, removed secondary GI bits and peices, removed lots of old primitives, removed duplicates, hopefully haven't broken anything...
+' 117 - Fixed UpperPF Inserts (Thanks Apophis!), Add timer to wildfire targets after 2 Blackwaters. Refactor UpperPF logic to handle stacked Blackwater+Battle mode; 
+'       Fix GI variable Intensity durng WiC HurryUps; Add a few more ballsave callouts; fix a Service Menu bug; Move switch wires on hit
 
 'On the DOF website put Exxx
 '101 Left Flipper
@@ -3218,7 +3243,7 @@ Sub StartServiceMenu(keycode)
 
         CreateServiceDMDScene serviceIdx
 
-	elseif keycode=ServiceCancelKey then 					' 7 key starts the service menu
+	elseif keycode=ServiceCancelKey then 					' 7 key cancels the service menu
 		if bInService then
 			PlaySoundVol "stern-svc-cancel", VolSfx
 			Select case serviceLevel:
@@ -3229,6 +3254,7 @@ Sub StartServiceMenu(keycode)
 					if bAttractMode then
 						StartAttractMode
                     Else
+                        bDefaultScene = False
                         tmrDMDUpdate.Enabled = True
 					End if 
 					
@@ -3422,7 +3448,7 @@ Sub StartServiceMenu(keycode)
             CreateServiceDMDScene 0
 		End if 
 
-		UpdateServiceDMDScene
+		UpdateServiceDMDScene ""
 
 		tmrService.Enabled = False 
 		tmrService.Interval = 5000
@@ -3438,6 +3464,7 @@ Sub tmrService_Timer()
 	if bAttractMode then 
 		StartAttractMode
     Else
+        bDefaultScene = False ' Force a refresh of the DMD
         tmrDMDUpdate.Enabled = true
 	End if 
 End Sub
@@ -3703,7 +3730,7 @@ Sub UpdateServiceDMDScene(line3)
     If serviceLevel = kMenuTop Then max = 6 else max = 4
     FlexDMD.LockRenderThread
     If bServiceVol Then ' Just update the Volume level
-        With scene.GetLabel("svcl2")
+        With SvcScene.GetLabel("svcl2")
             .Text = "VOLUME "&MasterVol
             .SetAlignedPosition 64,14,FlexDMD_Align_Top
         End With
@@ -3971,7 +3998,7 @@ Sub GiOn
         bulb.State = 1
     Next
 '    ShadowGI.visible= 1
-'    GameGiOn
+    'GameGiOn
 End Sub
 
 Sub GiOff
@@ -3981,7 +4008,7 @@ Sub GiOff
         bulb.State = 0
     Next
 '    ShadowGI.visible= 0
-'    GameGiOff
+    'GameGiOff
 End Sub
 
 ' GI, light & flashers sequence effects
@@ -4022,6 +4049,10 @@ Sub GiIntensity(i)
     For each bulb in aFiLights
         bulb.IntensityScale = i
     Next
+    ' Table-specific - adjusts intensity in Lampz
+    Lampz.state(80) = i
+    Lampz.state(81) = i
+    Lampz.state(82) = i
 End Sub
 
 ' In order to be able to manipulate RGB lamp colour and fade rate during sequences,
@@ -4085,7 +4116,7 @@ Sub RestorePlayfieldLightState(state)
     Next
     For i = 0 to 69
         Lampz.FadeSpeedUp(i) = 1/2 ' Value copied from Lampz.init
-        Lampz.FadeSpeedDown(i) = 1/10
+        Lampz.FadeSpeedDown(i) = 1/4
     Next
 End Sub
 
@@ -4831,6 +4862,7 @@ Class cHouse
     Dim UPFLevel            ' Progress towards Castle Multiball
     Dim UPFShotMask         ' Lit shots on the Upper PF
     Dim UPFCastleShotMask   ' Saved shot mask state for standard mode
+    Dim UPFBattleShotMask   ' To track shots in Battle mode
     Dim UPFMultiplier
     Dim UPFSJP
     Dim CMBJackpot
@@ -5783,6 +5815,7 @@ Class cHouse
     ' If reset=true, reset to initial state for the mode its entering
     Public Sub SetUPFState(reset)
         Dim i
+        If (PlayerMode = 1 Or PlayerMode = -2.1) And reset Then UPFBattleShotMask = 42 
         If bWallMBActive Or bWHCMBActive Or bHotkMBActive Or bHotkMBReady Or bITMBActive Or PlayerMode=2 Then
             UPFState = 4 : UPFShotMask = 0
             SetUPFFlashers 1,cyan
@@ -5793,7 +5826,8 @@ Class cHouse
             UPFState = 2 : UPFShotMask = 42
             SetUPFFlashers 2,green
         ElseIf PlayerMode = 1 Or PlayerMode = -2.1 Then
-            UPFState = 1 : UPFShotMask = 42
+            UPFState = 1 
+            UPFShotMask = UPFBattleShotMask
             SetUPFFlashers 1,amber
         Else ' PlayerMode 0
             UPFState = 0
@@ -5830,41 +5864,40 @@ Class cHouse
                     SetGameTimer tmrUPFMultiplier,300
                     SetUPFLights
                 End If
-                If (UPFShotMask And 1) > 0 Then     ' Castle was lit
-                    Select Case UPFState
-                        Case 0: IncreaseUPFLevel : UPFShotMask = 42 : UPFCastleShotMask = 42 : PlaySoundVol "gotfx-wildfiremini2",VolDef
-                        Case 1 ' Battlemode hit
-                            UPFShotMask = 42
-                            Dim hc
-                            ' Award a castle for each battle mode that's active
-                            ' 1st castle is 25M, 2nd is 50M, etc plus 7.5M Bonus per
-                            ' If 2 castles are scored at once, only second is displayed
-                            If HouseBattle2 > 0 Then
-                                CastlesCollected = CastlesCollected + 1
-                                AddScore 25000000*CastlesCollected*UPFMultiplier
-                                hc = HouseBattle2
-                                myBattleState(HouseBattle1).RegisterCastleComplete
-                            Else
-                                hc = HouseBattle1
-                            End If
+                If ((UPFShotMask And 1) > 0) Or (PlayerMode = 1 And (UPFBattleShotMask And 1) > 0) Then     ' Castle was lit
+                    If UPFState = 0 Then 
+                        IncreaseUPFLevel : UPFShotMask = 42 : UPFCastleShotMask = 42 : PlaySoundVol "gotfx-wildfiremini2",VolDef
+                    ElseIf PlayerMode = 1 Then ' Battlemode hit
+                        UPFBattleShotMask = 42
+                        Dim hc
+                        ' Award a castle for each battle mode that's active
+                        ' 1st castle is 25M, 2nd is 50M, etc plus 7.5M Bonus per
+                        ' If 2 castles are scored at once, only second is displayed
+                        If HouseBattle2 > 0 Then
                             CastlesCollected = CastlesCollected + 1
                             AddScore 25000000*CastlesCollected*UPFMultiplier
-                            myBattleState(hc).RegisterCastleComplete
-                            DMDPlayHitScene "got-castlecollected","gotfx-castlecollected",0,"CASTLE COLLECTED","HOUSE "&HouseToUCString(hc), _
-                                    FormatScore(25000000*CastlesCollected*UPFMultiplier*PlayfieldMultiplierVal),UPFMultiplier,10
-                            PlaySoundVol "say-castlecollected",VolCallout
-                        Case 2 ' BWMB state - does nothing?
-                    End Select
-                    SetUPFLights
-                ElseIf UPFState = 1 Then
+                            hc = HouseBattle2
+                            myBattleState(HouseBattle1).RegisterCastleComplete
+                        Else
+                            hc = HouseBattle1
+                        End If
+                        CastlesCollected = CastlesCollected + 1
+                        AddScore 25000000*CastlesCollected*UPFMultiplier
+                        myBattleState(hc).RegisterCastleComplete
+                        DMDPlayHitScene "got-castlecollected","gotfx-castlecollected",0,"CASTLE COLLECTED","HOUSE "&HouseToUCString(hc), _
+                                FormatScore(25000000*CastlesCollected*UPFMultiplier*PlayfieldMultiplierVal),UPFMultiplier,10
+                        PlaySoundVol "say-castlecollected",VolCallout
+                    End If
+                    If UPFState = 1 Then UPFShotMask = UPFBattleShotMask : SetUPFLights
+                ElseIf PlayerMode = 1 Then
                     ' Castle wasn't lit but we're in battle mode
                     House(CurrentPlayer).BattleState(HouseBattle1).RegisterCastleHit
                     If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).RegisterCastleHit
                 End If
             Case 2,4,6  ' Standup target
-                If (UPFShotMask And (2^(sw-1))) > 0 Then ' Target was lit
+                If ((UPFShotMask And (2^(sw-1))) > 0) Or (PlayerMode = 1 And (UPFBattleShotMask  And (2^(sw-1))) > 0 ) Then ' Target was lit
                     Select Case UPFState
-                        Case 0 ' Castle MB mode
+                        Case 0 ' Standard Play
                             DoDragonRoar i
                             PlaySoundVol "gotfx-elevatorupf",VolDef
                             AddBonus 50000
@@ -5878,18 +5911,6 @@ Class cHouse
                                 AddScore 250000*UPFMultiplier
                             End If
                             UPFCastleShotMask = UPFShotMask
-                        Case 1 ' Battle mode
-                            House(CurrentPlayer).BattleState(HouseBattle1).AddTime 5
-                            If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).AddTime 5
-                            ' In Battle mode, hit sequence goes:
-                            '  - hit any target to light two outer targets
-                            '  - hit either outside target to light center target
-                            '  - hit center target to light Castle
-                            Select Case UPFShotMask
-                                Case 42: UPFShotMask = 34 ' light outside targets
-                                Case 34: UPFSHotMask = 8  ' light center target
-                                Case 8: UPFShotMask = 1   ' light Castle loop
-                            End Select
                         Case 2,3 ' BW or Castle Multiball mode
                             If UPFSJP Then
                                 Dim jpscore
@@ -5918,13 +5939,27 @@ Class cHouse
                                 End If
                             End If
                     End Select
+                    If PlayerMode = 1 Then ' Battle mode
+                        House(CurrentPlayer).BattleState(HouseBattle1).AddTime 5
+                        If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).AddTime 5
+                        ' In Battle mode, hit sequence goes:
+                        '  - hit any target to light two outer targets
+                        '  - hit either outside target to light center target
+                        '  - hit center target to light Castle
+                        Select Case UPFBattleShotMask
+                            Case 42: UPFBattleShotMask = 34 ' light outside targets
+                            Case 34: UPFBattleShotMask = 8  ' light center target
+                            Case 8: UPFBattleShotMask = 1   ' light Castle loop
+                        End Select
+                    End if
+                    If UPFState = 1 Then UPFShotMask = UPFBattleShotMask
                     SetUPFLights
                 Else
                     ' Not lit. Just give a few points
                     AddScore 560*UPFMultiplier
                 End If
             Case 3,5    ' Outlanes
-                If (UPFShotMask And (2^(sw-1))) > 0 Then  ' outlane was lit
+                If ((UPFShotMask And (2^(sw-1))) > 0) Or (PlayerMode = 1 And (UPFBattleShotMask  And (2^(sw-1))) > 0 ) Then  ' outlane was lit
                     Select Case UPFState
                         Case 0: IncreaseUPFLevel : UPFShotMask = (UPFShotMask And 1) Or 42 : UPFCastleShotMask = UPFShotMask ' Castle MB mode
                         Case 1 ' Battle mode - are these used at all?
@@ -8148,7 +8183,7 @@ Sub EndOfBall()
     EndHurryUp
     PlayerMode = 0
 
-    Target43_TimerEnabled = 0
+    Target43.TimerEnabled = 0
     
     ' only process any of this if the table is not tilted.  (the tilt recovery
     ' mechanism will handle any extra balls or end of game)
@@ -9417,7 +9452,7 @@ Sub doWFTargetHit(t)
         bWildfireTargets(0)=False:bWildfireTargets(1)=False
         If PlayerMode <> 1 Then House(CurrentPlayer).RegisterHit(Tyrell)
         DoWildfireLit
-        Target43_TimerEnabled = 0
+        Target43.TimerEnabled = 0
     Else
         AddBonus 10000
         Select Case t
@@ -9428,7 +9463,7 @@ Sub doWFTargetHit(t)
                 SetLightColor li83,green,1
                 FlashForMs li83,1000,100,2
         End Select
-        If BWMultiballsCompleted > 2 Then Target43_TimerInterval = 30000 : Target43_TimerEnabled = 1
+        If BWMultiballsCompleted > 2 Then Target43.TimerInterval = 30000 : Target43.TimerEnabled = 1
     End If
     LastSwitchHit = "wftarget"&t
 End Sub
@@ -9436,7 +9471,7 @@ End Sub
 ' This sub fires if the Wildfire targets time-out before completion
 Sub Target43_Timer
     If BWMultiballsCompleted > 2 Then bWildFireTargets(0) = False : bWildfireTargets(1) = False : SetWildfireLights
-    Me.TimerEnable = 0
+    Me.TimerEnabled = 0
 End Sub
 
 'WF target light timer
@@ -9485,10 +9520,12 @@ End Sub
 '******************
 
 Sub sw53_Hit
+    UpdateWires 53,true
     TopLane_Hit 0
 End Sub
 
 Sub sw54_Hit
+    UpdateWires 54,true
     TopLane_Hit 1
 End Sub
 
@@ -9519,10 +9556,12 @@ End Sub
 '*******************
 
 Sub sw3_Hit
+    UpdateWires 3,true
     Outlane_Hit
 End Sub
 
 Sub sw4_Hit
+    UpdateWires 4,true
     Outlane_Hit
 End Sub
 
@@ -9763,6 +9802,7 @@ End Sub
 
 'Castle loop
 Sub sw79_Hit
+    UpdateWires 79,true
     If Tilted then Exit Sub
     House(CurrentPlayer).RegisterUPFHit 1
 End Sub
@@ -9775,6 +9815,7 @@ End Sub
 
 'Left outlane
 Sub sw77_Hit
+    UpdateWires 77,true
     If Tilted then Exit Sub
     House(CurrentPlayer).RegisterUPFHit 3
 End Sub
@@ -9787,6 +9828,7 @@ End Sub
 
 ' Right outlane
 Sub sw78_Hit
+    UpdateWires 78,true
     If Tilted then Exit Sub
     House(CurrentPlayer).RegisterUPFHit 5
 End Sub
@@ -9799,12 +9841,14 @@ End Sub
 
 ' Left inlane
 Sub sw83_Hit
+    UpdateWires 83,true
     If Tilted then Exit Sub
     House(CurrentPlayer).RegisterUPFHit 7
 End Sub
 
 ' Right inlane
 Sub sw84_Hit
+    UpdateWires 84,true
     If Tilted then Exit Sub
     House(CurrentPlayer).RegisterUPFHit 8
 End Sub
@@ -9851,6 +9895,7 @@ End Sub
 
 ' Left Inlane
 Sub sw1_Hit
+    UpdateWires 1,true
     If Tilted then Exit Sub
     AddScore 560
     DoInlaneHit 0
@@ -9859,9 +9904,10 @@ End Sub
 
 ' Right Inlane
 Sub sw2_Hit
+    UpdateWires 2,true
     If Tilted then Exit Sub
     AddScore 560
-   DoInlaneHit 1
+    DoInlaneHit 1
     LastSwitchHit = "sw2"
 End Sub
 
@@ -9874,6 +9920,18 @@ Sub DoInlaneHit(t)
     End If
 End Sub
 
+Sub sw1_UnHit : UpdateWires 1,false : End Sub
+Sub sw2_UnHit : UpdateWires 1,false : End Sub
+Sub sw3_UnHit : UpdateWires 1,false : End Sub
+Sub sw4_UnHit : UpdateWires 1,false : End Sub
+Sub sw53_UnHit : UpdateWires 1,false : End Sub
+Sub sw54_UnHit : UpdateWires 1,false : End Sub
+Sub sw77_UnHit : UpdateWires 1,false : End Sub
+Sub sw78_UnHit : UpdateWires 1,false : End Sub
+Sub sw79_UnHit : UpdateWires 1,false : End Sub
+Sub sw83_UnHit : UpdateWires 1,false : End Sub
+Sub sw84_UnHit : UpdateWires 1,false : End Sub
+
 '******************
 ' Battering Ram
 '******************
@@ -9885,7 +9943,7 @@ Sub BatteringRam_Hit
     ' Slow the ball down, to simulate hitting a big battering ram
     ActiveBall.AngMomY = ActiveBall.AngMomY / 1+(Rnd*3)
 
-    ram_BM_Dark_Room.TransZ = -5 : BatteringRam.TimerEnabled = 1
+    ram_BM_Dark_Room.TransY = 5 : BatteringRam.TimerEnabled = 1
     If ABS(ActiveBall.VelY) < 10 Then BatteringRam.UserValue = 3 : Exit Sub
     BatteringRam.UserValue = 1
     SetFlasher fl243,6 ' Flash the battering ram Flasher
@@ -9981,11 +10039,11 @@ Sub BatteringRam_Timer
     Dim Z
     Select Case Me.UserValue
         Case 0: Me.TimerEnabled = 0 : Exit Sub  ' Called by accident?
-        Case 1: Z = -10
-        Case 2: Z = -5
-        Case 3: Z = 0
+        Case 1: Z = 0
+        Case 2: Z = 5
+        Case 3: Z = 10
     End Select
-    ram_BM_Dark_Room.TransZ = Z
+    ram_BM_Dark_Room.TransY = Z
     If Z = 0 Then 
         Me.UserValue = 0 : Me.TimerEnabled = 0 
     Else
@@ -11493,9 +11551,9 @@ Sub tmrWiCLightning_Timer
     If step > 7 then step = 0
     Select Case step
         Case 0,1,3: i = 0
-        Case 2,5: i = 0.05
-        Case 4: i = 4
-        Case 6,7: i = 0.15
+        Case 2,5: i = 0.2
+        Case 4: i = 1
+        Case 6,7: i = 0.4
     End Select
     GiIntensity i
     step = step + 1
@@ -11664,12 +11722,12 @@ Sub DMDDoBallSaved
         scene.GetLabel("txt").SetAlignedPosition 64,16,FlexDMD_Align_Center
         DelayActor scene.GetLabel("txt"),1.5,true
         BlinkActor scene.GetLabel("txt"),0.1,10
-        DMDEnqueueScene scene,0,2500,3500,2000,""
+        DMDEnqueueScene scene,0,2500,3500,2000,"gotfx-dragonroar"&RndNbr(3)
     Else
         DisplayDMDText "","BALL SAVED",2000
     End If
-    i = RndNbr(3)
-    PlaySoundVol "say-ballsaved"&i,VolCallout
+    i = RndNbr(9)
+    vpmTimer.addTimer 1000,"PlaySoundVol ""say-ballsaved"&i&""",VolCallout '"
 End Sub
 
 Sub DMDDoWiCScene(value,shots)
@@ -14880,7 +14938,7 @@ Const UsingROM = False			' Change this to true if you are using Lampz with on RO
 Dim NullFader : set NullFader = new NullFadingObject
 Dim Lampz : Set Lampz = New LampFader
 InitLampsNF              ' Setup lamp assignments
-LampTimer.Interval = 20
+LampTimer.Interval = -1
 LampTimer.Enabled = 1
 
 
@@ -14894,7 +14952,7 @@ Sub LampTimer_Timer()
 			next
 		End If
 	Else	'apophis - Use the InPlayState of the 1st light in the Lampz.obj array to set the Lampz.state
-		dim idx : for idx = 0 to uBound(Lampz.Obj)
+		dim idx : for idx = 0 to 69 ' Table-specific - don't update the Flashers or GI here
 			if Lampz.IsLight(idx) then 
 				if IsArray(Lampz.obj(idx)) then
 					dim tmp : tmp = Lampz.obj(idx)
@@ -14917,14 +14975,28 @@ LampTimer3.Interval = 5
 LampTimer.Enabled=1
 Sub LampTimer3_Timer()
     ' Only do the Flashers
-    dim idx : for idx = 70 to 76
+    dim idx : for idx = 70 to 77
         if lampz.IsLight(idx) then
             if IsArray(Lampz.obj(idx)) then
                 dim tmp : tmp = Lampz.obj(idx)
                 Lampz.state(idx) = tmp(0).GetInPlayStateBool
+                if idx = 77 then Lampz.SetColor(idx) = tmp(0).colorfull
             Else
                 Lampz.state(idx) = Lampz.obj(idx).GetInPlayStateBool
+                if idx = 77 then Lampz.SetColor(idx) = Lampz.obj(idx).colorfull
             end if
+        end if
+    Next
+    for idx = 80 to 82 ' GI
+        if lampz.IsLight(idx) then
+            if lampz.state(idx) = 0 Or lampz.state(idx) >= 1 Then ' GI isn't in dimmed state, ok to update from bulb
+                if IsArray(Lampz.obj(idx)) then
+                    tmp = Lampz.obj(idx)
+                    Lampz.state(idx) = tmp(0).GetInPlayStateBool
+                Else
+                    Lampz.state(idx) = Lampz.obj(idx).GetInPlayStateBool
+                end if
+            End if
         end if
     Next
 End Sub
@@ -15102,7 +15174,7 @@ Sub InitLampsNF()
 	'Adjust fading speeds (1 / full MS fading time)
 	dim x
 	
-	for x = 0 to 140 : Lampz.FadeSpeedUp(x) = 1/2 : Lampz.FadeSpeedDown(x) = 1/10 : next
+	for x = 0 to 140 : Lampz.FadeSpeedUp(x) = 1/2 : Lampz.FadeSpeedDown(x) = 1/4 : next
 '	for x = 111 to 140 : Lampz.FadeSpeedUp(x) = 1/5: Lampz.FadeSpeedDown(x) = 1/22 : next	'slow lamps for gi testing
 
 	'Lampz.FadeSpeedUp(81) = 1/20 : Lampz.FadeSpeedDown(81) = 1/60
@@ -15304,7 +15376,7 @@ Sub InitLampsNF()
 	Lampz.Callback(58) = "DisableLighting  p195on, 600,"
     Lampz.MassAssign(59)= li198
 	Lampz.MassAssign(59)= li198bloom
-	Lampz.Callback(59) = "DisableLighting  p198on, 300,"
+	Lampz.Callback(59) = "DisableLighting  p198on, 100,"
     Lampz.MassAssign(60)= li201
 	Lampz.MassAssign(60)= li201bloom
 	Lampz.Callback(60) = "DisableLighting  p201on, 300,"
@@ -15537,12 +15609,12 @@ Class LampFader
 	Public Sub Update1()	 'Handle all boolean numeric fading. If done fading, Lock(x) = True. Update on a '1' interval Timer!
 		dim x : for x = 0 to uBound(OnOff)
 			if not Lock(x) then 'and not Loaded(x) then
-				if OnOff(x) > 0 then 'Fade Up
+				if OnOff(x) > Lvl(x) then 'Fade Up
 					Lvl(x) = Lvl(x) + FadeSpeedUp(x)
-					if Lvl(x) > OnOff(x) then Lvl(x) = OnOff(x) : Lock(x) = True
+					if Lvl(x) >= OnOff(x) then Lvl(x) = OnOff(x) : Lock(x) = True
 				else 'fade down
 					Lvl(x) = Lvl(x) - FadeSpeedDown(x)
-					if Lvl(x) <= 0 then Lvl(x) = 0 : Lock(x) = True
+					if Lvl(x) <= OnOff(x) then Lvl(x) = OnOff(x) : Lock(x) = True
 				end if
 			end if
 		Next
@@ -15552,12 +15624,12 @@ Class LampFader
 		FrameTime = gametime - InitFrame : InitFrame = GameTime	'Calculate frametime
 		dim x : for x = 0 to uBound(OnOff)
 			if not Lock(x) then 'and not Loaded(x) then
-				if OnOff(x) > 0 then 'Fade Up
+				if OnOff(x) > Lvl(x) then 'Fade Up
 					Lvl(x) = Lvl(x) + FadeSpeedUp(x) * FrameTime
-					if Lvl(x) > OnOff(x) then Lvl(x) = OnOff(x) : Lock(x) = True
+					if Lvl(x) >= OnOff(x) then Lvl(x) = OnOff(x) : Lock(x) = True
 				else 'fade down
 					Lvl(x) = Lvl(x) - FadeSpeedDown(x) * FrameTime
-					if Lvl(x) <= 0 then Lvl(x) = 0 : Lock(x) = True
+					if Lvl(x) <= OnOff(x)  then Lvl(x) = OnOff(x) : Lock(x) = True
 				end if
 			end if
 		Next
@@ -15690,7 +15762,17 @@ Dim Spinners_BL: Spinners_BL=Array(Spinners_BM_Dark_Room, Spinners_LM_Flashers_f
 Dim lockpost_001_BL: lockpost_001_BL=Array(lockpost_001_BM_Dark_Room, lockpost_001_LM_Flashers_f235, lockpost_001_LM_Flashers_f244A, lockpost_001_LM_Flashers_f244B, lockpost_001_LM_GI1, lockpost_001_LM_Inserts_li153, lockpost_001_LM_Inserts_li80, lockpost_001_LM_Inserts_li83, lockpost_001_LM_Lit_Room) ' VLM.Array;All;lockpost_001_BL
 Dim Lwing_BL: Lwing_BL=Array(Lwing_BM_Dark_Room, Lwing_LM_GI2, Lwing_LM_Lit_Room, Lwing_LM_Upper_GI) ' VLM.Array;All;Lwing_BL
 Dim Rwing_BL: Rwing_BL=Array(Rwing_BM_Dark_Room, Rwing_LM_GI2, Rwing_LM_Lit_Room, Rwing_LM_Upper_GI) ' VLM.Array;All;Rwing_BL
-
+Dim sw1_BL: sw1_BL=Array(sw1_BM_Dark_Room, sw1_LM_GI1, sw1_LM_Lit_Room) ' VLM.Array;All;sw1_BL
+Dim sw2_BL: sw2_BL=Array(sw2_BM_Dark_Room, sw2_LM_GI1, sw2_LM_Lit_Room) ' VLM.Array;All;sw2_BL
+Dim sw3_BL: sw3_BL=Array(sw3_BM_Dark_Room, sw3_LM_GI1, sw3_LM_Lit_Room) ' VLM.Array;All;sw3_BL
+Dim sw4_BL: sw4_BL=Array(sw4_BM_Dark_Room, sw4_LM_GI1, sw4_LM_Lit_Room) ' VLM.Array;All;sw4_BL
+Dim sw53_BL: sw53_BL=Array(sw53_BM_Dark_Room, sw53_LM_Flashers_f237, sw53_LM_Flashers_f245, sw53_LM_GI2, sw53_LM_Lit_Room) ' VLM.Array;All;sw53_BL
+Dim sw54_BL: sw54_BL=Array(sw54_BM_Dark_Room, sw54_LM_Flashers_f237, sw54_LM_Flashers_f245, sw54_LM_GI2) ' VLM.Array;All;sw54_BL
+Dim sw77_BL: sw77_BL=Array(sw77_BM_Dark_Room, sw77_LM_Lit_Room, sw77_LM_Upper_GI) ' VLM.Array;All;sw77_BL
+Dim sw78_BL: sw78_BL=Array(sw78_BM_Dark_Room, sw78_LM_Upper_GI) ' VLM.Array;All;sw78_BL
+Dim sw79_BL: sw79_BL=Array(sw79_BM_Dark_Room, sw79_LM_GI2, sw79_LM_Upper_GI) ' VLM.Array;All;sw79_BL
+Dim sw83_BL: sw83_BL=Array(sw83_BM_Dark_Room, sw83_LM_Lit_Room, sw83_LM_Upper_GI) ' VLM.Array;All;sw83_BL
+Dim sw84_BL: sw84_BL=Array(sw84_BM_Dark_Room, sw84_LM_Lit_Room, sw84_LM_Upper_GI) ' VLM.Array;All;sw84_BL
 
 ' ===============================================================
 ' The following code can be copy/pasted if using Lampz fading system
@@ -16320,6 +16402,25 @@ Sub MovableHelper
 
 End Sub
 
+Sub UpdateWires(sw,pushed)
+    Dim z : If pushed then z = -14 Else z = 0
+    Dim o,obj
+    Select Case sw
+        Case 1 : obj = sw1_BL
+        Case 2 : obj = sw2_BL
+        Case 3 : obj = sw3_BL
+        Case 4 : obj = sw4_BL
+        Case 53 : obj = sw53_BL
+        Case 54 : obj = sw54_BL
+        Case 77 : obj = sw77_BL
+        Case 78 : obj = sw78_BL
+        Case 79 : obj = sw79_BL
+        Case 83 : obj = sw83_BL
+        Case 84 : obj = sw84_BL
+    End Select
+    For each o in obj : o.transz = z : Next
+End Sub 
+
 
 ' ===============================================================
 ' The following code can be copy/pasted to disable baked lights
@@ -16419,32 +16520,32 @@ Sub HideLightHelper
 	li95.Visible = False
 	li98.Visible = False
     'UpperPF
-    ' li180.Visible = False
-    ' li183.Visible = False
-    ' li186.Visible = False
-    ' li189.Visible = False
-    ' li192.Visible = False
-    ' li195.Visible = False
-    ' li198.Visible = False
-    ' li201.Visible = False
-    ' li204.Visible = False
-    ' li207.Visible = False
-    ' li210.Visible = False
-    ' li213.Visible = False
-    ' li216.Visible = False
-    ' li180bloom.Visible = False
-    ' li183bloom.Visible = False
-    ' li186bloom.Visible = False
-    ' li189bloom.Visible = False
-    ' li192bloom.Visible = False
-    ' li195bloom.Visible = False
-    ' li198bloom.Visible = False
-    ' li201bloom.Visible = False
-    ' li204bloom.Visible = False
-    ' li207bloom.Visible = False
-    ' li210bloom.Visible = False
-    ' li213bloom.Visible = False
-    ' li216bloom.Visible = False
+    li180.Visible = False
+    li183.Visible = False
+    li186.Visible = False
+    li189.Visible = False
+    li192.Visible = False
+    li195.Visible = False
+    li198.Visible = False
+    li201.Visible = False
+    li204.Visible = False
+    li207.Visible = False
+    li210.Visible = False
+    li213.Visible = False
+    li216.Visible = False
+    li180bloom.Visible = False
+    li183bloom.Visible = False
+    li186bloom.Visible = False
+    li189bloom.Visible = False
+    li192bloom.Visible = False
+    li195bloom.Visible = False
+    li198bloom.Visible = False
+    li201bloom.Visible = False
+    li204bloom.Visible = False
+    li207bloom.Visible = False
+    li210bloom.Visible = False
+    li213bloom.Visible = False
+    li216bloom.Visible = False
 
     'li32bloom.Visible = False
 End Sub
@@ -16527,7 +16628,7 @@ End Sub
 ' Coding
 '-------
 ' Need to implement Options FlexDMD table overlay
-' UPF can't handle multiball and battle at the same time - needs refactoring
+' √? UPF can't handle multiball and battle at the same time - needs refactoring
 ' √? Need to implement timer to reset Wildfire targets to unlit after 2 BWMBs completed. Timer needs to be cleared at end-of-ball
 ' √? fix font-centering of 10-char highscore usernames
 '
