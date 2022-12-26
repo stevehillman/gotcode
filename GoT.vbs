@@ -76,6 +76,10 @@
 ' 140 - Move Options DMD to backglass to fix VR bug; Attempt at Ball shadows on upper PF; minor bug fixes
 ' 141 - tomate - 4K blender render, VR fixes
 ' 142 - Merge blender changes; actually fix HS entry; actually fix UPF ball shadows; fix Stern Service menu; add kick to balls behind sword
+' 145 - leojreimroc - Redid VR Backglass Lighting
+' 146 - apophis - Added ramp rolling sounds. Updated ball rolling sounds. Adjusted ball brightness. Adjusted desktop POV. Plunger tweaks.
+' 147 - Sixtoe - Image and file optimisation, removed old unused stuff, blocker wall added under upper playfield
+' 148 - minor bug fixes
 
 'On the DOF website put Exxx
 '101 Left Flipper
@@ -113,7 +117,7 @@
 Option Explicit
 Randomize
 
-Const TableVersion = "0.140"
+Const TableVersion = "0.148"
 
 Const bDebug = False
 
@@ -174,7 +178,9 @@ Sub VRRoomInit
 
     If VRRoom = 2 Then 
         for each Stuff in VR_UltraMin: Stuff.visible = true: next
-        PinCab_Rails.visible = true
+        'PinCab_Rails.visible = true
+		SideRailMapLeft.visible = true
+		SideRailMapRight.visible = true
     End if
     ' End VR Room Init....
 End Sub
@@ -350,14 +356,17 @@ Sub Table1_Init()
     ' Creat the array of light name indexes
     SavePlayfieldLightNames
 
-    'load saved values, highscore, names, jackpot
-    Options_Load
-    Loadhs
-    DMDSettingsInit() ' Init the Service Menu
-    ReplayScore = DMDStd(kDMDStd_AutoReplayStart)
-
     ' initalise the DMD display
     DMD_Init
+
+    ' Load table color
+    LoadLut
+
+    'load saved values, highscore, names, jackpot
+    Options_Load
+    DMDSettingsInit() ' Init the Service Menu
+    ReplayScore = DMDStd(kDMDStd_AutoReplayStart)
+    Loadhs
 
     ' initialse any other flags
     bOnTheFirstBall = False
@@ -392,9 +401,6 @@ Sub Table1_Init()
 
     ' Start the RealTime timer
     RealTime.Enabled = 1
-
-    ' Load table color
-    LoadLut
 
 End Sub
 
@@ -465,8 +471,8 @@ Sub Table1_KeyDown(ByVal Keycode)
             VRPlunger2.Enabled = False
         End If
     End If
-    If hsbModeActive=1 Then
-        EnterHighScoreKey(keycode)
+    If hsbModeActive > 0 Then
+        if hsbModeActive=1 Then EnterHighScoreKey(keycode)
         Exit Sub
     End If
 
@@ -564,7 +570,7 @@ Sub Table1_KeyDown(ByVal Keycode)
         End If
     Else ' If (GameInPlay)
 
-        If keycode = StartGameKey or keycode = RightMagnaSave or keycode = LockBarKey Then
+        If keycode = StartGameKey or keycode = LockBarKey Then
             If(DMDStd(kDMDStd_FreePlay) = True)Then
                 If(BallsOnPlayfield = 0)Then
                     ResetForNewGame()
@@ -1132,7 +1138,8 @@ End Sub
 
 '/////////////////////////////  KNOCKER SOLENOID  ////////////////////////////
 Sub KnockerSolenoid()
-    PlaySoundAtLevelStatic SoundFX("Knocker_1",DOFKnocker), KnockerSoundLevel, KnockerPosition
+    'PlaySoundAtLevelStatic SoundFX("Knocker_1",DOFKnocker), KnockerSoundLevel, KnockerPosition
+    PlaySoundVol "stern-knocker",10
 End Sub
 
 '/////////////////////////////  DRAIN SOUNDS  ////////////////////////////
@@ -1761,7 +1768,7 @@ Sub DynamicBSUpdate
 	Dim l
 	Dim d_w
 	Dim b_base, b_r, b_g, b_b
-	b_base = 100 * 0.01 * Playfield_LM_GI1.Opacity + 55 * (LightLevel / 100) + 10
+	b_base = 70 * 0.01 * Playfield_LM_GI1.Opacity + 55 * (LightLevel / 100) + 10
 	For s = lob to UBound(gBOT)
 
 ' *** Compute ball lighting from GI and ambient lighting
@@ -1988,6 +1995,209 @@ Sub RollingUpdate()
 		End If
 	Next
 End Sub
+
+
+
+'******************************************************
+'**** RAMP ROLLING SFX
+'******************************************************
+
+'Ball tracking ramp SFX 1.0
+'   Reqirements:
+'          * Import A Sound File for each ball on the table for plastic ramps.  Call It RampLoop<Ball_Number> ex: RampLoop1, RampLoop2, ...
+'          * Import a Sound File for each ball on the table for wire ramps. Call it WireLoop<Ball_Number> ex: WireLoop1, WireLoop2, ...
+'          * Create a Timer called RampRoll, that is enabled, with a interval of 100
+'          * Set RampBAlls and RampType variable to Total Number of Balls
+'	Usage:
+'          * Setup hit events and call WireRampOn True or WireRampOn False (True = Plastic ramp, False = Wire Ramp)
+'          * To stop tracking ball
+'                 * call WireRampOff
+'                 * Otherwise, the ball will auto remove if it's below 30 vp units
+'
+
+dim RampMinLoops : RampMinLoops = 4
+
+' RampBalls
+'      Setup:        Set the array length of x in RampBalls(x,2) Total Number of Balls on table + 1:  if tnob = 5, then RammBalls(6,2)
+'      Description:  
+dim RampBalls(10,2)
+'x,0 = ball x,1 = ID,	2 = Protection against ending early (minimum amount of updates)
+'0,0 is boolean on/off, 0,1 unused for now
+RampBalls(0,0) = False
+
+' RampType
+'     Setup: Set this array to the number Total number of balls that can be tracked at one time + 1.  5 ball multiball then set value to 6
+'     Description: Array type indexed on BallId and a values used to deterimine what type of ramp the ball is on: False = Wire Ramp, True = Plastic Ramp
+dim RampType(10)	
+
+Sub WireRampOn(input)  : Waddball ActiveBall, input : RampRollUpdate: End Sub
+Sub WireRampOff() : WRemoveBall ActiveBall.ID	: End Sub
+
+
+' WaddBall (Active Ball, Boolean)
+'     Description: This subroutine is called from WireRampOn to Add Balls to the RampBalls Array
+Sub Waddball(input, RampInput)	'Add ball
+	' This will loop through the RampBalls array checking each element of the array x, position 1
+	' To see if the the ball was already added to the array.
+	' If the ball is found then exit the subroutine
+	dim x : for x = 1 to uBound(RampBalls)	'Check, don't add balls twice
+		if RampBalls(x, 1) = input.id then 
+			if Not IsEmpty(RampBalls(x,1) ) then Exit Sub	'Frustating issue with BallId 0. Empty variable = 0
+		End If
+	Next
+
+	' This will itterate through the RampBalls Array.
+	' The first time it comes to a element in the array where the Ball Id (Slot 1) is empty.  It will add the current ball to the array
+	' The RampBalls assigns the ActiveBall to element x,0 and ball id of ActiveBall to 0,1
+	' The RampType(BallId) is set to RampInput
+	' RampBalls in 0,0 is set to True, this will enable the timer and the timer is also turned on
+	For x = 1 to uBound(RampBalls)
+		if IsEmpty(RampBalls(x, 1)) then 
+			Set RampBalls(x, 0) = input
+			RampBalls(x, 1)	= input.ID
+			RampType(x) = RampInput
+			RampBalls(x, 2)	= 0
+			'exit For
+			RampBalls(0,0) = True
+			RampRoll.Enabled = 1	 'Turn on timer
+			'RampRoll.Interval = RampRoll.Interval 'reset timer
+			exit Sub
+		End If
+		if x = uBound(RampBalls) then 	'debug
+			Debug.print "WireRampOn error, ball queue is full: " & vbnewline & _
+			RampBalls(0, 0) & vbnewline & _
+			Typename(RampBalls(1, 0)) & " ID:" & RampBalls(1, 1) & "type:" & RampType(1) & vbnewline & _
+			Typename(RampBalls(2, 0)) & " ID:" & RampBalls(2, 1) & "type:" & RampType(2) & vbnewline & _
+			Typename(RampBalls(3, 0)) & " ID:" & RampBalls(3, 1) & "type:" & RampType(3) & vbnewline & _
+			Typename(RampBalls(4, 0)) & " ID:" & RampBalls(4, 1) & "type:" & RampType(4) & vbnewline & _
+			Typename(RampBalls(5, 0)) & " ID:" & RampBalls(5, 1) & "type:" & RampType(5) & vbnewline & _
+			" "
+		End If
+	next
+End Sub
+
+' WRemoveBall (BallId)
+'    Description: This subroutine is called from the RampRollUpdate subroutine 
+'                 and is used to remove and stop the ball rolling sounds
+Sub WRemoveBall(ID)		'Remove ball
+	'Debug.Print "In WRemoveBall() + Remove ball from loop array"
+	dim ballcount : ballcount = 0
+	dim x : for x = 1 to Ubound(RampBalls)
+		if ID = RampBalls(x, 1) then 'remove ball
+			Set RampBalls(x, 0) = Nothing
+			RampBalls(x, 1) = Empty
+			RampType(x) = Empty
+			StopSound("RampLoop" & x)
+			StopSound("wireloop" & x)
+		end If
+		'if RampBalls(x,1) = Not IsEmpty(Rampballs(x,1) then ballcount = ballcount + 1
+		if not IsEmpty(Rampballs(x,1)) then ballcount = ballcount + 1
+	next
+	if BallCount = 0 then RampBalls(0,0) = False	'if no balls in queue, disable timer update
+End Sub
+
+Sub RampRoll_Timer():RampRollUpdate:End Sub
+
+Sub RampRollUpdate()		'Timer update
+	dim x : for x = 1 to uBound(RampBalls)
+		if Not IsEmpty(RampBalls(x,1) ) then 
+			if BallVel(RampBalls(x,0) ) > 1 then ' if ball is moving, play rolling sound
+				If RampType(x) then 
+					PlaySound("RampLoop" & x), -1, VolPlayfieldRoll(RampBalls(x,0)) * RampRollVolume * VolumeDial, AudioPan(RampBalls(x,0)), 0, BallPitchV(RampBalls(x,0)), 1, 0, AudioFade(RampBalls(x,0))				
+					StopSound("wireloop" & x)
+				Else
+					StopSound("RampLoop" & x)
+					PlaySound("wireloop" & x), -1, VolPlayfieldRoll(RampBalls(x,0)) * RampRollVolume * VolumeDial, AudioPan(RampBalls(x,0)), 0, BallPitch(RampBalls(x,0)), 1, 0, AudioFade(RampBalls(x,0))
+				End If
+				RampBalls(x, 2)	= RampBalls(x, 2) + 1
+			Else
+				StopSound("RampLoop" & x)
+				StopSound("wireloop" & x)
+			end if
+			if RampBalls(x,0).Z < 30 and RampBalls(x, 2) > RampMinLoops then	'if ball is on the PF, remove  it
+				StopSound("RampLoop" & x)
+				StopSound("wireloop" & x)
+				Wremoveball RampBalls(x,1)
+			End If
+		Else
+			StopSound("RampLoop" & x)
+			StopSound("wireloop" & x)
+		end if
+	next
+	if not RampBalls(0,0) then RampRoll.enabled = 0
+
+End Sub
+
+' This can be used to debug the Ramp Roll time.  You need to enable the tbWR timer on the TextBox
+Sub tbWR_Timer()	'debug textbox
+	me.text =	"on? " & RampBalls(0, 0) & " timer: " & RampRoll.Enabled & vbnewline & _
+	"1 " & Typename(RampBalls(1, 0)) & " ID:" & RampBalls(1, 1) & " type:" & RampType(1) & " Loops:" & RampBalls(1, 2) & vbnewline & _
+	"2 " & Typename(RampBalls(2, 0)) & " ID:" & RampBalls(2, 1) & " type:" & RampType(2) & " Loops:" & RampBalls(2, 2) & vbnewline & _
+	"3 " & Typename(RampBalls(3, 0)) & " ID:" & RampBalls(3, 1) & " type:" & RampType(3) & " Loops:" & RampBalls(3, 2) & vbnewline & _
+	"4 " & Typename(RampBalls(4, 0)) & " ID:" & RampBalls(4, 1) & " type:" & RampType(4) & " Loops:" & RampBalls(4, 2) & vbnewline & _
+	"5 " & Typename(RampBalls(5, 0)) & " ID:" & RampBalls(5, 1) & " type:" & RampType(5) & " Loops:" & RampBalls(5, 2) & vbnewline & _
+	"6 " & Typename(RampBalls(6, 0)) & " ID:" & RampBalls(6, 1) & " type:" & RampType(6) & " Loops:" & RampBalls(6, 2) & vbnewline & _
+	" "
+End Sub
+
+
+Function BallPitch(ball) ' Calculates the pitch of the sound based on the ball speed
+    BallPitch = pSlope(BallVel(ball), 1, -1000, 60, 10000)
+End Function
+
+Function BallPitchV(ball) ' Calculates the pitch of the sound based on the ball speed Variation
+	BallPitchV = pSlope(BallVel(ball), 1, -4000, 60, 7000)
+End Function
+
+
+
+Sub trigRamp1_unhit
+	If Activeball.vely < 0 Then
+		WireRampOn True
+	Else
+		WireRampOff
+	End If
+End Sub
+
+Sub trigRamp2_unhit
+	WireRampOff
+End Sub
+
+Sub trigRamp3_hit
+	WireRampOn False
+End Sub
+
+Sub trigRamp4_hit
+	WireRampOff
+End Sub
+
+Sub trigRamp5_hit
+	WireRampOn False
+End Sub
+
+Sub trigRamp6_hit
+	WireRampOff
+End Sub
+
+Sub trigRamp7_unhit
+	If Activeball.vely < 0 Then
+		WireRampOn False
+	Else
+		WireRampOff
+	End If
+End Sub
+
+Sub trigRamp8_hit
+	WireRampOff
+End Sub
+
+
+
+'******************************************************
+'**** END RAMP ROLLING SFX
+'******************************************************
+
+
 
 '******************************************************
 '		TRACK ALL BALL VELOCITIES
@@ -2923,7 +3133,11 @@ Sub Loadhs
     Dim i,x
     For i = 1 to 16
         x = LoadValue(myGameName, "HighScore"&i)
-        If(x <> "")Then HighScore(i-1) = CDbl(x)Else HighScore(i-1) = (17-i)*1000000 End If
+        If(x <> "")Then 
+            HighScore(i-1) = CDbl(x)
+        Else
+            if i < 6 Then HighScore(i-1) = DMDStd(kDMDStd_HighScoreGC + i - 1) Else HighScore(i-1) = (17-i)*1000000 
+        End If
         x = LoadValue(myGameName, "HighScore"&i&"Name")
         If(x <> "")Then HighScoreName(i-1) = x Else HighScoreName(i-1) = Chr(64+i)&Chr(64+i)&Chr(64+i) End If
     Next
@@ -2997,11 +3211,11 @@ Sub CheckHighscore()
             Credits = Credits + tmp-1
             DOF 140, DOFOn
             KnockerSolenoid
-            DOF 121, DOFPulse
+            DOF 122, DOFPulse
             If tmp > 2 Then
                 vpmTimer.AddTimer 500+100*(tmp-3), "HighScoreEntryInit() '"
                 Do While tmp > 2
-                    vpmTimer.AddTimer 200*(tmp-2),"KnockerSolenoid : DOF 121, DOFPulse '"
+                    vpmTimer.AddTimer 200*(tmp-2),"KnockerSolenoid : DOF 122, DOFPulse '"
                     tmp = tmp - 1
                 Loop
             Else
@@ -3219,6 +3433,7 @@ Sub LoadFlexDMD
 		.Height = 32
 		.Clear = True
 		.Run = True
+        If VRRoom = 0 Then .Show = True Else .Show = False
 	End With	
 
     'Dim fso
@@ -4615,6 +4830,9 @@ Sub GiOn
     For each bulb in aGiLights
         bulb.State = 1
     Next
+    For each bulb in aBGGI
+        bulb.Visible = 1
+    Next
 '    ShadowGI.visible= 1
     'GameGiOn
 End Sub
@@ -4625,6 +4843,10 @@ Sub GiOff
     For each bulb in aGiLights
         bulb.State = 0
     Next
+    For each bulb in aBGGI
+        bulb.Visible = 0
+    Next
+	
 '    ShadowGI.visible= 0
     'GameGiOff
 End Sub
@@ -8158,7 +8380,7 @@ Sub VPObjects_Init
     For each sl in RSling1_BL : sl.visible = 0 : Next
     For each sl in LSling1_BL : sl.visible = 0 : Next
     SetDefaultPlayfieldLights   ' Sets all playfield lights to their default colours
-    vpmTimer.AddTimer 1000,"PlaySoundVol ""say-whathouse"",VolCallout '"
+    vpmTimer.AddTimer 1000,"WarmUpDone : UpdateMods : PlaySoundVol ""say-whathouse"",VolCallout '"
 End Sub
 
 Sub Game_Init()     'called at the start of a new game
@@ -8481,7 +8703,7 @@ Sub EnableBallSaver(seconds)
     ' if you have a ball saver light you might want to turn it on at this point (or make it flash)
     LightShootAgain.BlinkInterval = 160
     LightShootAgain.BlinkPattern = "10"
-    LightShootAgain.State = 2
+    SetShootAgainLight
 End Sub
 
 Sub DisableBallSaver
@@ -8496,13 +8718,13 @@ End Sub
 Sub BallSaveTimer
     ' clear the flag 
     SetGameTimer tmrBallSaverGrace, DMDStd(kDMDStd_BallSaveExtend)*10  ' 3 second grace for Ball Saver
-    If ExtraBallsAwards(CurrentPlayer) = 0 Then LightShootAgain.State = 0 Else LightShootAgain.State = 1
+    SetShootAgainLight
    
 End Sub
 
 Sub BallSaverGraceTimer
     bBallSaverActive = False
-    If ExtraBallsAwards(CurrentPlayer) = 0 Then LightShootAgain.State = 0 Else LightShootAgain.State = 1
+    SetShootAgainLight
 End Sub
 
 Sub BallSaverSpeedUpTimer
@@ -8733,7 +8955,7 @@ Sub tmrEndOfBallBonus_Timer()
             Skip = True
     End Select
 
-    If (LFPress Or RFPress) And j < 9 Then Skip = True
+    If (LFPress And RFPress) And j > 0 And j < 9 Then Skip = True
 
     If Skip Then
         tmrEndOfBallBonus.Interval = 10
@@ -8874,7 +9096,7 @@ Sub EndOfBall2()
 
         ' if no more EB's then turn off any shoot again light
         If(ExtraBallsAwards(CurrentPlayer) = 0)Then
-            LightShootAgain.State = 0
+            SetShootAgainLight
         End If
 
         If bUseFlexDMD Then
@@ -8949,17 +9171,14 @@ Sub EndOfBallComplete()
 
     ' is it the end of the game ? (all balls been lost for all players)
     If((BallsRemaining(CurrentPlayer) <= 0)AND(BallsRemaining(NextPlayer) <= 0))Then
-        ' you may wish to do some sort of Point Match free game award here
-        ' generally only done when not in free play mode
 
-		DisplayDMDText2 "_", "GAME OVER", 20000, 5, 0
+        bGameInPLay = False									' EndOfGame sets this but need to set early to disable flippers 
 
         ' Drop the lock walls to release any locked balls
         SwordWall.collidable = False : MoveSword True
         LockWall.collidable = False : Lockwall.Uservalue = 0 : LockPost False
         BallsInLock = 0 : RealBallsInLock = 0
 
-		bGameInPLay = False									' EndOfGame sets this but need to set early to disable flippers 
 		bShowMatch = True
 
         Dim t : t = False
@@ -8999,9 +9218,6 @@ Sub EndOfBallComplete()
 		
 		vpmtimer.addtimer 9500, "if bShowMatch then EndOfGame() '"
 		
-
-    ' you may wish to put a Game Over message on the desktop/backglass
-
     Else
         ' set the next player
         CurrentPlayer = NextPlayer
@@ -9052,7 +9268,7 @@ Sub EndOfGame()
 
     GiOff
 
-    vpmTimer.AddTimer 3000,"StartAttractMode '"
+    vpmTimer.AddTimer 5000,"StartAttractMode '"
 
 	if VRRoom = 1 then VR_StartButtOuter.blenddisablelighting = 0.8: StartButtonTimer.enabled = true  ' start the Front button temp attract lighting
 
@@ -9063,7 +9279,7 @@ Sub PlayYouMatched
 	DOF 140, DOFOn
 	DMDFlush
 	DMD "_", CL(1, "CREDITS: " & Credits), "", eNone, eNone, eNone, 2500, True, ""
-    KnockerSolenoid
+    KnockerSolenoid : DOF 122, DOFPulse
 End Sub 
 
 ' Plays the right song for the current situation
@@ -10622,7 +10838,7 @@ End Sub
 Sub sw2_Hit
     activeball.angmomz = 0: activeball.vely = activeball.vely*0.8
     UpdateWires 2,true
-    If Tilted then Exit Sub
+    If Tilted or Not bGameInPlay then Exit Sub
     AddScore 560
     DoInlaneHit 1
     LastSwitchHit = "sw2"
@@ -11865,7 +12081,7 @@ Sub tmrMadnessMBToggle_Timer
     Next
     If PlayfieldMultiplierVal > 1 Then SetPFMLights
     If PFMState > 0 Then SetBatteringRamLights
-    if bBallSaverActive Then LightShootAgain.State=2
+    if bBallSaverActive Then SetShootAgainLight
 End Sub
 
 Sub tmrMadnessSpeech_Timer
@@ -12460,7 +12676,7 @@ End Sub
 Sub DoAwardExtraBall
     Dim scene
     ExtraBallsAwards(CurrentPlayer) = ExtraBallsAwards(CurrentPlayer) + 1
-    LightShootAgain.State = 1
+    SetShootAgainLight
     AddScore 15000000
     PlaySoundVol "gotfx-extra-ball1",VolDef
     If bUseFlexDMD Then
@@ -12922,9 +13138,9 @@ End Sub
 
 Sub SetShootAgainLight
     If bBallSaverActive And (TimerFlags(tmrBallSave) And 1) = 1 Then        
-        LightShootAgain.State = 2
+        SetLightColor LightShootAgain,white,2
     ElseIf ExtraBallsAwards(CurrentPlayer) > 0 Then
-        LightShootAgain.State = 1
+        SetLightColor LightShootAgain,white,1
     Else
         LightShootAgain.State = 0
     End If
@@ -13533,10 +13749,11 @@ Sub tmrAttractModeScene_Timer
             format=3:skipifnoflex=False
             line1 = ChampionNames(i-9)
             line2 = HighScoreName(i-9):line3 = FormatScore(HighScore(i-9))
-        Case 25,26,27,28:
-            If PlayersPlayingGame < i-24 Then
-                i=28:delay=10
+        Case 24,25,26,27:
+            If PlayersPlayingGame < i-23 Then
+                i=27:delay=10
             Else
+                delay=4000
                 If DMDStd(kDMDStd_FreePlay) Then line2 = "FREE PLAY" Else Line2 = "CREDITS "&Credits
                 If PlayersPlayingGame > 1 Then
                     format=8:line1="PLAYER "&i-24
@@ -13550,7 +13767,7 @@ Sub tmrAttractModeScene_Timer
             End If
 
     End Select
-    If i = 23 or i = 28 Then tmrAttractModeScene.UserValue = 0 Else tmrAttractModeScene.UserValue = i + 1
+    If i = 23 or i = 27 Then tmrAttractModeScene.UserValue = 0 Else tmrAttractModeScene.UserValue = i + 1
     If bUseFlexDMD=False And skipifnoflex=True Then tmrAttractModeScene.Interval = 10 Else tmrAttractModeScene.Interval = delay
     tmrAttractModeScene.Enabled = True
 
@@ -16817,10 +17034,15 @@ Sub UpdateMods
     For each y in LockdownButton_BL : y.visible = nenabled : Next
     For each y in fl_base_BL : y.visible = nenabled : Next
 	
-    ' Not Implemented
-    'enabled = Not CabinetMode
-    'For each y in PinCab_Rails_002_BL : y.visible=abs(enabled) : Next
-	
+    enabled = Not CabinetMode
+    SideRailMapLeft.visible = abs(enabled) : SideRailMapRight.visible = abs(enabled)
+
+    Select Case LUTImage
+        Case 14: FlexDMD.Color = RGB(16,255,16)
+        Case 15: FlexDMD.Color = RGB(255,255,255)
+        Case Else: FlexDMD.Color = RGB(255,44,16)
+    End Select
+
     ' Not Implemented
 	' If OutPostMod = 0 Then ' Easy
 	' 	routpost_BM_Dark_Room.x = 817.4415
@@ -16946,7 +17168,7 @@ End Function
 ' to the GPU. It also NEEDS the following line to be added to the.
 ' table init function:
 
-	vpmTimer.AddTimer 1000, "WarmUpDone '"
+'	vpmTimer.AddTimer 1000, "WarmUpDone '"
 
 Sub WarmUpDone
 	VLM_Warmup_Nestmap_0.Visible = False
@@ -16954,8 +17176,18 @@ Sub WarmUpDone
 	VLM_Warmup_Nestmap_2.Visible = False
 	VLM_Warmup_Nestmap_3.Visible = False
 	VLM_Warmup_Nestmap_4.Visible = False
+	VLM_Warmup_Nestmap_5.Visible = False
+	VLM_Warmup_Nestmap_6.Visible = False
+	VLM_Warmup_Nestmap_7.Visible = False
+	VLM_Warmup_Nestmap_8.Visible = False
+	VLM_Warmup_Nestmap_9.Visible = False
+	VLM_Warmup_Nestmap_10.Visible = False
+	VLM_Warmup_Nestmap_11.Visible = False
+	VLM_Warmup_Nestmap_12.Visible = False
+	VLM_Warmup_Nestmap_13.Visible = False
+	VLM_Warmup_Nestmap_14.Visible = False
+	VLM_Warmup_Nestmap_15.Visible = False
 End Sub
-
 
 
 ' ===============================================================
@@ -17960,39 +18192,6 @@ Sub HideLightHelper
 
 End Sub
 
-
-' ===============================================================
-' The following provides a basic synchronization mechanism were
-' lightmaps are synchronized to corresponding VPX light or flasher,
-' using a simple realtime timer called VLMTimer. This works great
-' as a starting point but Lampz direct lightmap fading shoudl be prefered.
-
-Sub VLMTimer_Timer
-	Playfield_LM_Lit_Room.Visible = False
-	Movables_LM_Lit_Room.Visible = False
-	Playfield_LM_Lit_Room_001.Visible = False
-	Playfield_LM_Lit_Room_002.Visible = False
-	Playfield_LM_Lit_Room_003.Visible = False
-	Movables_LM_Lit_Room_001.Visible = False
-	UpdateLightMapFromLight LightShootAgain, Playfield_LM_Inserts, 100.0, False
-	UpdateLightMapFromLight LightShootAgain, Movables_LM_Inserts, 100.0, False
-	UpdateLightMapFromLight LightShootAgain, Playfield_LM_Inserts_001, 100.0, False
-	UpdateLightMapFromLight LightShootAgain, Movables_LM_Inserts_001, 100.0, False
-	Playfield_LM_Flashers.Visible = False
-	Movables_LM_Flashers.Visible = False
-	Playfield_LM_Flashers_001.Visible = False
-	Movables_LM_Flashers_001.Visible = False
-	UpdateLightMapFromLight gi010, Playfield_LM_GI1, 100.0, False
-	UpdateLightMapFromLight gi010, Movables_LM_GI1, 100.0, False
-	UpdateLightMapFromLight gi026, Playfield_LM_GI3, 100.0, False
-	UpdateLightMapFromLight gi026, Movables_LM_GI3, 100.0, False
-	UpdateLightMapFromLight gi035, Playfield_LM_Upper_GI, 100.0, False
-	UpdateLightMapFromLight gi035, Movables_LM_Upper_GI, 100.0, False
-	UpdateLightMapFromLight gi035, Playfield_LM_GI2, 100.0, False
-	UpdateLightMapFromLight gi035, Movables_LM_GI2, 100.0, False
-	UpdateLightMapFromLight gi035, Playfield_LM_GI2_001, 100.0, False
-End Sub
-
 Function LightFade(light, is_on, percent)
 	If is_on Then
 		LightFade = percent*percent*(3 - 2*percent) ' Smoothstep
@@ -18055,7 +18254,17 @@ Sub ArtSwap()
     If VRCabArt = 5 then VRCabArt = 1
 
     If VRCabArt = 1 then 
-        VRBackglassFlasher.imageA = "VRBG1" 
+        VRBackglassFlasher.imageA = "VRBG1"
+        VRBackglassFlasher2.imageA = "VRBG1"
+        VRBackglassFlasher2.imageB = "VRBG1"
+        VRBackglassFlasher2.amount = 75
+        VRBackglassFlasher2.opacity = 45
+        VRBackglassFlasherFaded.imageA = "VRBG1faded"
+        VRBackglassFlasherFaded.imageB = "VRBG1faded"
+        VRBackglassFlasherFaded.amount = 75
+        VRBackglassFlasherFaded.opacity = 250
+		VRBackglassFlasherBulb.amount = 30
+		VRBackglassFlasherBulb.opacity = 150
         PinCab_Cabinet.image = "Pincab_Cabinet_WinterNEW"
         PinCab_Backbox.image = "Pincab_Backbox_Winter"
         BackboxTrimLeft.visible = false
@@ -18070,6 +18279,16 @@ Sub ArtSwap()
 
     If VRCabArt = 2 then 
         VRBackglassFlasher.imageA = "VRBG2" 
+        VRBackglassFlasher2.imageA = "VRBG2"
+        VRBackglassFlasher2.amount = 35
+        VRBackglassFlasher2.opacity = 25
+        VRBackglassFlasher2.imageB = "VRBG2"
+        VRBackglassFlasherFaded.imageA = "VRBG2faded"
+        VRBackglassFlasherFaded.imageB = "VRBG2faded"
+        VRBackglassFlasherFaded.amount = 25
+        VRBackglassFlasherFaded.opacity = 25
+		VRBackglassFlasherBulb.amount = 75
+		VRBackglassFlasherBulb.opacity = 75
         PinCab_Cabinet.image = "Pincab_Cabinet_DragonNEW"
         PinCab_Backbox.image = "Pincab_Backbox_Dragon"
         BackboxTrimLeftsilver.visible = false
@@ -18084,6 +18303,16 @@ Sub ArtSwap()
 
     If VRCabArt = 3 then 
         VRBackglassFlasher.imageA = "VRBG5"
+        VRBackglassFlasher2.imageA = "VRBG5"
+        VRBackglassFlasher2.imageB = "VRBG5"
+        VRBackglassFlasher2.amount = 20
+        VRBackglassFlasher2.opacity = 25
+        VRBackglassFlasherFaded.imageA = "VRBG5faded"
+        VRBackglassFlasherFaded.imageB = "VRBG5faded"
+        VRBackglassFlasherFaded.amount = 75
+        VRBackglassFlasherFaded.opacity = 65
+		VRBackglassFlasherBulb.amount = 50
+		VRBackglassFlasherBulb.opacity = 75
         PinCab_Cabinet.image = "Pincab_Cabinet_CharsNEW"
         PinCab_Backbox.image = "Pincab_Backbox_Chars"
         BackboxTrimRight.visible = false
@@ -18093,6 +18322,16 @@ Sub ArtSwap()
 
     If VRCabArt = 4 then 
         VRBackglassFlasher.imageA = "VRBG4"
+        VRBackglassFlasher2.imageA = "VRBG4"
+        VRBackglassFlasher2.imageB = "VRBG4"
+        VRBackglassFlasher2.amount = 95
+        VRBackglassFlasher2.opacity = 25
+        VRBackglassFlasherFaded.imageA = "VRBG4faded"
+        VRBackglassFlasherFaded.imageB = "VRBG4faded"
+        VRBackglassFlasherFaded.amount = 75
+        VRBackglassFlasherFaded.opacity = 100
+		VRBackglassFlasherBulb.amount = 30
+		VRBackglassFlasherBulb.opacity = 100
         PinCab_Cabinet.image = "Pincab_Cabinet_CharsNEW"
         PinCab_Backbox.image = "Pincab_Backbox_Chars"
         LELabel.visible = false
