@@ -80,6 +80,7 @@
 ' 146 - apophis - Added ramp rolling sounds. Updated ball rolling sounds. Adjusted ball brightness. Adjusted desktop POV. Plunger tweaks.
 ' 147 - Sixtoe - Image and file optimisation, removed old unused stuff, blocker wall added under upper playfield
 ' 148 - minor bug fixes
+' 149 - Fixed a few crashes, boost intensity of shield lamps, tweak flipper strength
 
 'On the DOF website put Exxx
 '101 Left Flipper
@@ -1803,7 +1804,7 @@ Sub DynamicBSUpdate
                 objBallShadow(s).size_x = 5 
                 objBallShadow(s).size_y = 5
                 UpdateMaterial objBallShadow(s).material,1,0,0,0,0,0,AmbientBSFactor,RGB(0,0,0),0,0,False,True,0,0,0,0
-			ElseIf gBOT(s).Z > 30 Then							'The flasher follows the ball up ramps while the primitive is on the pf
+			ElseIf gBOT(s).Z > 30 And Not InRect(gBOT(s).x,gBOT(s).y,32,90,32,785,500,785,500,90 ) Then 							'The flasher follows the ball up ramps while the primitive is on the pf
 				If OnPF(s) Then BallOnPlayfieldNow False, s		'One-time update
 
 				If Not ClearSurface Then							'Don't show this shadow on plastic or wire ramps (table-wide variable, for now)
@@ -3111,7 +3112,7 @@ End Sub
 
 Sub RightSlingShot_Timer
     Dim sl,v1,v2
-    Select Case LStep
+    Select Case RStep
         Case 1: v1=true :  v2=false
         Case 2: v1=false : v2=true  : Remk.RotX = 2
         Case 3: v1=false : v2=false : Remk.RotX = -10:RightSlingShot.TimerEnabled = False
@@ -6145,7 +6146,7 @@ Class cHouse
         If bMysterySJPMode > 0 Then mylevel = bMysterySJPMode Else mylevel = BWJackpotLevel
         If bMysterySJPMode > 0 And BWJackpotValue < 1000000 Then myvalue = 1000000 Else myvalue = BWJackpotValue
 
-        DMDBlackwaterSJPScene FormatScore((myvalue*mylevel*6 + 10000000)*(PlayfieldMultiplierVal+m))
+        DMDBlackwaterSJPScene FormatScore((myvalue*mylevel*6 + 10000000)*(PlayfieldMultiplierVal+m)),mylevel
         AddScoreNoX ((myvalue*mylevel*6+10000000)*(PlayfieldMultiplierVal+m))
         If bBWMultiballActive Then BlackwaterScore = BlackwaterScore + ((myvalue*mylevel*6+10000000)*(PlayfieldMultiplierVal+m))
     End Sub
@@ -6366,6 +6367,7 @@ Class cHouse
 
             if bBattleReady and h = Lannister And bITMBActive = False Then    ' Kick off House Battle selection
                 PlayerMode = -2
+                bReadyForFlips=False
                 FreezeAllGameTimers
                 If BallsInLock < 2 And bLockIsLit Then ' Multiball not about to start, lock the ball first
                     vpmtimer.addtimer 400, "LockBall '"     ' Slight delay to give ball time to settle
@@ -6955,7 +6957,7 @@ Class cHouse
             ' Horde mode
             AddScore WHCJPValue*combo
             WHCMBScore = WHCMBScore + WHCJPValue*combo*PlayfieldMultiplierVal
-            DMDPlayHitScene "whchit","gotfx-whchit",0,"WINTER   HAS   COME","HORDE AWARD",FormatScore(WHCJPValue*combo*PlayfieldMultiplierVal),combo,8
+            DMDPlayHitScene "whchit","gotfx-whchit",0,"WINTER   HAS   COME","HORDE AWARD",FormatScore(WHCJPValue*combo*PlayfieldMultiplierVal),combo,12
             WHCJPValue = WHCJPValue + WHCJPIncr
             WHCJPIncr = WHCJPIncr + 75000
             t = True
@@ -6981,7 +6983,7 @@ Class cHouse
                 'Beat the Boss! Super Jackpot!
                 score = (WiCTotal + 30000000)*combo
                 AddScore score
-                DMDPlayHitScene "got-whcsjp","gotfx-whcsjp",1.7,"WINTER   HAS   COME","SUPER JACKPOT",FormatScore(score*PlayfieldMultiplierVal),combo,8
+                DMDPlayHitScene "got-whcsjp","gotfx-whcsjp",1.7,"WINTER   HAS   COME","SUPER JACKPOT",FormatScore(score*PlayfieldMultiplierVal),combo,12
                 ' Set back to Horde mode
                 WHCMBState = 1
                 WHCHordeTimestamp = GameTimeStamp + 300
@@ -6994,7 +6996,7 @@ Class cHouse
                 score = (7000000 + (WHCShotTimestamp(h)-GameTimeStamp)*90000 + RndNbr(40)*25000)*combo
                 AddScore score
                 WHCMBScore = WHCMBScore + score*PlayfieldMultiplierVal
-                DMDPlayHitScene "whchit","gotfx-whchit",0,"WINTER   HAS   COME","LIEUTENANT AWARD",FormatScore(score*PlayfieldMultiplierVal),combo,8
+                DMDPlayHitScene "whchit","gotfx-whchit",0,"WINTER   HAS   COME","LIEUTENANT AWARD",FormatScore(score*PlayfieldMultiplierVal),combo,12
             End If
         End If
     End Sub
@@ -7256,7 +7258,7 @@ CompletionAnimationTimes = Array(0,2,2,1.5,4,2.3,6,2)
 ModeLightPattern = Array(0,10,16,0,218,138,80,36)
 
 AryaKills = Array("","","joffrey","cercai","walder frey","tywin","the red woman","beric dondarrion","Thoros of Myr", _
-                "meryn trant","the hound", "the mountain","rorge","ilyn payne","polliver")
+                "meryn trant","the hound", "the mountain","ilyn payne","")
 
 
 ' The cBattleState class tracks the state of a single mode (battle). There is one instance of this
@@ -7450,7 +7452,7 @@ Class cBattleState
                     HouseValueIncrement = HouseValueIncrement + 750000
                     PlaySoundVol "gotfx-ramphit",VolDef/4
                     If h = Lannister or h = Stark Then 
-                        CompletedShots = CompletedShots + 1
+                        CompletedShots = CompletedShots + 1 : If CompletedShots > 13 Then CompletedShots = 13
                         If (CompletedShots = 3 And SelectedHouse <> Greyjoy) Or (SelectedHouse=Greyjoy and GreyjoyMask = 0 And CompletedShots >=3) Then
                             State = 2
                             SetModeLights
@@ -7466,7 +7468,7 @@ Class cBattleState
                                 Case 5,6,8,10,12,13,14: just1=FlexDMD_Align_TopLeft:just2 = FlexDMD_Align_BottomRight
                             End Select
                             ' Render battle hit scene. 'House,Scene #, Score, Text1, Text2, Score+Text1 text justification, text2 justification,sound
-                            DMDStarkBattleScene Stark,CompletedShots-2,HouseValue,"STARK VALUE GROWS",AryaKills(CompletedShots),just1,just2,"say-aryakill"&CompletedShots-2
+                            DMDStarkBattleScene Stark,CompletedShots-2,HouseValue,"STARK VALUE GROWS",AryaKills(CompletedShots),just1,just2,"say-aryakill"&CompletedShots-1
                         End If
                     End If
                     UpdateBattleScene
@@ -8379,6 +8381,8 @@ Sub VPObjects_Init
     For i = 1 To BumperAwards:BumperWeightTotal = BumperWeightTotal + PictoPops(i)(2): Next
     For each sl in RSling1_BL : sl.visible = 0 : Next
     For each sl in LSling1_BL : sl.visible = 0 : Next
+    For each sl in RSling2_BL : sl.visible = 0 : Next
+    For each sl in LSling2_BL : sl.visible = 0 : Next
     SetDefaultPlayfieldLights   ' Sets all playfield lights to their default colours
     vpmTimer.AddTimer 1000,"WarmUpDone : UpdateMods : PlaySoundVol ""say-whathouse"",VolCallout '"
 End Sub
@@ -9158,7 +9162,7 @@ Sub EndOfBallComplete()
     ' are there multiple players playing this game ?
     If(PlayersPlayingGame > 1)Then
         ' then move to the next player
-        ScoreScene = Empty  ' Delete the Score scene to force it to be recreated for new player
+        DMDResetScoreScene
         NextPlayer = CurrentPlayer + 1
         ' are we going from the last player back to the first
         ' (ie say from player 4 back to player 1)
@@ -9173,6 +9177,7 @@ Sub EndOfBallComplete()
     If((BallsRemaining(CurrentPlayer) <= 0)AND(BallsRemaining(NextPlayer) <= 0))Then
 
         bGameInPLay = False									' EndOfGame sets this but need to set early to disable flippers 
+        DMDBlank
 
         ' Drop the lock walls to release any locked balls
         SwordWall.collidable = False : MoveSword True
@@ -10142,7 +10147,7 @@ Function CheckLocalKeydown(ByVal keycode)
         If PlayerMode < 0 Then CheckLocalKeydown = True
         if PlayerMode = -1 Then 
             ChooseHouse(keycode)
-        ElseIf PlayerMode = -2 Then 
+        ElseIf PlayerMode = -2 And bReadyForFlips Then 
             ChooseBattle(keycode)
         End If
         ' Check for both flippers pushed
@@ -10245,6 +10250,7 @@ Sub ChooseBattle(ByVal keycode)
             if CurrentBattleChoice >= TotalBattleChoices Then CurrentBattleChoice = 0
         End If
         UpdateChooseBattle
+        ResetBallSearch
     End If
 End Sub
 
@@ -11352,6 +11358,7 @@ Sub SelectMysteryAward
     End Select
     CurrentGold = CurrentGold - MysteryAwards(MysteryVals(MysterySelected))(1)
     vpmTimer.AddTimer 500,"IronThroneKickout '"
+    DMDLocalScore
     PlayModeSong
     SetLockbarLight
 End Sub
@@ -12783,7 +12790,7 @@ End Sub
 '   - Set a timer to display the Choose Battle scene
 
 Dim BattleChoices(49)   ' Max possible number of choices
-Dim TotalBattleChoices,CurrentBattleChoice
+Dim TotalBattleChoices,CurrentBattleChoice,bReadyForFlips
 Sub StartChooseBattle
     Dim i,j,tmrval,done
     HouseBattle1 = Empty
@@ -12835,6 +12842,7 @@ Sub StartChooseBattle
         tmrBattleInstructions.Enabled = 1
     End If
     PlayModeSong
+    bReadyForFlips=true
 End Sub
 
 Sub tmrBattleInstructions_Timer
@@ -14011,7 +14019,7 @@ End Sub
 '   - at the end of the letters, scene flashes rapidly between score and all white
 '   - all lights on playfield flash.
 Dim BWSJPScene
-Sub DMDBlackwaterSJPScene(score)
+Sub DMDBlackwaterSJPScene(score,lvl)
     Dim i
     If bUseFlexDMD Then
         Set BWSJPScene = NewSceneWithVideo("bwsjp","got-blackwatersjp")
@@ -14023,15 +14031,25 @@ Sub DMDBlackwaterSJPScene(score)
             End With
         Next
         ' Add the score and white background
-        BWSJPScene.AddActor FlexDMD.NewLabel("score",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbBlack, 0),score)
+        BWSJPScene.AddActor FlexDMD.NewLabel("score1",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbBlack, 0),lvl&"X SUPER JACKPOT")
+        BWSJPScene.AddActor FlexDMD.NewLabel("score2",FlexDMD.NewFont("udmd-f7by10.fnt", vbWhite, vbBlack, 0),score)
         BWSJPScene.AddActor FlexDMD.NewImage("blank","got-blankwhite.png")
-        BWSJPScene.AddActor FlexDMD.NewLabel("scoreinv",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbBlack, 0),score)
-        With BWSJPScene.GetLabel("score")
-            .SetAlignedPosition 64,16,FlexDMD_Align_Center
+        BWSJPScene.AddActor FlexDMD.NewLabel("scoreinv1",FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbBlack, 0),lvl&"X SUPER JACKPOT")
+        BWSJPScene.AddActor FlexDMD.NewLabel("scoreinv2",FlexDMD.NewFont("udmd-f7by10.fnt", vbWhite, vbBlack, 0),score)
+        With BWSJPScene.GetLabel("score1")
+            .SetAlignedPosition 64,8,FlexDMD_Align_Center
             .Visible = 0
         End With
-        With BWSJPScene.GetLabel("scoreinv")
-            .SetAlignedPosition 64,16,FlexDMD_Align_Center
+        With BWSJPScene.GetLabel("score2")
+            .SetAlignedPosition 64,20,FlexDMD_Align_Center
+            .Visible = 0
+        End With
+        With BWSJPScene.GetLabel("scoreinv1")
+            .SetAlignedPosition 64,8,FlexDMD_Align_Center
+            .Visible = 0
+        End With
+        With BWSJPScene.GetLabel("scoreinv2")
+            .SetAlignedPosition 64,20,FlexDMD_Align_Center
             .Visible = 0
         End With
         BWSJPScene.GetImage("blank").Visible = 0
@@ -14065,7 +14083,8 @@ Sub tmrSJPScene_Timer
     ElseIf i = 13 Then ' turn off the last letter and turn on the score
         BWSJPScene.GetImage("img"&(i-1)).Visible = 0
         BWSJPScene.GetVideo("bwsjpvid").Visible = 0
-        BWSJPScene.GetLabel("score").Visible = 1
+        BWSJPScene.GetLabel("score1").Visible = 1
+        BWSJPScene.GetLabel("score2").Visible = 1
         PlaySoundVol "say-super-jackpot",VolCallout
         PlaySoundVol "gotfx-sjpahh",VolDef
         delay = 33
@@ -14073,10 +14092,12 @@ Sub tmrSJPScene_Timer
     ElseIf i < 73 Then  ' toggle inverted score with white background on and off
         delay = 50
         If (i MOD 2) = 0 Then
-            BWSJPScene.GetLabel("scoreinv").Visible = 1
+            BWSJPScene.GetLabel("scoreinv1").Visible = 1
+            BWSJPScene.GetLabel("scoreinv2").Visible = 1
             BWSJPScene.GetImage("blank").Visible = 1
         Else
-            BWSJPScene.GetLabel("scoreinv").Visible = 0
+            BWSJPScene.GetLabel("scoreinv1").Visible = 0
+            BWSJPScene.GetLabel("scoreinv2").Visible = 0
             BWSJPScene.GetImage("blank").Visible = 0
             PlayExistingSoundVol "gotfx-sjpdrum",VolDef,1
         End if
@@ -14243,6 +14264,7 @@ End Sub
 '           9 - same as 8, but text overlays video after delay, rather than replaces it. used for Castle MB Jackpots
 '           10 -3 lines of text, line1 is 3x5, line2,3 are 3x7. Text is shifted right and background image is on the left. Used for UPF castle awards
 '           11 - Same as 10, but 1 line of 6x8 text
+'           12 - 3 lines of text. Line1,2 are 3x7, line 3 is 6x8
 Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo,format)
     Dim scene,scenevid,font1,font2,font3,x,y1,y2,y3,combotxt,pri,l3vis
     Set scenevid = Nothing
@@ -14295,6 +14317,11 @@ Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo,format)
                 Set font3 = font2
                 x = 50
                 l3vis = False
+            Case 12
+                Set font1 = FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbWhite, 0)
+                Set font3 = FlexDMD.NewFont("udmd-f6by8.fnt", vbWhite, vbWhite, 0)
+                Set font2 = font1
+                l3vis = True
         End Select
 
         scene.AddActor FlexDMD.NewGroup("hitscenetext")
@@ -16254,7 +16281,7 @@ Sub InitLampsNF()
 	Lampz.Callback(6) = "DisableLighting  p23on, 50,"
 	Lampz.MassAssign(7)= li26							' control light -100h
 '	Lampz.MassAssign(7)= li26bloom						' bloom light +1 height
-	Lampz.Callback(7) = "DisableLighting  p26on, 100,"	' on primitive
+	Lampz.Callback(7) = "DisableLighting  p26on, 200,"	' on primitive
 
 	Lampz.MassAssign(8)= li29
 '	Lampz.MassAssign(8)= li29bloom
@@ -16267,22 +16294,22 @@ Sub InitLampsNF()
 	Lampz.Callback(10) = "DisableLighting  p35on, 50,"
 	Lampz.MassAssign(11)= li38
 '	Lampz.MassAssign(11)= li38bloom
-	Lampz.Callback(11) = "DisableLighting  p38on, 100,"
+	Lampz.Callback(11) = "DisableLighting  p38on, 200,"
 	Lampz.MassAssign(12)= li41
 '	Lampz.MassAssign(12)= li41bloom
-	Lampz.Callback(12) = "DisableLighting  p41on, 100,"
+	Lampz.Callback(12) = "DisableLighting  p41on, 200,"
 	Lampz.MassAssign(13)= li44
 '	Lampz.MassAssign(13)= li44bloom
-	Lampz.Callback(13) = "DisableLighting  p44on, 100,"
+	Lampz.Callback(13) = "DisableLighting  p44on, 200,"
 	Lampz.MassAssign(14)= li47
 '	Lampz.MassAssign(14)= li47bloom
-	Lampz.Callback(14) = "DisableLighting  p47on, 100,"
+	Lampz.Callback(14) = "DisableLighting  p47on, 200,"
 	Lampz.MassAssign(15)= li50
 '	Lampz.MassAssign(15)= li50bloom
-	Lampz.Callback(15) = "DisableLighting  p50on, 100,"
+	Lampz.Callback(15) = "DisableLighting  p50on, 200,"
 	Lampz.MassAssign(16)= li53
 '	Lampz.MassAssign(16)= li53bloom
-	Lampz.Callback(16) = "DisableLighting  p53on, 100,"
+	Lampz.Callback(16) = "DisableLighting  p53on, 200,"
 	Lampz.MassAssign(17)= li56
 '	Lampz.MassAssign(17)= li56bloom
 	Lampz.Callback(17) = "DisableLighting  p56on, 50,"
@@ -16303,7 +16330,7 @@ Sub InitLampsNF()
 	Lampz.Callback(22) = "DisableLighting  p74on, 50,"
 	Lampz.MassAssign(23)= li77
 '	Lampz.MassAssign(23)= li77bloom
-	Lampz.Callback(23) = "DisableLighting  p77on, 100,"
+	Lampz.Callback(23) = "DisableLighting  p77on, 200,"
 	Lampz.MassAssign(24)= li80
 '	Lampz.MassAssign(24)= li80bloom
 	Lampz.Callback(24) = "DisableLighting  p80on, 50,"
@@ -16312,7 +16339,7 @@ Sub InitLampsNF()
 	Lampz.Callback(25) = "DisableLighting  p83on, 50,"
 	Lampz.MassAssign(26)= li86
 '	Lampz.MassAssign(26)= li86bloom
-	Lampz.Callback(26) = "DisableLighting  p86on, 100,"
+	Lampz.Callback(26) = "DisableLighting  p86on, 200,"
 	Lampz.MassAssign(27)= li89
 '	Lampz.MassAssign(27)= li89bloom
 	Lampz.Callback(27) = "DisableLighting  p89on, 50,"
@@ -16325,7 +16352,7 @@ Sub InitLampsNF()
 	Lampz.Callback(29) = "DisableLighting  p95on, 50,"
 	Lampz.MassAssign(30)= li98
 '	Lampz.MassAssign(30)= li98bloom
-	Lampz.Callback(30) = "DisableLighting  p98on, 100,"
+	Lampz.Callback(30) = "DisableLighting  p98on, 200,"
 	Lampz.MassAssign(31)= li101
 '	Lampz.MassAssign(31)= li101bloom
 	Lampz.Callback(31) = "DisableLighting  p101on, 50,"
@@ -16344,7 +16371,7 @@ Sub InitLampsNF()
 
 	Lampz.MassAssign(35)= li114
 '	Lampz.MassAssign(35)= li114bloom
-	Lampz.Callback(35) = "DisableLighting  p114on, 100,"
+	Lampz.Callback(35) = "DisableLighting  p114on, 200,"
 	Lampz.MassAssign(36)= li117
 '	Lampz.MassAssign(36)= li117bloom
 	Lampz.Callback(36) = "DisableLighting  p117on, 50,"
@@ -16371,7 +16398,7 @@ Sub InitLampsNF()
 	Lampz.Callback(43) = "DisableLighting  p138on, 50,"
 	Lampz.MassAssign(44)= li141
 '	Lampz.MassAssign(44)= li141bloom
-	Lampz.Callback(44) = "DisableLighting  p141on, 100,"
+	Lampz.Callback(44) = "DisableLighting  p141on, 200,"
     Lampz.MassAssign(45)= li144
 '	Lampz.MassAssign(45)= li144bloom
 	Lampz.Callback(45) = "DisableLighting  p144on, 50,"
@@ -16386,7 +16413,7 @@ Sub InitLampsNF()
 	Lampz.Callback(48) = "DisableLighting  p153on, 50,"
 	Lampz.MassAssign(49)= li156
 '	Lampz.MassAssign(49)= li156bloom
-	Lampz.Callback(49) = "DisableLighting  p156on, 100,"
+	Lampz.Callback(49) = "DisableLighting  p156on, 200,"
     Lampz.MassAssign(50)= li159
 '	Lampz.MassAssign(50)= li159bloom
 	Lampz.Callback(50) = "DisableLighting  p159on, 50,"
@@ -16967,7 +16994,7 @@ Sub Options_Toggle(amount)
 		DynamicBallShadowsOn = 1 - DynamicBallShadowsOn
     Elseif OptPos = Opt_LUT Then
         LUTImage = LUTImage + amount
-        If LUTImage < 0 Then LUTImage = 0
+        If LUTImage < 0 Then LUTImage = 15
         LUTImage = ABS(LUTImage) MOD 16
         table1.ColorGradeImage = "LUT"&LUTImage
         SaveLUT
@@ -18006,8 +18033,8 @@ Sub MovableHelper
 
     x1 = Lemk.RotX
     x2 = Remk.RotX
-    For each f in LEMK_BL : f.RotX = x1 : Next
-    For each f in REMK_BL : f.RotX = x2 : Next
+    For each f in LEMK_BL : f.RotY = x1 : Next
+    For each f in REMK_BL : f.RotY = x2*-1 : Next
 
     ' Battering ram
     y = ram_BM_Dark_Room.TransY
@@ -18063,7 +18090,7 @@ Sub UpdateWires(sw,pushed)
         Case 83 : obj = sw83_BL
         Case 84 : obj = sw84_BL
     End Select
-    For each o in obj : o.transz = z : Next
+    For each o in obj : o.transx = z : Next
 End Sub 
 
 
@@ -18600,6 +18627,9 @@ End Sub
 '
 ' Coding
 '-------
+' - add "<n>X SUPER JACKPOT" wording to SJP award scene
+' - Make sure score doesn't show again after HighScore or Match scenes
+'
 ' √? Check timing for how long score stays on the screen at the end of a game. If you get a high score, probably want it to cycle through which scores you got before moving to Attract mode
 ' Game froze when PSD was entering his initials once
 ' √? UPF can't handle multiball and battle at the same time - needs refactoring
