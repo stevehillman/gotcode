@@ -65,6 +65,7 @@
 ' 129 - apophis - Fixed target rotations. Hooked up standup target animations. Updating target BM and LM animations at same rate. Added dynamic ball brightness code. 
 ' 130 - Sixtoe - Add VR components
 ' 131 - Add Options menu; minor bug fixes
+' 132 - Rawd - Configured, placed, tweaked and coded all the VR room components for Hybrid use
 
 'On the DOF website put Exxx
 '101 Left Flipper
@@ -135,7 +136,34 @@ Const AmbientBallShadowOn = 1		'0 = Static shadow under ball ("flasher" image, l
 									'1 = Moving ball shadow ("primitive" object, like ninuzzu's) - This is the only one that shows up on the pf when in ramps and fades when close to lights!
 									'2 = flasher image shadow, but it moves like ninuzzu's
 
+
+'***** VR Options *********
+Dim VRRoom:  VRRoom = 0         '0 - Desktop/FS   1 - Minimal Room    2 - Ultra Minimal Room
+Dim Scratches: Scratches = 1    '0 - VR Glass Scratches Off  1 - VR Glass Scratches On  
+Dim Topper: Topper = 1			'0 - VR Topper Off  1 - VR Topper On
+'**************************
+
 '/////// No User Configurable options beyond this point ////////
+
+
+'VR Room Init
+Dim Stuff ' for Hybrid Toggle
+ 
+If VRRoom = 1 Then 
+StartButtonTimer.enabled = true
+VRPlunger2.enabled = true ' starts the timer needed for VR Plunger animation
+for each Stuff in VR_Cab: Stuff.visible = true: next
+for each Stuff in VR_Room: Stuff.visible = true: next
+If Scratches = 1 then GlassImpurities.visible = true
+if Topper = 1 then EggTimer.enabled = true: RedEgg.visible = true: GreenEgg.visible = true
+End if
+
+If VRRoom = 2 Then 
+for each Stuff in VR_UltraMin: Stuff.visible = true: next
+PinCab_Rails.visible = true
+End if
+' End VR Room Init....
+
 
 Const BallSize = 50     ' 50 is the normal size used in the core.vbs, VP kicker routines uses this value divided by 2
 Const BallMass = 1      ' standard ball mass
@@ -360,11 +388,11 @@ End Function
 
 Sub Table1_Exit()
     If Not IsEmpty(FlexDMD) Then
-        If Not FlexDMD is Nothing Then
+        If Not FlexDMD is Nothing Then   
             FlexDMD.Show = False
             FlexDMD.Run = False
             FlexDMD = NULL
-        End If
+        End If                  
     End If
     If B2SOn Then Controller.Stop
 End Sub
@@ -375,6 +403,21 @@ End Sub
 
 Sub Table1_KeyDown(ByVal Keycode)
 
+'VR Specific...
+If keycode = LeftMagnaSave and VRRoom = 1 then VRCabArt =  VRCabArt + 1: ArtSwap
+
+If keycode = StartGameKey and VRRoom = 1 then 
+VR_StartButtOuter.y = VR_StartButtOuter.y - 4 
+StartButtonTimer.enabled = false
+VR_StartButtOuter.blenddisablelighting = 0 
+VR_TourneyButt.blenddisablelighting = 0
+end if
+
+If keycode = LeftFlipperKey and VRRoom = 1 then VR_FlipperLeft.x = VR_FlipperLeft.x + 5
+If keycode = RightFlipperKey and VRRoom = 1 then VR_FlipRight.x = VR_FlipRight.x - 5
+' end VR Specific
+
+
     If keycode = LeftTiltKey Then Nudge 90, 1:SoundNudgeLeft()
     If keycode = RightTiltKey Then Nudge 270, 1:SoundNudgeRight()
     If keycode = CenterTiltKey Then Nudge 0, 1:SoundNudgeCenter()
@@ -384,6 +427,7 @@ Sub Table1_KeyDown(ByVal Keycode)
 		Exit Sub
 	End If
     If keycode = LeftMagnaSave Then
+
 		If bOptionsMagna Then Options_Open() Else bOptionsMagna = True
     ElseIf keycode = RightMagnaSave Then
 		If bOptionsMagna Then 
@@ -399,8 +443,14 @@ Sub Table1_KeyDown(ByVal Keycode)
         If(Tilted = False)Then GameAddCredit
     End If
 
-    If keycode = PlungerKey Then Plunger.Pullback : SoundPlungerPull()
-
+    If keycode = PlungerKey Then 
+	Plunger.Pullback
+	SoundPlungerPull()
+	If VRroom > 0 then  'VR Specific
+		VRPlunger.Enabled = True
+		VRPlunger2.Enabled = False
+	End If
+End If
     If hsbModeActive Then
         EnterHighScoreKey(keycode)
         Exit Sub
@@ -532,11 +582,22 @@ End Sub
 
 Sub Table1_KeyUp(ByVal keycode)
 
+	'VR Specific....
+	If keycode = StartGameKey and VRRoom = 1 then VR_StartButtOuter.y = VR_StartButtOuter.y + 4
+	If keycode = LeftFlipperKey and VRRoom = 1 then VR_FlipperLeft.x = VR_FlipperLeft.x - 5
+	If keycode = RightFlipperKey and VRRoom = 1 then VR_FlipRight.x = VR_FlipRight.x + 5
+	' end VR Specific
+
     If keycode = LeftMagnaSave And Not bInOptions Then bOptionsMagna = False
     If keycode = RightMagnaSave And Not bInOptions Then bOptionsMagna = False
 
     If keycode = PlungerKey Then 
-        Plunger.Fire
+        Plunger.Fire	
+		If VRroom > 0 then  'VR Specific
+		VRPlunger.Enabled = False
+		VRPlunger2.Enabled = True
+		VR_Plunger.Y = -117.5515
+		End if
         If bBallInPlungerLane Then SoundPlungerReleaseBall() Else SoundPlungerReleaseNoBall()
     End If
 
@@ -8125,6 +8186,7 @@ Sub ResetForNewGame()
     tmrGame.Enabled = 1
 
     vpmtimer.addtimer 1500, "FirstBall '"
+
 End Sub
 
 ' This is used to delay the start of a game to allow any attract sequence to
@@ -8949,6 +9011,8 @@ Sub EndOfGame()
 
     vpmTimer.AddTimer 3000,"StartAttractMode '"
 
+	if VRRoom = 1 then VR_StartButtOuter.blenddisablelighting = 0.8: StartButtonTimer.enabled = true  ' start the Front button temp attract lighting
+
 End Sub
 
 Sub PlayYouMatched
@@ -9284,8 +9348,7 @@ End Sub
 
 ' Known lockbar light states:
 ' During regular play
-'  - Lit solid for Baratheon, Targaryen if not yet used this ball
-'  - Lit solid for Tyrell if there's at least one shot lit for Combos, or a playfield multiplier
+'  - Lit solid for Baratheon, Tyrell, Targaryen if not yet used this ball
 '  - Lit solid for Lannister if sufficient gold
 ' During multiball
 '  - Also lit (flashing or solid?) for Martell if not yet used
@@ -9296,47 +9359,51 @@ End Sub
 ' During Mystery
 '  - Flashes white or yellow?
 ' During Battle Selection
-'  - Flashes red 
-' After first ball, when ball is in the plunger lane
-'  - Flashes white
+'  - Flashes red (or primary house color??)
 
 Sub SetLockbarLight
     Dim st,col,ab,b
     st = 0 : col = white : ab=0' Defaults
     If PlayerMode = -1 Then 
-        st = 2 : col = HouseColor(SelectedHouse) ' TODO: Check this
-    ElseIf bBallInPlungerLane Then
-        st = 2 : col = white : dofnum = 151
+        st = 2
     Elseif PlayerMode = 2 Then st = 0
-    ElseIf bMysteryAwardActive Then
-        st = 2 : col = yellow : dofnum = 152
-    Elseif PlayerMode = -2 Then
-        st = 2 : col = red : dofnum = 153
-        ' TODO: If stacked battle is chosen, button actually cycles between off/red/off/second-house-color. Can that even be done with DOF?
     Else
         ab = House(CurrentPlayer).HasActionAbility
         If ab <> 0 Then col = HouseColor(ab) : st = 1 : Else st = 0
     End if
 
+    If bMysteryAwardActive Then
+        st = 2 : col = white
+    ElseIf PlayerMode = -2 Then 
+        st = 2 : col = red ' or the chosen house?
+	End If
+
     'DOF for Lockbar button light
     If bHaveLockbarButton Then
         For each b in firebutton_base_BL : b.visible = false : Next
         For each b in firebutton_BL : b.visible = false : Next
-    Else
-        SetLightColor li230,col,st
     End If
     Dim dofnum
+    if bHaveLockbarButton = False Then SetLightColor li230,col,st
     Select Case st
         Case 0
             For dofnum = 141 to 147 : DOF dofnum,DOFOff : Next
         Case 1
             DOF 140 + ab, DOFOn
         Case 2
-            For b = 141 to 147 : DOF b,DOFOff : Next
-            For b = 151 to 157
-                If b = dofnum then DOF b,DOFon else DOF b,DOFoff
-            Next
+            If bMysteryAwardActive Then dofnum = 142 Else dofnum = 141
+            DOF dofnum,DOFOn
     End Select
+End Sub
+
+Sub LockbarFlasher_Timer
+    If me.UserValue = 0 Then
+        me.UserValue = 1
+        me.Visible = 1
+    Else
+        me.UserValue = 0
+        me.Visible = 0
+    End If
 End Sub
 
 
@@ -17710,6 +17777,58 @@ Sub FrameTimer_Timer
 End Sub
 
 
+
+'******************* VR Stuff (Rawd) **********************
+
+'VR Plunger...
+Sub VRPlunger_Timer
+  If VR_Plunger.Y < -17.5515 then
+      VR_Plunger.Y = VR_Plunger.Y + 4
+  End If
+End Sub
+
+Sub VRPlunger2_Timer
+	VR_Plunger.Y = -117.5515 + (5* Plunger.Position) -20
+End Sub
+
+'VR Start/Tournament button Atrract Lighting code...
+VR_StartButtOuter.blenddisablelighting = 0.8
+Sub StartButtonTimer_Timer  ' This is just here to test the start and tourney button lights for VR
+If VR_StartButtOuter.blenddisablelighting = 0.8 Then
+VR_StartButtOuter.blenddisablelighting = 0: VR_TourneyButt.blenddisablelighting = 0.8
+Else
+VR_StartButtOuter.blenddisablelighting = 0.8: VR_TourneyButt.blenddisablelighting = 0
+end if
+End Sub
+
+' Cab art swap stuff.....
+Dim VRCabArt: VRCabArt = 0
+
+Sub ArtSwap()
+If VRCabArt = 4 then VRCabArt = 1
+If VRCabArt = 1 then VRBackglassFlasher.imageA = "VRBG4": PinCab_Cabinet.image = "Pincab_Cabinet_DragonNEW":PinCab_Backbox.image = "Pincab_Backbox_Dragon"
+If VRCabArt = 2 then VRBackglassFlasher.imageA = "VRBG2": PinCab_Cabinet.image = "Pincab_Cabinet_CharsNEW"::PinCab_Backbox.image = "Pincab_Backbox_Chars"
+If VRCabArt = 3 then VRBackglassFlasher.imageA = "VRBG1": PinCab_Cabinet.image = "Pincab_Cabinet_WinterNEW"::PinCab_Backbox.image = "Pincab_Backbox_Winter"
+End Sub
+
+' VR Topper....
+Dim EggSpeed
+EggSpeed = true
+GreenEgg.blenddisablelighting = 0
+RedEgg.blenddisablelighting = 4
+
+Sub EggTimer_timer
+if EggSpeed = True then GreenEgg.blenddisablelighting = GreenEgg.blenddisablelighting + 0.03
+if EggSpeed = False then GreenEgg.blenddisablelighting = GreenEgg.blenddisablelighting - 0.03
+if EggSpeed = True then RedEgg.blenddisablelighting = RedEgg.blenddisablelighting - 0.03
+if EggSpeed = False then RedEgg.blenddisablelighting = RedEgg.blenddisablelighting + 0.03
+if GreenEgg.blenddisablelighting > 4 then EggSpeed = false
+if GreenEgg.blenddisablelighting < 0 then EggSpeed = true
+end Sub
+
+' End VR stuff ***************************************************************************************
+
+
 '============================
 ' Outstanding Issues/To-Dos
 '============================
@@ -17721,7 +17840,7 @@ End Sub
 '
 ' Coding
 '-------
-' √? Need to implement Options FlexDMD table overlay
+' Need to implement Options FlexDMD table overlay
 ' √? Check timing for how long score stays on the screen at the end of a game. If you get a high score, probably want it to cycle through which scores you got before moving to Attract mode
 ' √? Match sometimes stays on screen for too little time - maybe when getting a high score?
 '  - How it should go:
@@ -17740,7 +17859,7 @@ End Sub
 ' √? UPF can't handle multiball and battle at the same time - needs refactoring
 ' √? Need to implement timer to reset Wildfire targets to unlit after 2 BWMBs completed. Timer needs to be cleared at end-of-ball
 ' √? fix font-centering of 10-char highscore usernames
-' Add the "Action Button" animation to "Choose your house" - should play every 30 seconds or so
+'
 '
 ' - Need to allow for Blackwater to be stacked with WHC - it CAN happen.
 
