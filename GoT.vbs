@@ -121,7 +121,7 @@
 Option Explicit
 Randomize
 
-Const TableVersion = "0.148"
+Const TableVersion = "1.0.1"
 
 '***********TABLE VOLUME LEVELS ********* 
 ' [Value is from 0 to 1 where 1 is full volume. 
@@ -539,7 +539,7 @@ Sub Table1_KeyDown(ByVal Keycode)
         If CheckLocalKeydown(keycode) Then Exit Sub
 
         If keycode = StartGameKey Then
-            If LFPress=1 And bBallInPlungerLane and (DMDStd(kDMDStd_LeftStartReset)=1 Or (DMDStd(kDMDStd_LeftStartReset)=2 And DMDStd(kDMDStd_FreePlay) = True)) Then  ' Quick Restart
+            If LFPress=1 And bBallInPlungerLane and (DMDStd(kDMDStd_LeftStartReset)=1 Or (DMDStd(kDMDStd_LeftStartReset)=2 And DMDStd(kDMDStd_FreePlay))) Then  ' Quick Restart
                 Dim b
                 PlungerIM.AutoFire
                 For each b in GetBalls : b.DestroyBall : next
@@ -556,7 +556,7 @@ Sub Table1_KeyDown(ByVal Keycode)
             End If
             If((PlayersPlayingGame <MaxPlayers)AND(bOnTheFirstBall = True))Then
 
-                If(DMDStd(kDMDStd_FreePlay) = True)Then
+                If(DMDStd(kDMDStd_FreePlay))Then
                     PlayersPlayingGame = PlayersPlayingGame + 1
                     TotalGamesPlayed = TotalGamesPlayed + 1
                     DMD "_", CL(1, PlayersPlayingGame & " PLAYERS"), "", eNone, eBlink, eNone, 1000, False, ""
@@ -4279,11 +4279,7 @@ Sub StartServiceMenu(keycode)
 			MasterVol=MasterVol+1
 		End if
 
-		'VolBGVideo = cVolBGVideo * (MasterVol/100.0)
-		VolBGMusic = cVolBGMusic * (MasterVol/100.0)
-		VolDef 	 = cVolDef * (MasterVol/100.0)
-		VolSfx 	 = cVolSfx * (MasterVol/100.0)
-        VolCallout = cVolCallout * (MasterVol/100.0)
+		SvcSetVolume
 
 		if bServiceVol=False then
 			bServiceVol=True 
@@ -4302,9 +4298,18 @@ Sub StartServiceMenu(keycode)
 	End if 
 End Sub
 
+Sub SvcSetVolume
+    'VolBGVideo = cVolBGVideo * (MasterVol/100.0)
+    VolBGMusic = cVolBGMusic * (MasterVol/100.0)
+    VolDef 	 = cVolDef * (MasterVol/100.0)
+    VolSfx 	 = cVolSfx * (MasterVol/100.0)
+    VolCallout = cVolCallout * (MasterVol/100.0)
+End Sub
+
 Sub tmrService_Timer()
 	tmrService.Enabled = False 	
 
+    SaveValue TableName,"MasterVol",MasterVol
 	bServiceVol=False 
 	bAttractMode=serviceSaveAttract
 	if bAttractMode then 
@@ -4504,6 +4509,7 @@ Sub DMDSettingsInit()
         End if
     Next
   	x = LoadValue(TableName, "dmdCriticalChanged"):	If(x<>"") Then dmdCriticalChanged=True
+    x = LoadValue(TableName,"MasterVol") : If x<>"" Then MasterVol=CInt(x) : SvcSetVolume
 
     BallsPerGame = DMDStd(kDMDStd_BallsPerGame)
 
@@ -4838,7 +4844,6 @@ Sub ChangeGi(col) 'changes the gi color
 End Sub
 
 Sub GiOn
-    DOF 118, DOFOn
     Dim bulb
     For each bulb in aGiLights
         bulb.State = 1
@@ -4851,7 +4856,6 @@ Sub GiOn
 End Sub
 
 Sub GiOff
-    DOF 118, DOFOff
     Dim bulb
     For each bulb in aGiLights
         bulb.State = 0
@@ -9026,7 +9030,6 @@ Sub EndOfBall()
     AwardPoints = 0
     TotalBonus = 0
     ' the first ball has been lost. From this point on no new players can join in
-    bOnTheFirstBall = False
 
     If bHotkMBReady Then ResetHotkLights
 	
@@ -9159,9 +9162,11 @@ Sub EndOfBallComplete()
         ' (ie say from player 4 back to player 1)
         If(NextPlayer > PlayersPlayingGame)Then
             NextPlayer = 1
+            bOnTheFirstBall = False
         End If
     Else
         NextPlayer = CurrentPlayer
+        bOnTheFirstBall = False
     End If
 
     ' is it the end of the game ? (all balls been lost for all players)
@@ -9217,6 +9222,7 @@ Sub EndOfBallComplete()
     Else
         ' set the next player
         CurrentPlayer = NextPlayer
+        DMDResetScoreScene
 		'UpdateNumberPlayers				' Update the Score Sizes
         ' make sure the correct display is up to date
         AddScore 0
@@ -12131,7 +12137,7 @@ Sub tmrMoveSword_Timer
         X = tmp*10
         Y = tmp*-8.33
         Z = tmp*-1.66
-        If Y < -15 And RealBallsInLock > 0 Then ' Sword has dropped far enough to hit remaining locked ball(s)
+        If Y > 20 And RealBallsInLock > 0 Then ' Sword has dropped far enough to hit remaining locked ball(s)
             ' Find the ball that's sitting against the sword wall
             Dim b,gBOT : gBOT = getballs
             For each b in gBOT
@@ -15377,7 +15383,7 @@ Sub DMDLocalScore
             For i = 1 to 5
                 With ScoreScene.GetLabel("combo"&i)
                     If t And i=1 Then
-                        .Text = "TIMERS FROZEN: " & Int(TimerTimestamp(tmrTargaryenFreeze)-GameTimeStamp)
+                        .Text = "TIMERS FROZEN: " & Int((TimerTimestamp(tmrTargaryenFreeze)-GameTimeStamp)/10)
                     Else 
                         .Text = (ComboMultiplier(i)*PlayfieldMultiplierVal)&"X"
                     End If
@@ -16036,15 +16042,15 @@ LampTimer3.Interval = 5
 LampTimer.Enabled=1
 Sub LampTimer3_Timer()
     ' Only do the Flashers
-    dim idx : for idx = 70 to 78
+    dim idx : for idx = 70 to 79
         if lampz.IsLight(idx) then
             if IsArray(Lampz.obj(idx)) then
                 dim tmp : tmp = Lampz.obj(idx)
                 Lampz.state(idx) = tmp(0).GetInPlayStateBool
-                if idx = 77 or idx = 78 then Lampz.SetColor(idx) = tmp(0).colorfull
+                if idx > 76 then Lampz.SetColor(idx) = tmp(0).colorfull
             Else
                 Lampz.state(idx) = Lampz.obj(idx).GetInPlayStateBool
-                if idx = 77 or idx = 78 then Lampz.SetColor(idx) = Lampz.obj(idx).colorfull
+                if idx > 76 then Lampz.SetColor(idx) = Lampz.obj(idx).colorfull
             end if
         end if
     Next
@@ -17049,15 +17055,15 @@ End Sub
 Sub UpdateMods
 	Dim y, enabled,nenabled
 
-    enabled = (CabinetMode And Not bHaveLockbarButton)
-    nenabled = 1-abs(enabled)
+    if (CabinetMode <> 0  And bHaveLockbarButton = 0) then enabled=1 else enabled=0
+    nenabled = 1-enabled
     For each y in ApronFButton_BL : y.visible=abs(enabled) : Next
     For each y in fb_base_BL : y.visible=abs(enabled) : Next
     For each y in LockdownButton_BL : y.visible = nenabled : Next
     For each y in fl_base_BL : y.visible = nenabled : Next
 	
-    enabled = Not CabinetMode
-    SideRailMapLeft.visible = abs(enabled) : SideRailMapRight.visible = abs(enabled)
+    if CabinetMode=0 then enabled=1 else enabled=0
+    SideRailMapLeft.visible = enabled : SideRailMapRight.visible = enabled
 
     Select Case LUTImage
         Case 14: FlexDMD.Color = RGB(16,255,16)
