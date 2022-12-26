@@ -67,6 +67,10 @@
 ' 131 - Add Options menu; minor bug fixes
 ' 132 - Rawd - Configured, placed, tweaked and coded all the VR room components for Hybrid use
 ' 133 - Finish lockbar button lamp logic; bug fixes
+' 134 - tomate - new Blender render
+' 135 - Merge blender changes into script; wire up apron/lockbar button lights; bug fixes
+' 136 - tomate - new Blender render
+' 137 - Merge blender changes in; bug fixes
 
 'On the DOF website put Exxx
 '101 Left Flipper
@@ -104,7 +108,7 @@
 Option Explicit
 Randomize
 
-Const TableVersion = "0.130"
+Const TableVersion = "0.137"
 
 Const bDebug = False
 
@@ -410,20 +414,21 @@ End Sub
 
 Sub Table1_KeyDown(ByVal Keycode)
 
-'VR Specific...
-If keycode = LeftMagnaSave and VRRoom = 1 then VRCabArt =  VRCabArt + 1: ArtSwap
+    'VR Specific...
+    If keycode = LeftMagnaSave and VRRoom = 1 then VRCabArt =  VRCabArt + 1: ArtSwap
 
-If keycode = StartGameKey and VRRoom = 1 then 
-VR_StartButtOuter.y = VR_StartButtOuter.y - 4 
-StartButtonTimer.enabled = false
-VR_StartButtOuter.blenddisablelighting = 0 
-VR_TourneyButt.blenddisablelighting = 0
-end if
+    If keycode = StartGameKey and VRRoom = 1 then 
+        VR_StartButtOuter.y = VR_StartButtOuter.y - 4 
+        StartButtonTimer.enabled = false
+        VR_StartButtOuter.blenddisablelighting = 0 
+        VR_TourneyButt.blenddisablelighting = 0
+    end if
 
-If keycode = LeftFlipperKey and VRRoom = 1 then VR_FlipperLeft.x = VR_FlipperLeft.x + 5
-If keycode = RightFlipperKey and VRRoom = 1 then VR_FlipRight.x = VR_FlipRight.x - 5
-' end VR Specific
+    If keycode = LeftFlipperKey and VRRoom = 1 then VR_FlipperLeft.x = VR_FlipperLeft.x + 5
+    If keycode = RightFlipperKey and VRRoom = 1 then VR_FlipRight.x = VR_FlipRight.x - 5
+    ' end VR Specific
 
+    if bDebug and keycode = LeftMagnaSave and bGameInPlay Then Score(CurrentPlayer) = HighScore(4)+100 : CheckHighscore
 
     If keycode = LeftTiltKey Then Nudge 90, 1:SoundNudgeLeft()
     If keycode = RightTiltKey Then Nudge 270, 1:SoundNudgeRight()
@@ -433,12 +438,13 @@ If keycode = RightFlipperKey and VRRoom = 1 then VR_FlipRight.x = VR_FlipRight.x
 		Options_KeyDown keycode
 		Exit Sub
 	End If
-    If keycode = LeftMagnaSave Then
 
+    If keycode = LeftMagnaSave Then
 		If bOptionsMagna Then Options_Open() Else bOptionsMagna = True
     ElseIf keycode = RightMagnaSave Then
 		If bOptionsMagna Then 
             Options_Open() 
+            Exit Sub
         Else 
             If Not bGameInPlay Then bOptionsMagna = True
         End if
@@ -557,7 +563,7 @@ If keycode = RightFlipperKey and VRRoom = 1 then VR_FlipRight.x = VR_FlipRight.x
         End If
     Else ' If (GameInPlay)
 
-        If keycode = StartGameKey Then
+        If keycode = StartGameKey or keycode = RightMagnaSave or keycode = LockBarKey Then
             If(DMDStd(kDMDStd_FreePlay) = True)Then
                 If(BallsOnPlayfield = 0)Then
                     ResetForNewGame()
@@ -2821,8 +2827,6 @@ Sub TargetBounce_Hit(idx)
 End Sub
 
 
-
-
 ' Slingshots has been hit
 
 Dim LStep, RStep
@@ -2833,7 +2837,7 @@ Sub LeftSlingShot_Slingshot
     'PlaySoundAt SoundFXDOF("CrispySlingLeft", 103, DOFPulse, DOFContactors), Lemk
     RandomSoundSlingshotLeft Lemk
     DOF 103, DOFPulse
-    LeftSling4.Visible = 1:LeftSling1.Visible = 0
+    Dim sl : For each sl in LSling2_BL : sl.visible = 1 : Next
     Lemk.RotX = 26
     LStep = 0
     LeftSlingShot.TimerEnabled = True
@@ -2849,10 +2853,14 @@ Sub LeftSlingShot_Slingshot
 End Sub
 
 Sub LeftSlingShot_Timer
+    Dim sl
     Select Case LStep
-        Case 1:LeftSLing4.Visible = 0:LeftSLing3.Visible = 1:Lemk.RotX = 14
-        Case 2:LeftSLing3.Visible = 0:LeftSLing2.Visible = 1:Lemk.RotX = 2
-        Case 3:LeftSLing2.Visible = 0:LeftSling1.Visible = 1:Lemk.RotX = -10:LeftSlingShot.TimerEnabled = False
+        Case 1
+            For each sl in LSling2_BL : sl.visible = 0 : Next
+            For each sl in LSling1_BL : sl.visible = 1 : Next
+        Case 2
+            For each sl in LSling1_BL : sl.visible = 1 : Next
+            Lemk.RotX = -10:LeftSlingShot.TimerEnabled = False
     End Select
     LStep = LStep + 1
 End Sub
@@ -2863,7 +2871,7 @@ Sub RightSlingShot_Slingshot
     'PlaySoundAt SoundFXDOF("CrispySlingRight", 104, DOFPulse, DOFContactors),Remk
     RandomSoundSlingshotRight Remk
     DOF 104,DOFPulse
-    RightSling4.Visible = 1:RightSling1.Visible = 0
+    Dim sl : For each sl in RSling2_BL : sl.visible = 1 : Next
     Remk.RotX = 26
     RStep = 0
     RightSlingShot.TimerEnabled = True
@@ -2879,10 +2887,14 @@ Sub RightSlingShot_Slingshot
 End Sub
 
 Sub RightSlingShot_Timer
+    Dim sl
     Select Case RStep
-        Case 1:RightSLing4.Visible = 0:RightSLing3.Visible = 1:Remk.RotX = 14:
-        Case 2:RightSLing3.Visible = 0:RightSLing2.Visible = 1:Remk.RotX = 2:
-        Case 3:RightSLing2.Visible = 0:RightSLing1.Visible = 1:Remk.RotX = -10:RightSlingShot.TimerEnabled = False
+        Case 1
+            For each sl in RSling2_BL : sl.visible = 0 : Next
+            For each sl in RSling1_BL : sl.visible = 1 : Next
+        Case 2
+            For each sl in RSling1_BL : sl.visible = 1 : Next
+            Lemk.RotX = -10:RightSlingShot.TimerEnabled = False
     End Select
     RStep = RStep + 1
 End Sub
@@ -3047,7 +3059,7 @@ Sub EnterHighScoreKey(keycode)
         HighScoreDisplayNameNow()
     End If
 
-    If keycode = PlungerKey OR keycode = StartGameKey Then
+    If keycode = PlungerKey OR keycode = StartGameKey Or keycode = RightMagnaSave Or keycode = LockBarKey Then
         if(mid(hsValidLetters, hsCurrentLetter, 1) <> "<")then
             'playsound "fx_Enter"
             'Table-specific
@@ -4026,6 +4038,7 @@ Sub StartServiceMenu(keycode)
 		VolBGMusic = cVolBGMusic * (MasterVol/100.0)
 		VolDef 	 = cVolDef * (MasterVol/100.0)
 		VolSfx 	 = cVolSfx * (MasterVol/100.0)
+        VolCallout = cVolCallout * (MasterVol/100.0)
 
 		if bServiceVol=False then
 			bServiceVol=True 
@@ -9407,6 +9420,8 @@ Sub SetLockbarLight
             col = House(CurrentPlayer).HasActionAbility
             If col <> 0 Then st = 1 Else st = 0
         End if
+    Else
+        If (DMDStd(kDMDStd_FreePlay) = True Or Credits > 0) Then st = 2 : col = Baratheon 
     End if
 
     ' Set the light state
@@ -9417,7 +9432,11 @@ Sub SetLockbarLight
     End if
     if st < 2 Then
         li230.TimerEnabled = False
-        SetLightColor li230,HouseColor(col),st
+        if Cabinetmode And Not bHaveLockbarButton Then
+            SetLightColor li231,HouseColor(col),st
+        Else
+            SetLightColor li230,HouseColor(col),st
+        End If
     ElseIf st = 2 Then
         li230States(0) = 2 : li230States(1) = 0 : li230States(2) = col
     End If
@@ -9436,10 +9455,15 @@ Sub li230_Timer
         For i = 141 to 147 : DOF i,DOFOff : Next
     End if
     if li230States(tmp) > 0 then 
-        SetLightColor li230,HouseColor(li230States(tmp)),1
+        if Cabinetmode And Not bHaveLockbarButton Then
+            SetLightColor li231,HouseColor(li230States(tmp)),1
+        Else
+            SetLightColor li230,HouseColor(li230States(tmp)),1
+        End If
         if bHaveLockbarButton Then DOF 140+li230States(tmp),DOFOn
     Else 
         SetLightColor li230,white,0
+        SetLightColor li231,white,0
     End if
     me.UserValue = tmp
     me.TimerInterval = 100
@@ -15137,8 +15161,8 @@ Sub GameDoDMDHighScoreScene(scoremask)
         End If
     Next
     DMDFlush
-    DMDEnqueueScene scene,0,2000*scenenum,2000*scenenum,4000,""
-    vpmTimer.AddTimer 2000*scenenum-100,"StopSound ""got-track-hstd"" : tmrDMDUpdate.Enabled = True : EndOfBallComplete() '"
+    DMDDisplayScene scene
+    vpmTimer.AddTimer 2000+2000*scenenum-100,"StopSound ""got-track-hstd"" : tmrDMDUpdate.Enabled = True : EndOfBallComplete() '"
 End Sub
 
 
@@ -15556,7 +15580,8 @@ Sub STHit(switch)
 	STArray(i)(3) =  STCheckHit(Activeball,STArray(i)(0))
 
 	If STArray(i)(3) <> 0 Then
-		DTBallPhysics Activeball, STArray(i)(0).orientation, STMass
+        ' The line below slows down the ball, the same as a drop target does, but standup targets don't behave that way
+		'DTBallPhysics Activeball, STArray(i)(0).orientation, STMass
 	End If
 	DoSTAnim
 End Sub
@@ -16154,6 +16179,8 @@ Sub InitLampsNF()
 
     ' Lockbar Button Light
     Lampz.MassAssign(78)= li230
+    ' Apron button light
+    Lampz.MassAssign(79)= li231
 
     ' GI lighting
     Lampz.MassAssign(80)= gi010
@@ -16716,14 +16743,17 @@ Sub Options_Load
 End Sub
 
 Sub UpdateMods
-	Dim y, enabled
+	Dim y, enabled,nenabled
 
     enabled = (CabinetMode And Not bHaveLockbarButton)
-    For each y in ApronFButton_BL : y.visible=enabled : Next
-    For each y in firebutton_base_BL : y.visible=enabled : Next
+    nenabled = 1-abs(enabled)
+    For each y in ApronFButton_BL : y.visible=abs(enabled) : Next
+    For each y in firebutton_base_BL : y.visible=abs(enabled) : Next
+    For each y in LockdownButton_BL : y.visible = nenabled : Next
+    For each y in firebutton_base_001_BL : y.visible = nenabled : Next
 	
     enabled = Not CabinetMode
-    For each y in PinCab_Rails_002_BL : y.visible=enabled : Next
+    For each y in PinCab_Rails_002_BL : y.visible=abs(enabled) : Next
 	
     ' Not Implemented
 	' If OutPostMod = 0 Then ' Easy
@@ -16868,9 +16898,9 @@ End Sub
 ' - _LM suffixed arrays contains the lightmaps
 ' - _BM suffixed arrays contains the bakemap
 ' - _BL suffixed arrays contains both the bakemap & the lightmaps
-Dim ApronFButton_LM: ApronFButton_LM=Array(FireButton_LM_GI1, FireButton_LM_Inserts_LightFire, FireButton_LM_Inserts_li59, FireButton_LM_Lit_Room) ' VLM.Array;LM;ApronFButton
+Dim ApronFButton_LM: ApronFButton_LM=Array(FireButton_LM_GI1, FireButton_LM_Inserts_LightApro, FireButton_LM_Inserts_li59, FireButton_LM_Lit_Room) ' VLM.Array;LM;ApronFButton
 Dim ApronFButton_BM: ApronFButton_BM=Array(FireButton_BM_Dark_Room) ' VLM.Array;BM;ApronFButton
-Dim ApronFButton_BL: ApronFButton_BL=Array(FireButton_BM_Dark_Room, FireButton_LM_GI1, FireButton_LM_Inserts_LightFire, FireButton_LM_Inserts_li59, FireButton_LM_Lit_Room) ' VLM.Array;BL;ApronFButton
+Dim ApronFButton_BL: ApronFButton_BL=Array(FireButton_BM_Dark_Room, FireButton_LM_GI1, FireButton_LM_Inserts_LightApro, FireButton_LM_Inserts_li59, FireButton_LM_Lit_Room) ' VLM.Array;BL;ApronFButton
 Dim Bumper_Ring_LM: Bumper_Ring_LM=Array(Bumper_Ring_LM_Flashers_f236, Bumper_Ring_LM_Flashers_f237, Bumper_Ring_LM_Flashers_f243, Bumper_Ring_LM_Flashers_f245, Bumper_Ring_LM_GI2, Bumper_Ring_LM_Inserts_li168, Bumper_Ring_LM_Inserts_li174, Bumper_Ring_LM_Lit_Room) ' VLM.Array;LM;Bumper_Ring
 Dim Bumper_Ring_BM: Bumper_Ring_BM=Array(Bumper_Ring_BM_Dark_Room) ' VLM.Array;BM;Bumper_Ring
 Dim Bumper_Ring_BL: Bumper_Ring_BL=Array(Bumper_Ring_BM_Dark_Room, Bumper_Ring_LM_Flashers_f236, Bumper_Ring_LM_Flashers_f237, Bumper_Ring_LM_Flashers_f243, Bumper_Ring_LM_Flashers_f245, Bumper_Ring_LM_GI2, Bumper_Ring_LM_Inserts_li168, Bumper_Ring_LM_Inserts_li174, Bumper_Ring_LM_Lit_Room) ' VLM.Array;BL;Bumper_Ring
@@ -16880,48 +16910,51 @@ Dim Bumper_Ring_001_BL: Bumper_Ring_001_BL=Array(Bumper_Ring_001_BM_Dark_Room, B
 Dim Bumper_Ring_002_LM: Bumper_Ring_002_LM=Array(Bumper_Ring_002_LM_Flashers_f23, Bumper_Ring_002_LM_Flashers_f23, Bumper_Ring_002_LM_Flashers_f24, Bumper_Ring_002_LM_GI2, Bumper_Ring_002_LM_Inserts_li16, Bumper_Ring_002_LM_Inserts_li17, Bumper_Ring_002_LM_Inserts_li17, Bumper_Ring_002_LM_Lit_Room) ' VLM.Array;LM;Bumper_Ring_002
 Dim Bumper_Ring_002_BM: Bumper_Ring_002_BM=Array(Bumper_Ring_002_BM_Dark_Room) ' VLM.Array;BM;Bumper_Ring_002
 Dim Bumper_Ring_002_BL: Bumper_Ring_002_BL=Array(Bumper_Ring_002_BM_Dark_Room, Bumper_Ring_002_LM_Flashers_f23, Bumper_Ring_002_LM_Flashers_f23, Bumper_Ring_002_LM_Flashers_f24, Bumper_Ring_002_LM_GI2, Bumper_Ring_002_LM_Inserts_li16, Bumper_Ring_002_LM_Inserts_li17, Bumper_Ring_002_LM_Inserts_li17, Bumper_Ring_002_LM_Lit_Room) ' VLM.Array;BL;Bumper_Ring_002
-Dim Gates_001_LM: Gates_001_LM=Array(Gates_001_LM_Flashers_f243, Gates_001_LM_Flashers_f245, Gates_001_LM_GI2, Gates_001_LM_Lit_Room) ' VLM.Array;LM;Gates_001
+Dim Gates_001_LM: Gates_001_LM=Array(Gates_001_LM_Flashers_f243, Gates_001_LM_Flashers_f245, Gates_001_LM_GI2, Gates_001_LM_Lit_Room, Gates_001_LM_Upper_GI) ' VLM.Array;LM;Gates_001
 Dim Gates_001_BM: Gates_001_BM=Array(Gates_001_BM_Dark_Room) ' VLM.Array;BM;Gates_001
-Dim Gates_001_BL: Gates_001_BL=Array(Gates_001_BM_Dark_Room, Gates_001_LM_Flashers_f243, Gates_001_LM_Flashers_f245, Gates_001_LM_GI2, Gates_001_LM_Lit_Room) ' VLM.Array;BL;Gates_001
+Dim Gates_001_BL: Gates_001_BL=Array(Gates_001_BM_Dark_Room, Gates_001_LM_Flashers_f243, Gates_001_LM_Flashers_f245, Gates_001_LM_GI2, Gates_001_LM_Lit_Room, Gates_001_LM_Upper_GI) ' VLM.Array;BL;Gates_001
 Dim LEMK_LM: LEMK_LM=Array(LEMK_LM_GI1, LEMK_LM_Lit_Room) ' VLM.Array;LM;LEMK
 Dim LEMK_BM: LEMK_BM=Array(LEMK_BM_Dark_Room) ' VLM.Array;BM;LEMK
 Dim LEMK_BL: LEMK_BL=Array(LEMK_BM_Dark_Room, LEMK_LM_GI1, LEMK_LM_Lit_Room) ' VLM.Array;BL;LEMK
 Dim LFlogo_001_LM: LFlogo_001_LM=Array(LFlogo_001_LM_Flashers_f242, LFlogo_001_LM_Inserts_li198, LFlogo_001_LM_Inserts_li201, LFlogo_001_LM_Inserts_li204, LFlogo_001_LM_Inserts_li207, LFlogo_001_LM_Inserts_li210, LFlogo_001_LM_Inserts_li213, LFlogo_001_LM_Inserts_li216, LFlogo_001_LM_Lit_Room, LFlogo_001_LM_Upper_GI) ' VLM.Array;LM;LFlogo_001
 Dim LFlogo_001_BM: LFlogo_001_BM=Array(LFlogo_001_BM_Dark_Room) ' VLM.Array;BM;LFlogo_001
 Dim LFlogo_001_BL: LFlogo_001_BL=Array(LFlogo_001_BM_Dark_Room, LFlogo_001_LM_Flashers_f242, LFlogo_001_LM_Inserts_li198, LFlogo_001_LM_Inserts_li201, LFlogo_001_LM_Inserts_li204, LFlogo_001_LM_Inserts_li207, LFlogo_001_LM_Inserts_li210, LFlogo_001_LM_Inserts_li213, LFlogo_001_LM_Inserts_li216, LFlogo_001_LM_Lit_Room, LFlogo_001_LM_Upper_GI) ' VLM.Array;BL;LFlogo_001
-Dim LFlogo_003_LM: LFlogo_003_LM=Array(LFlogo_003_LM_GI1, LFlogo_003_LM_Inserts_LightFire, LFlogo_003_LM_Inserts_LightShoo, LFlogo_003_LM_Inserts_li38, LFlogo_003_LM_Inserts_li41, LFlogo_003_LM_Inserts_li44, LFlogo_003_LM_Inserts_li47, LFlogo_003_LM_Inserts_li50, LFlogo_003_LM_Inserts_li53, LFlogo_003_LM_Inserts_li56, LFlogo_003_LM_Inserts_li59, LFlogo_003_LM_Inserts_li62, LFlogo_003_LM_Inserts_li65, LFlogo_003_LM_Lit_Room) ' VLM.Array;LM;LFlogo_003
+Dim LFlogo_003_LM: LFlogo_003_LM=Array(LFlogo_003_LM_GI1, LFlogo_003_LM_Inserts_LightApro, LFlogo_003_LM_Inserts_LightShoo, LFlogo_003_LM_Inserts_li38, LFlogo_003_LM_Inserts_li41, LFlogo_003_LM_Inserts_li44, LFlogo_003_LM_Inserts_li47, LFlogo_003_LM_Inserts_li50, LFlogo_003_LM_Inserts_li53, LFlogo_003_LM_Inserts_li56, LFlogo_003_LM_Inserts_li59, LFlogo_003_LM_Inserts_li62, LFlogo_003_LM_Inserts_li65, LFlogo_003_LM_Lit_Room) ' VLM.Array;LM;LFlogo_003
 Dim LFlogo_003_BM: LFlogo_003_BM=Array(LFlogo_003_BM_Dark_Room) ' VLM.Array;BM;LFlogo_003
-Dim LFlogo_003_BL: LFlogo_003_BL=Array(LFlogo_003_BM_Dark_Room, LFlogo_003_LM_GI1, LFlogo_003_LM_Inserts_LightFire, LFlogo_003_LM_Inserts_LightShoo, LFlogo_003_LM_Inserts_li38, LFlogo_003_LM_Inserts_li41, LFlogo_003_LM_Inserts_li44, LFlogo_003_LM_Inserts_li47, LFlogo_003_LM_Inserts_li50, LFlogo_003_LM_Inserts_li53, LFlogo_003_LM_Inserts_li56, LFlogo_003_LM_Inserts_li59, LFlogo_003_LM_Inserts_li62, LFlogo_003_LM_Inserts_li65, LFlogo_003_LM_Lit_Room) ' VLM.Array;BL;LFlogo_003
+Dim LFlogo_003_BL: LFlogo_003_BL=Array(LFlogo_003_BM_Dark_Room, LFlogo_003_LM_GI1, LFlogo_003_LM_Inserts_LightApro, LFlogo_003_LM_Inserts_LightShoo, LFlogo_003_LM_Inserts_li38, LFlogo_003_LM_Inserts_li41, LFlogo_003_LM_Inserts_li44, LFlogo_003_LM_Inserts_li47, LFlogo_003_LM_Inserts_li50, LFlogo_003_LM_Inserts_li53, LFlogo_003_LM_Inserts_li56, LFlogo_003_LM_Inserts_li59, LFlogo_003_LM_Inserts_li62, LFlogo_003_LM_Inserts_li65, LFlogo_003_LM_Lit_Room) ' VLM.Array;BL;LFlogo_003
 Dim LSling1_LM: LSling1_LM=Array(LSling1_LM_GI1, LSling1_LM_Lit_Room) ' VLM.Array;LM;LSling1
 Dim LSling1_BM: LSling1_BM=Array(LSling1_BM_Dark_Room) ' VLM.Array;BM;LSling1
 Dim LSling1_BL: LSling1_BL=Array(LSling1_BM_Dark_Room, LSling1_LM_GI1, LSling1_LM_Lit_Room) ' VLM.Array;BL;LSling1
 Dim LSling2_LM: LSling2_LM=Array(LSling2_LM_GI1) ' VLM.Array;LM;LSling2
 Dim LSling2_BM: LSling2_BM=Array(LSling2_BM_Dark_Room) ' VLM.Array;BM;LSling2
 Dim LSling2_BL: LSling2_BL=Array(LSling2_BM_Dark_Room, LSling2_LM_GI1) ' VLM.Array;BL;LSling2
-Dim LockdownButton_LM: LockdownButton_LM=Array(lockdown_LM_Inserts_LightFire, lockdown_LM_Lit_Room) ' VLM.Array;LM;LockdownButton
+Dim LockdownButton_LM: LockdownButton_LM=Array(lockdown_LM_Inserts_LightApron, lockdown_LM_Inserts_LightFire, lockdown_LM_Lit_Room) ' VLM.Array;LM;LockdownButton
 Dim LockdownButton_BM: LockdownButton_BM=Array(lockdown_BM_Dark_Room) ' VLM.Array;BM;LockdownButton
-Dim LockdownButton_BL: LockdownButton_BL=Array(lockdown_BM_Dark_Room, lockdown_LM_Inserts_LightFire, lockdown_LM_Lit_Room) ' VLM.Array;BL;LockdownButton
+Dim LockdownButton_BL: LockdownButton_BL=Array(lockdown_BM_Dark_Room, lockdown_LM_Inserts_LightApron, lockdown_LM_Inserts_LightFire, lockdown_LM_Lit_Room) ' VLM.Array;BL;LockdownButton
 Dim LorbitSW30_LM: LorbitSW30_LM=Array(LorbitSW30_LM_GI3) ' VLM.Array;LM;LorbitSW30
 Dim LorbitSW30_BM: LorbitSW30_BM=Array(LorbitSW30_BM_Dark_Room) ' VLM.Array;BM;LorbitSW30
 Dim LorbitSW30_BL: LorbitSW30_BL=Array(LorbitSW30_BM_Dark_Room, LorbitSW30_LM_GI3) ' VLM.Array;BL;LorbitSW30
 Dim Lwing_LM: Lwing_LM=Array(Lwing_LM_GI2, Lwing_LM_Lit_Room, Lwing_LM_Upper_GI) ' VLM.Array;LM;Lwing
 Dim Lwing_BM: Lwing_BM=Array(Lwing_BM_Dark_Room) ' VLM.Array;BM;Lwing
 Dim Lwing_BL: Lwing_BL=Array(Lwing_BM_Dark_Room, Lwing_LM_GI2, Lwing_LM_Lit_Room, Lwing_LM_Upper_GI) ' VLM.Array;BL;Lwing
-Dim PinCab_Rails_002_LM: PinCab_Rails_002_LM=Array(PinCab_Rails_002_LM_Flashers_f2, PinCab_Rails_002_LM_GI3, PinCab_Rails_002_LM_Inserts_Lig, PinCab_Rails_002_LM_Inserts_li1, PinCab_Rails_002_LM_Inserts_li9, PinCab_Rails_002_LM_Lit_Room) ' VLM.Array;LM;PinCab_Rails_002
+Dim Micro_Switch_LM: Micro_Switch_LM=Array(Micro_Switch_LM_GI3) ' VLM.Array;LM;Micro_Switch
+Dim Micro_Switch_BM: Micro_Switch_BM=Array(Micro_Switch_BM_Dark_Room) ' VLM.Array;BM;Micro_Switch
+Dim Micro_Switch_BL: Micro_Switch_BL=Array(Micro_Switch_BM_Dark_Room, Micro_Switch_LM_GI3) ' VLM.Array;BL;Micro_Switch
+Dim PinCab_Rails_002_LM: PinCab_Rails_002_LM=Array(PinCab_Rails_002_LM_Flashers_f2, PinCab_Rails_002_LM_GI3, PinCab_Rails_002_LM_Inserts_Lig, PinCab_Rails_002_LM_Inserts_Lig, PinCab_Rails_002_LM_Inserts_li1, PinCab_Rails_002_LM_Inserts_li9, PinCab_Rails_002_LM_Lit_Room) ' VLM.Array;LM;PinCab_Rails_002
 Dim PinCab_Rails_002_BM: PinCab_Rails_002_BM=Array(PinCab_Rails_002_BM_Dark_Room) ' VLM.Array;BM;PinCab_Rails_002
-Dim PinCab_Rails_002_BL: PinCab_Rails_002_BL=Array(PinCab_Rails_002_BM_Dark_Room, PinCab_Rails_002_LM_Flashers_f2, PinCab_Rails_002_LM_GI3, PinCab_Rails_002_LM_Inserts_Lig, PinCab_Rails_002_LM_Inserts_li1, PinCab_Rails_002_LM_Inserts_li9, PinCab_Rails_002_LM_Lit_Room) ' VLM.Array;BL;PinCab_Rails_002
+Dim PinCab_Rails_002_BL: PinCab_Rails_002_BL=Array(PinCab_Rails_002_BM_Dark_Room, PinCab_Rails_002_LM_Flashers_f2, PinCab_Rails_002_LM_GI3, PinCab_Rails_002_LM_Inserts_Lig, PinCab_Rails_002_LM_Inserts_Lig, PinCab_Rails_002_LM_Inserts_li1, PinCab_Rails_002_LM_Inserts_li9, PinCab_Rails_002_LM_Lit_Room) ' VLM.Array;BL;PinCab_Rails_002
 Dim Plastic_door_LM: Plastic_door_LM=Array(Plastic_door_LM_Flashers_f236, Plastic_door_LM_Flashers_f243, Plastic_door_LM_GI2, Plastic_door_LM_Lit_Room) ' VLM.Array;LM;Plastic_door
 Dim Plastic_door_BM: Plastic_door_BM=Array(Plastic_door_BM_Dark_Room) ' VLM.Array;BM;Plastic_door
 Dim Plastic_door_BL: Plastic_door_BL=Array(Plastic_door_BM_Dark_Room, Plastic_door_LM_Flashers_f236, Plastic_door_LM_Flashers_f243, Plastic_door_LM_GI2, Plastic_door_LM_Lit_Room) ' VLM.Array;BL;Plastic_door
 Dim REMK_LM: REMK_LM=Array(REMK_LM_GI1, REMK_LM_Lit_Room) ' VLM.Array;LM;REMK
 Dim REMK_BM: REMK_BM=Array(REMK_BM_Dark_Room) ' VLM.Array;BM;REMK
 Dim REMK_BL: REMK_BL=Array(REMK_BM_Dark_Room, REMK_LM_GI1, REMK_LM_Lit_Room) ' VLM.Array;BL;REMK
-Dim RFlogo_001_LM: RFlogo_001_LM=Array(RFlogo_001_LM_GI2, RFlogo_001_LM_GI3, RFlogo_001_LM_Inserts_li198, RFlogo_001_LM_Inserts_li201, RFlogo_001_LM_Inserts_li204, RFlogo_001_LM_Inserts_li207, RFlogo_001_LM_Inserts_li210, RFlogo_001_LM_Inserts_li213, RFlogo_001_LM_Inserts_li216, RFlogo_001_LM_Lit_Room, RFlogo_001_LM_Upper_GI) ' VLM.Array;LM;RFlogo_001
+Dim RFlogo_001_LM: RFlogo_001_LM=Array(RFlogo_001_LM_GI2, RFlogo_001_LM_Inserts_li198, RFlogo_001_LM_Inserts_li201, RFlogo_001_LM_Inserts_li204, RFlogo_001_LM_Inserts_li207, RFlogo_001_LM_Inserts_li210, RFlogo_001_LM_Inserts_li213, RFlogo_001_LM_Inserts_li216, RFlogo_001_LM_Lit_Room, RFlogo_001_LM_Upper_GI) ' VLM.Array;LM;RFlogo_001
 Dim RFlogo_001_BM: RFlogo_001_BM=Array(RFlogo_001_BM_Dark_Room) ' VLM.Array;BM;RFlogo_001
-Dim RFlogo_001_BL: RFlogo_001_BL=Array(RFlogo_001_BM_Dark_Room, RFlogo_001_LM_GI2, RFlogo_001_LM_GI3, RFlogo_001_LM_Inserts_li198, RFlogo_001_LM_Inserts_li201, RFlogo_001_LM_Inserts_li204, RFlogo_001_LM_Inserts_li207, RFlogo_001_LM_Inserts_li210, RFlogo_001_LM_Inserts_li213, RFlogo_001_LM_Inserts_li216, RFlogo_001_LM_Lit_Room, RFlogo_001_LM_Upper_GI) ' VLM.Array;BL;RFlogo_001
-Dim RFlogo_003_LM: RFlogo_003_LM=Array(RFlogo_003_LM_GI1, RFlogo_003_LM_Inserts_LightFire, RFlogo_003_LM_Inserts_LightShoo, RFlogo_003_LM_Inserts_li38, RFlogo_003_LM_Inserts_li41, RFlogo_003_LM_Inserts_li44, RFlogo_003_LM_Inserts_li47, RFlogo_003_LM_Inserts_li50, RFlogo_003_LM_Inserts_li53, RFlogo_003_LM_Inserts_li56, RFlogo_003_LM_Inserts_li59, RFlogo_003_LM_Inserts_li62, RFlogo_003_LM_Inserts_li65, RFlogo_003_LM_Lit_Room, RFlogo_003_LM_Upper_GI) ' VLM.Array;LM;RFlogo_003
+Dim RFlogo_001_BL: RFlogo_001_BL=Array(RFlogo_001_BM_Dark_Room, RFlogo_001_LM_GI2, RFlogo_001_LM_Inserts_li198, RFlogo_001_LM_Inserts_li201, RFlogo_001_LM_Inserts_li204, RFlogo_001_LM_Inserts_li207, RFlogo_001_LM_Inserts_li210, RFlogo_001_LM_Inserts_li213, RFlogo_001_LM_Inserts_li216, RFlogo_001_LM_Lit_Room, RFlogo_001_LM_Upper_GI) ' VLM.Array;BL;RFlogo_001
+Dim RFlogo_003_LM: RFlogo_003_LM=Array(RFlogo_003_LM_GI1, RFlogo_003_LM_Inserts_LightApro, RFlogo_003_LM_Inserts_LightShoo, RFlogo_003_LM_Inserts_li38, RFlogo_003_LM_Inserts_li41, RFlogo_003_LM_Inserts_li44, RFlogo_003_LM_Inserts_li47, RFlogo_003_LM_Inserts_li50, RFlogo_003_LM_Inserts_li53, RFlogo_003_LM_Inserts_li56, RFlogo_003_LM_Inserts_li59, RFlogo_003_LM_Inserts_li62, RFlogo_003_LM_Inserts_li65, RFlogo_003_LM_Lit_Room, RFlogo_003_LM_Upper_GI) ' VLM.Array;LM;RFlogo_003
 Dim RFlogo_003_BM: RFlogo_003_BM=Array(RFlogo_003_BM_Dark_Room) ' VLM.Array;BM;RFlogo_003
-Dim RFlogo_003_BL: RFlogo_003_BL=Array(RFlogo_003_BM_Dark_Room, RFlogo_003_LM_GI1, RFlogo_003_LM_Inserts_LightFire, RFlogo_003_LM_Inserts_LightShoo, RFlogo_003_LM_Inserts_li38, RFlogo_003_LM_Inserts_li41, RFlogo_003_LM_Inserts_li44, RFlogo_003_LM_Inserts_li47, RFlogo_003_LM_Inserts_li50, RFlogo_003_LM_Inserts_li53, RFlogo_003_LM_Inserts_li56, RFlogo_003_LM_Inserts_li59, RFlogo_003_LM_Inserts_li62, RFlogo_003_LM_Inserts_li65, RFlogo_003_LM_Lit_Room, RFlogo_003_LM_Upper_GI) ' VLM.Array;BL;RFlogo_003
+Dim RFlogo_003_BL: RFlogo_003_BL=Array(RFlogo_003_BM_Dark_Room, RFlogo_003_LM_GI1, RFlogo_003_LM_Inserts_LightApro, RFlogo_003_LM_Inserts_LightShoo, RFlogo_003_LM_Inserts_li38, RFlogo_003_LM_Inserts_li41, RFlogo_003_LM_Inserts_li44, RFlogo_003_LM_Inserts_li47, RFlogo_003_LM_Inserts_li50, RFlogo_003_LM_Inserts_li53, RFlogo_003_LM_Inserts_li56, RFlogo_003_LM_Inserts_li59, RFlogo_003_LM_Inserts_li62, RFlogo_003_LM_Inserts_li65, RFlogo_003_LM_Lit_Room, RFlogo_003_LM_Upper_GI) ' VLM.Array;BL;RFlogo_003
 Dim RSling1_LM: RSling1_LM=Array(RSling1_LM_Flashers_f244B, RSling1_LM_GI1, RSling1_LM_Lit_Room) ' VLM.Array;LM;RSling1
 Dim RSling1_BM: RSling1_BM=Array(RSling1_BM_Dark_Room) ' VLM.Array;BM;RSling1
 Dim RSling1_BL: RSling1_BL=Array(RSling1_BM_Dark_Room, RSling1_LM_Flashers_f244B, RSling1_LM_GI1, RSling1_LM_Lit_Room) ' VLM.Array;BL;RSling1
@@ -16937,21 +16970,21 @@ Dim RorbitSW31_BL: RorbitSW31_BL=Array(RorbitSW31_BM_Dark_Room, RorbitSW31_LM_Fl
 Dim Rwing_LM: Rwing_LM=Array(Rwing_LM_GI2, Rwing_LM_Lit_Room, Rwing_LM_Upper_GI) ' VLM.Array;LM;Rwing
 Dim Rwing_BM: Rwing_BM=Array(Rwing_BM_Dark_Room) ' VLM.Array;BM;Rwing
 Dim Rwing_BL: Rwing_BL=Array(Rwing_BM_Dark_Room, Rwing_LM_GI2, Rwing_LM_Lit_Room, Rwing_LM_Upper_GI) ' VLM.Array;BL;Rwing
-Dim Spinners_LM: Spinners_LM=Array(Spinners_LM_Flashers_f235, Spinners_LM_Flashers_f236, Spinners_LM_Flashers_f242, Spinners_LM_Flashers_f243, Spinners_LM_GI3, Spinners_LM_Inserts_li135, Spinners_LM_Inserts_li23, Spinners_LM_Inserts_li86, Spinners_LM_Inserts_li89, Spinners_LM_Inserts_li92, Spinners_LM_Lit_Room) ' VLM.Array;LM;Spinners
+Dim Spinners_LM: Spinners_LM=Array(Spinners_LM_Flashers_f235, Spinners_LM_Flashers_f236, Spinners_LM_Flashers_f242, Spinners_LM_Flashers_f243, Spinners_LM_GI3, Spinners_LM_Inserts_li126, Spinners_LM_Inserts_li129, Spinners_LM_Inserts_li132, Spinners_LM_Inserts_li138, Spinners_LM_Inserts_li141, Spinners_LM_Inserts_li23, Spinners_LM_Inserts_li86, Spinners_LM_Inserts_li89, Spinners_LM_Inserts_li92, Spinners_LM_Lit_Room) ' VLM.Array;LM;Spinners
 Dim Spinners_BM: Spinners_BM=Array(Spinners_BM_Dark_Room) ' VLM.Array;BM;Spinners
-Dim Spinners_BL: Spinners_BL=Array(Spinners_BM_Dark_Room, Spinners_LM_Flashers_f235, Spinners_LM_Flashers_f236, Spinners_LM_Flashers_f242, Spinners_LM_Flashers_f243, Spinners_LM_GI3, Spinners_LM_Inserts_li135, Spinners_LM_Inserts_li23, Spinners_LM_Inserts_li86, Spinners_LM_Inserts_li89, Spinners_LM_Inserts_li92, Spinners_LM_Lit_Room) ' VLM.Array;BL;Spinners
-Dim Target90_LM: Target90_LM=Array(Target90_LM_Flashers_f235, Target90_LM_Flashers_f242, Target90_LM_GI1, Target90_LM_GI2, Target90_LM_GI3, Target90_LM_Inserts_li120, Target90_LM_Inserts_li123, Target90_LM_Inserts_li126, Target90_LM_Inserts_li129, Target90_LM_Inserts_li132, Target90_LM_Inserts_li135, Target90_LM_Inserts_li138, Target90_LM_Inserts_li141, Target90_LM_Inserts_li144, Target90_LM_Inserts_li153, Target90_LM_Inserts_li156, Target90_LM_Inserts_li159, Target90_LM_Lit_Room) ' VLM.Array;LM;Target90
+Dim Spinners_BL: Spinners_BL=Array(Spinners_BM_Dark_Room, Spinners_LM_Flashers_f235, Spinners_LM_Flashers_f236, Spinners_LM_Flashers_f242, Spinners_LM_Flashers_f243, Spinners_LM_GI3, Spinners_LM_Inserts_li126, Spinners_LM_Inserts_li129, Spinners_LM_Inserts_li132, Spinners_LM_Inserts_li138, Spinners_LM_Inserts_li141, Spinners_LM_Inserts_li23, Spinners_LM_Inserts_li86, Spinners_LM_Inserts_li89, Spinners_LM_Inserts_li92, Spinners_LM_Lit_Room) ' VLM.Array;BL;Spinners
+Dim Target90_LM: Target90_LM=Array(Target90_LM_Flashers_f235, Target90_LM_Flashers_f236, Target90_LM_Flashers_f242, Target90_LM_GI1, Target90_LM_GI2, Target90_LM_GI3, Target90_LM_Inserts_li123, Target90_LM_Inserts_li126, Target90_LM_Inserts_li129, Target90_LM_Inserts_li132, Target90_LM_Inserts_li135, Target90_LM_Inserts_li138, Target90_LM_Inserts_li141, Target90_LM_Inserts_li144, Target90_LM_Inserts_li153, Target90_LM_Inserts_li156, Target90_LM_Inserts_li159, Target90_LM_Lit_Room) ' VLM.Array;LM;Target90
 Dim Target90_BM: Target90_BM=Array(Target90_BM_Dark_Room) ' VLM.Array;BM;Target90
-Dim Target90_BL: Target90_BL=Array(Target90_BM_Dark_Room, Target90_LM_Flashers_f235, Target90_LM_Flashers_f242, Target90_LM_GI1, Target90_LM_GI2, Target90_LM_GI3, Target90_LM_Inserts_li120, Target90_LM_Inserts_li123, Target90_LM_Inserts_li126, Target90_LM_Inserts_li129, Target90_LM_Inserts_li132, Target90_LM_Inserts_li135, Target90_LM_Inserts_li138, Target90_LM_Inserts_li141, Target90_LM_Inserts_li144, Target90_LM_Inserts_li153, Target90_LM_Inserts_li156, Target90_LM_Inserts_li159, Target90_LM_Lit_Room) ' VLM.Array;BL;Target90
-Dim firebutton_base_LM: firebutton_base_LM=Array(firebutton_base_LM_GI1, firebutton_base_LM_Inserts_Ligh, firebutton_base_LM_Lit_Room) ' VLM.Array;LM;firebutton_base
+Dim Target90_BL: Target90_BL=Array(Target90_BM_Dark_Room, Target90_LM_Flashers_f235, Target90_LM_Flashers_f236, Target90_LM_Flashers_f242, Target90_LM_GI1, Target90_LM_GI2, Target90_LM_GI3, Target90_LM_Inserts_li123, Target90_LM_Inserts_li126, Target90_LM_Inserts_li129, Target90_LM_Inserts_li132, Target90_LM_Inserts_li135, Target90_LM_Inserts_li138, Target90_LM_Inserts_li141, Target90_LM_Inserts_li144, Target90_LM_Inserts_li153, Target90_LM_Inserts_li156, Target90_LM_Inserts_li159, Target90_LM_Lit_Room) ' VLM.Array;BL;Target90
+Dim firebutton_base_LM: firebutton_base_LM=Array(firebutton_base_LM_Flashers_f24, firebutton_base_LM_GI1, fb_base_LM_Inserts_LightApron, firebutton_base_LM_Inserts_Ligh, firebutton_base_LM_Lit_Room) ' VLM.Array;LM;firebutton_base
 Dim firebutton_base_BM: firebutton_base_BM=Array(firebutton_base_BM_Dark_Room) ' VLM.Array;BM;firebutton_base
-Dim firebutton_base_BL: firebutton_base_BL=Array(firebutton_base_BM_Dark_Room, firebutton_base_LM_GI1, firebutton_base_LM_Inserts_Ligh, firebutton_base_LM_Lit_Room) ' VLM.Array;BL;firebutton_base
+Dim firebutton_base_BL: firebutton_base_BL=Array(firebutton_base_BM_Dark_Room, firebutton_base_LM_Flashers_f24, firebutton_base_LM_GI1, fb_base_LM_Inserts_LightApron, firebutton_base_LM_Inserts_Ligh, firebutton_base_LM_Lit_Room) ' VLM.Array;BL;firebutton_base
 Dim firebutton_base_001_LM: firebutton_base_001_LM=Array(firebutton_base_001_LM_Inserts_, firebutton_base_001_LM_Lit_Room) ' VLM.Array;LM;firebutton_base_001
 Dim firebutton_base_001_BM: firebutton_base_001_BM=Array(firebutton_base_001_BM_Dark_Roo) ' VLM.Array;BM;firebutton_base_001
 Dim firebutton_base_001_BL: firebutton_base_001_BL=Array(firebutton_base_001_BM_Dark_Roo, firebutton_base_001_LM_Inserts_, firebutton_base_001_LM_Lit_Room) ' VLM.Array;BL;firebutton_base_001
-Dim lockpost_001_LM: lockpost_001_LM=Array(lockpost_001_LM_Flashers_f235, lockpost_001_LM_Flashers_f244A, lockpost_001_LM_Flashers_f244B, lockpost_001_LM_GI1, lockpost_001_LM_Inserts_li80, lockpost_001_LM_Inserts_li83, lockpost_001_LM_Lit_Room) ' VLM.Array;LM;lockpost_001
+Dim lockpost_001_LM: lockpost_001_LM=Array(lockpost_001_LM_Flashers_f235, lockpost_001_LM_Flashers_f244A, lockpost_001_LM_Flashers_f244B, lockpost_001_LM_GI1, lockpost_001_LM_Inserts_li153, lockpost_001_LM_Inserts_li80, lockpost_001_LM_Inserts_li83, lockpost_001_LM_Lit_Room) ' VLM.Array;LM;lockpost_001
 Dim lockpost_001_BM: lockpost_001_BM=Array(lockpost_001_BM_Dark_Room) ' VLM.Array;BM;lockpost_001
-Dim lockpost_001_BL: lockpost_001_BL=Array(lockpost_001_BM_Dark_Room, lockpost_001_LM_Flashers_f235, lockpost_001_LM_Flashers_f244A, lockpost_001_LM_Flashers_f244B, lockpost_001_LM_GI1, lockpost_001_LM_Inserts_li80, lockpost_001_LM_Inserts_li83, lockpost_001_LM_Lit_Room) ' VLM.Array;BL;lockpost_001
+Dim lockpost_001_BL: lockpost_001_BL=Array(lockpost_001_BM_Dark_Room, lockpost_001_LM_Flashers_f235, lockpost_001_LM_Flashers_f244A, lockpost_001_LM_Flashers_f244B, lockpost_001_LM_GI1, lockpost_001_LM_Inserts_li153, lockpost_001_LM_Inserts_li80, lockpost_001_LM_Inserts_li83, lockpost_001_LM_Lit_Room) ' VLM.Array;BL;lockpost_001
 Dim metalPlates_002_LM: metalPlates_002_LM=Array(metalPlates_002_LM_Flashers_f23, metalPlates_002_LM_Flashers_f24, metalPlates_002_LM_GI2, metalPlates_002_LM_GI3, metalPlates_002_LM_Lit_Room) ' VLM.Array;LM;metalPlates_002
 Dim metalPlates_002_BM: metalPlates_002_BM=Array(metalPlates_002_BM_Dark_Room) ' VLM.Array;BM;metalPlates_002
 Dim metalPlates_002_BL: metalPlates_002_BL=Array(metalPlates_002_BM_Dark_Room, metalPlates_002_LM_Flashers_f23, metalPlates_002_LM_Flashers_f24, metalPlates_002_LM_GI2, metalPlates_002_LM_GI3, metalPlates_002_LM_Lit_Room) ' VLM.Array;BL;metalPlates_002
@@ -17009,9 +17042,9 @@ Dim sword_003_BL: sword_003_BL=Array(sword_003_BM_Dark_Room, sword_003_LM_Flashe
 Dim targets_LM: targets_LM=Array(targets_LM_Inserts_li104, targets_LM_Inserts_li180, targets_LM_Inserts_li189, targets_LM_Lit_Room, targets_LM_Upper_GI) ' VLM.Array;LM;targets
 Dim targets_BM: targets_BM=Array(targets_BM_Dark_Room) ' VLM.Array;BM;targets
 Dim targets_BL: targets_BL=Array(targets_BM_Dark_Room, targets_LM_Inserts_li104, targets_LM_Inserts_li180, targets_LM_Inserts_li189, targets_LM_Lit_Room, targets_LM_Upper_GI) ' VLM.Array;BL;targets
-Dim targets_001_LM: targets_001_LM=Array(targets_001_LM_Flashers_f242, targets_001_LM_Flashers_f244A, targets_001_LM_Flashers_f244B, targets_001_LM_GI1, targets_001_LM_GI3, targets_001_LM_Inserts_li17, targets_001_LM_Inserts_li20, targets_001_LM_Inserts_li23, targets_001_LM_Inserts_li26, targets_001_LM_Inserts_li29, targets_001_LM_Inserts_li32, targets_001_LM_Inserts_li38, targets_001_LM_Inserts_li41, targets_001_LM_Inserts_li86, targets_001_LM_Inserts_li89, targets_001_LM_Lit_Room) ' VLM.Array;LM;targets_001
+Dim targets_001_LM: targets_001_LM=Array(targets_001_LM_Flashers_f244A, targets_001_LM_Flashers_f244B, targets_001_LM_GI1, targets_001_LM_GI3, targets_001_LM_Inserts_li17, targets_001_LM_Inserts_li20, targets_001_LM_Inserts_li23, targets_001_LM_Inserts_li26, targets_001_LM_Inserts_li29, targets_001_LM_Inserts_li41, targets_001_LM_Inserts_li86, targets_001_LM_Inserts_li92, targets_001_LM_Lit_Room) ' VLM.Array;LM;targets_001
 Dim targets_001_BM: targets_001_BM=Array(targets_001_BM_Dark_Room) ' VLM.Array;BM;targets_001
-Dim targets_001_BL: targets_001_BL=Array(targets_001_BM_Dark_Room, targets_001_LM_Flashers_f242, targets_001_LM_Flashers_f244A, targets_001_LM_Flashers_f244B, targets_001_LM_GI1, targets_001_LM_GI3, targets_001_LM_Inserts_li17, targets_001_LM_Inserts_li20, targets_001_LM_Inserts_li23, targets_001_LM_Inserts_li26, targets_001_LM_Inserts_li29, targets_001_LM_Inserts_li32, targets_001_LM_Inserts_li38, targets_001_LM_Inserts_li41, targets_001_LM_Inserts_li86, targets_001_LM_Inserts_li89, targets_001_LM_Lit_Room) ' VLM.Array;BL;targets_001
+Dim targets_001_BL: targets_001_BL=Array(targets_001_BM_Dark_Room, targets_001_LM_Flashers_f244A, targets_001_LM_Flashers_f244B, targets_001_LM_GI1, targets_001_LM_GI3, targets_001_LM_Inserts_li17, targets_001_LM_Inserts_li20, targets_001_LM_Inserts_li23, targets_001_LM_Inserts_li26, targets_001_LM_Inserts_li29, targets_001_LM_Inserts_li41, targets_001_LM_Inserts_li86, targets_001_LM_Inserts_li92, targets_001_LM_Lit_Room) ' VLM.Array;BL;targets_001
 Dim targets_004_LM: targets_004_LM=Array(targets_004_LM_Flashers_f244A, targets_004_LM_Flashers_f244B, targets_004_LM_Inserts_li92, targets_004_LM_Inserts_li95, targets_004_LM_Lit_Room) ' VLM.Array;LM;targets_004
 Dim targets_004_BM: targets_004_BM=Array(targets_004_BM_Dark_Room) ' VLM.Array;BM;targets_004
 Dim targets_004_BL: targets_004_BL=Array(targets_004_BM_Dark_Room, targets_004_LM_Flashers_f244A, targets_004_LM_Flashers_f244B, targets_004_LM_Inserts_li92, targets_004_LM_Inserts_li95, targets_004_LM_Lit_Room) ' VLM.Array;BL;targets_004
@@ -17027,24 +17060,24 @@ Dim targets_007_BL: targets_007_BL=Array(targets_007_BM_Dark_Room, targets_007_L
 Dim targets_008_LM: targets_008_LM=Array(targets_008_LM_Flashers_f235, targets_008_LM_Inserts_li147, targets_008_LM_Lit_Room) ' VLM.Array;LM;targets_008
 Dim targets_008_BM: targets_008_BM=Array(targets_008_BM_Dark_Room) ' VLM.Array;BM;targets_008
 Dim targets_008_BL: targets_008_BL=Array(targets_008_BM_Dark_Room, targets_008_LM_Flashers_f235, targets_008_LM_Inserts_li147, targets_008_LM_Lit_Room) ' VLM.Array;BL;targets_008
-Dim targets_009_LM: targets_009_LM=Array(targets_009_LM_Flashers_f235, targets_009_LM_Flashers_f244B, targets_009_LM_GI1, targets_009_LM_Inserts_li153, targets_009_LM_Inserts_li80, targets_009_LM_Lit_Room) ' VLM.Array;LM;targets_009
+Dim targets_009_LM: targets_009_LM=Array(targets_009_LM_Flashers_f235, targets_009_LM_Flashers_f244A, targets_009_LM_Flashers_f244B, targets_009_LM_GI1, targets_009_LM_Inserts_li153, targets_009_LM_Inserts_li80, targets_009_LM_Lit_Room) ' VLM.Array;LM;targets_009
 Dim targets_009_BM: targets_009_BM=Array(targets_009_BM_Dark_Room) ' VLM.Array;BM;targets_009
-Dim targets_009_BL: targets_009_BL=Array(targets_009_BM_Dark_Room, targets_009_LM_Flashers_f235, targets_009_LM_Flashers_f244B, targets_009_LM_GI1, targets_009_LM_Inserts_li153, targets_009_LM_Inserts_li80, targets_009_LM_Lit_Room) ' VLM.Array;BL;targets_009
-Dim targets_010_LM: targets_010_LM=Array(targets_010_LM_Flashers_f235, targets_010_LM_Flashers_f244B, targets_010_LM_GI1, targets_010_LM_GI3, targets_010_LM_Inserts_li80, targets_010_LM_Inserts_li83, targets_010_LM_Lit_Room) ' VLM.Array;LM;targets_010
+Dim targets_009_BL: targets_009_BL=Array(targets_009_BM_Dark_Room, targets_009_LM_Flashers_f235, targets_009_LM_Flashers_f244A, targets_009_LM_Flashers_f244B, targets_009_LM_GI1, targets_009_LM_Inserts_li153, targets_009_LM_Inserts_li80, targets_009_LM_Lit_Room) ' VLM.Array;BL;targets_009
+Dim targets_010_LM: targets_010_LM=Array(targets_010_LM_Flashers_f235, targets_010_LM_Flashers_f244A, targets_010_LM_Flashers_f244B, targets_010_LM_GI1, targets_010_LM_GI3, targets_010_LM_Inserts_li80, targets_010_LM_Inserts_li83, targets_010_LM_Lit_Room) ' VLM.Array;LM;targets_010
 Dim targets_010_BM: targets_010_BM=Array(targets_010_BM_Dark_Room) ' VLM.Array;BM;targets_010
-Dim targets_010_BL: targets_010_BL=Array(targets_010_BM_Dark_Room, targets_010_LM_Flashers_f235, targets_010_LM_Flashers_f244B, targets_010_LM_GI1, targets_010_LM_GI3, targets_010_LM_Inserts_li80, targets_010_LM_Inserts_li83, targets_010_LM_Lit_Room) ' VLM.Array;BL;targets_010
+Dim targets_010_BL: targets_010_BL=Array(targets_010_BM_Dark_Room, targets_010_LM_Flashers_f235, targets_010_LM_Flashers_f244A, targets_010_LM_Flashers_f244B, targets_010_LM_GI1, targets_010_LM_GI3, targets_010_LM_Inserts_li80, targets_010_LM_Inserts_li83, targets_010_LM_Lit_Room) ' VLM.Array;BL;targets_010
 Dim targets_011_LM: targets_011_LM=Array(targets_011_LM_Inserts_li104, targets_011_LM_Inserts_li183, targets_011_LM_Inserts_li192, targets_011_LM_Inserts_li195, targets_011_LM_Lit_Room, targets_011_LM_Upper_GI) ' VLM.Array;LM;targets_011
 Dim targets_011_BM: targets_011_BM=Array(targets_011_BM_Dark_Room) ' VLM.Array;BM;targets_011
 Dim targets_011_BL: targets_011_BL=Array(targets_011_BM_Dark_Room, targets_011_LM_Inserts_li104, targets_011_LM_Inserts_li183, targets_011_LM_Inserts_li192, targets_011_LM_Inserts_li195, targets_011_LM_Lit_Room, targets_011_LM_Upper_GI) ' VLM.Array;BL;targets_011
 Dim targets_012_LM: targets_012_LM=Array(targets_012_LM_Inserts_li104, targets_012_LM_Inserts_li180, targets_012_LM_Inserts_li183, targets_012_LM_Inserts_li189, targets_012_LM_Inserts_li192, targets_012_LM_Inserts_li195, targets_012_LM_Inserts_li92, targets_012_LM_Lit_Room, targets_012_LM_Upper_GI) ' VLM.Array;LM;targets_012
 Dim targets_012_BM: targets_012_BM=Array(targets_012_BM_Dark_Room) ' VLM.Array;BM;targets_012
 Dim targets_012_BL: targets_012_BL=Array(targets_012_BM_Dark_Room, targets_012_LM_Inserts_li104, targets_012_LM_Inserts_li180, targets_012_LM_Inserts_li183, targets_012_LM_Inserts_li189, targets_012_LM_Inserts_li192, targets_012_LM_Inserts_li195, targets_012_LM_Inserts_li92, targets_012_LM_Lit_Room, targets_012_LM_Upper_GI) ' VLM.Array;BL;targets_012
-Dim targets_018_LM: targets_018_LM=Array(targets_018_LM_Flashers_f242, targets_018_LM_Flashers_f244A, targets_018_LM_Flashers_f244B, targets_018_LM_GI1, targets_018_LM_GI3, targets_018_LM_Inserts_li17, targets_018_LM_Inserts_li20, targets_018_LM_Inserts_li23, targets_018_LM_Inserts_li26, targets_018_LM_Inserts_li29, targets_018_LM_Inserts_li32, targets_018_LM_Inserts_li38, targets_018_LM_Inserts_li41, targets_018_LM_Inserts_li86, targets_018_LM_Inserts_li89, targets_018_LM_Lit_Room) ' VLM.Array;LM;targets_018
+Dim targets_018_LM: targets_018_LM=Array(targets_018_LM_Flashers_f242, targets_018_LM_Flashers_f244A, targets_018_LM_Flashers_f244B, targets_018_LM_GI1, targets_018_LM_GI3, targets_018_LM_Inserts_li17, targets_018_LM_Inserts_li20, targets_018_LM_Inserts_li23, targets_018_LM_Inserts_li26, targets_018_LM_Inserts_li29, targets_018_LM_Inserts_li32, targets_018_LM_Inserts_li41, targets_018_LM_Inserts_li86, targets_018_LM_Inserts_li92, targets_018_LM_Lit_Room) ' VLM.Array;LM;targets_018
 Dim targets_018_BM: targets_018_BM=Array(targets_018_BM_Dark_Room) ' VLM.Array;BM;targets_018
-Dim targets_018_BL: targets_018_BL=Array(targets_018_BM_Dark_Room, targets_018_LM_Flashers_f242, targets_018_LM_Flashers_f244A, targets_018_LM_Flashers_f244B, targets_018_LM_GI1, targets_018_LM_GI3, targets_018_LM_Inserts_li17, targets_018_LM_Inserts_li20, targets_018_LM_Inserts_li23, targets_018_LM_Inserts_li26, targets_018_LM_Inserts_li29, targets_018_LM_Inserts_li32, targets_018_LM_Inserts_li38, targets_018_LM_Inserts_li41, targets_018_LM_Inserts_li86, targets_018_LM_Inserts_li89, targets_018_LM_Lit_Room) ' VLM.Array;BL;targets_018
-Dim targets_019_LM: targets_019_LM=Array(targets_019_LM_Flashers_f242, targets_019_LM_Flashers_f244A, targets_019_LM_Flashers_f244B, targets_019_LM_GI1, targets_019_LM_GI3, targets_019_LM_Inserts_li17, targets_019_LM_Inserts_li20, targets_019_LM_Inserts_li23, targets_019_LM_Inserts_li26, targets_019_LM_Inserts_li29, targets_019_LM_Inserts_li32, targets_019_LM_Inserts_li35, targets_019_LM_Inserts_li41, targets_019_LM_Inserts_li86, targets_019_LM_Inserts_li89, targets_019_LM_Lit_Room) ' VLM.Array;LM;targets_019
+Dim targets_018_BL: targets_018_BL=Array(targets_018_BM_Dark_Room, targets_018_LM_Flashers_f242, targets_018_LM_Flashers_f244A, targets_018_LM_Flashers_f244B, targets_018_LM_GI1, targets_018_LM_GI3, targets_018_LM_Inserts_li17, targets_018_LM_Inserts_li20, targets_018_LM_Inserts_li23, targets_018_LM_Inserts_li26, targets_018_LM_Inserts_li29, targets_018_LM_Inserts_li32, targets_018_LM_Inserts_li41, targets_018_LM_Inserts_li86, targets_018_LM_Inserts_li92, targets_018_LM_Lit_Room) ' VLM.Array;BL;targets_018
+Dim targets_019_LM: targets_019_LM=Array(targets_019_LM_Flashers_f242, targets_019_LM_Flashers_f244A, targets_019_LM_Flashers_f244B, targets_019_LM_GI1, targets_019_LM_GI3, targets_019_LM_Inserts_li17, targets_019_LM_Inserts_li20, targets_019_LM_Inserts_li23, targets_019_LM_Inserts_li26, targets_019_LM_Inserts_li32, targets_019_LM_Inserts_li35, targets_019_LM_Inserts_li86, targets_019_LM_Lit_Room) ' VLM.Array;LM;targets_019
 Dim targets_019_BM: targets_019_BM=Array(targets_019_BM_Dark_Room) ' VLM.Array;BM;targets_019
-Dim targets_019_BL: targets_019_BL=Array(targets_019_BM_Dark_Room, targets_019_LM_Flashers_f242, targets_019_LM_Flashers_f244A, targets_019_LM_Flashers_f244B, targets_019_LM_GI1, targets_019_LM_GI3, targets_019_LM_Inserts_li17, targets_019_LM_Inserts_li20, targets_019_LM_Inserts_li23, targets_019_LM_Inserts_li26, targets_019_LM_Inserts_li29, targets_019_LM_Inserts_li32, targets_019_LM_Inserts_li35, targets_019_LM_Inserts_li41, targets_019_LM_Inserts_li86, targets_019_LM_Inserts_li89, targets_019_LM_Lit_Room) ' VLM.Array;BL;targets_019
+Dim targets_019_BL: targets_019_BL=Array(targets_019_BM_Dark_Room, targets_019_LM_Flashers_f242, targets_019_LM_Flashers_f244A, targets_019_LM_Flashers_f244B, targets_019_LM_GI1, targets_019_LM_GI3, targets_019_LM_Inserts_li17, targets_019_LM_Inserts_li20, targets_019_LM_Inserts_li23, targets_019_LM_Inserts_li26, targets_019_LM_Inserts_li32, targets_019_LM_Inserts_li35, targets_019_LM_Inserts_li86, targets_019_LM_Lit_Room) ' VLM.Array;BL;targets_019
 
 
 ' ===============================================================
@@ -17061,8 +17094,6 @@ Sub UpdateLightMapWithColor(light, lightmap, intensity, ByVal aLvl)
    lightmap.Opacity = aLvl * intensity
    lightmap.color = light.colorfull
 End Sub
-
-
 
 Sub LampzHelper
 	' Lampz.MassAssign(150) = L150 ' VLM.Lampz;Lit Room
@@ -17124,16 +17155,21 @@ Sub LampzHelper
 	Lampz.Callback(150) = "UpdateLightMap targets_019_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
 	Lampz.Callback(150) = "UpdateLightMap FireButton_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
 	Lampz.Callback(150) = "UpdateLightMap lockdown_LM_Lit_Room, 100.0, " ' VLM.Lampz;Lit Room
+	' Sync on LightApron ' VLM.Lampz;Inserts-LightApron
+	Lampz.Callback(79) = "UpdateLightMapWithColor li231,Playfield_LM_Inserts_LightApron, 100.0, " ' VLM.Lampz;Inserts-LightApron
+	Lampz.Callback(79) = "UpdateLightMapWithColor li231,LFlogo_003_LM_Inserts_LightApro, 100.0, " ' VLM.Lampz;Inserts-LightApron
+	Lampz.Callback(79) = "UpdateLightMapWithColor li231,PinCab_Rails_002_LM_Inserts_Lig, 100.0, " ' VLM.Lampz;Inserts-LightApron
+	Lampz.Callback(79) = "UpdateLightMapWithColor li231,RFlogo_003_LM_Inserts_LightApro, 100.0, " ' VLM.Lampz;Inserts-LightApron
+	Lampz.Callback(79) = "UpdateLightMapWithColor li231,fb_base_LM_Inserts_LightApron, 100.0, " ' VLM.Lampz;Inserts-LightApron
+	Lampz.Callback(79) = "UpdateLightMapWithColor li231,FireButton_LM_Inserts_LightApro, 100.0, " ' VLM.Lampz;Inserts-LightApron
+	Lampz.Callback(79) = "UpdateLightMapWithColor li231,lockdown_LM_Inserts_LightApron, 100.0, " ' VLM.Lampz;Inserts-LightApron
 	' Sync on LightFire ' VLM.Lampz;Inserts-LightFire
 	Lampz.Callback(78) = "UpdateLightMapWithColor li230,Playfield_LM_Inserts_LightFire, 100.0, " ' VLM.Lampz;Inserts-LightFire
-	Lampz.Callback(78) = "UpdateLightMapWithColor li230,LFlogo_003_LM_Inserts_LightFire, 100.0, " ' VLM.Lampz;Inserts-LightFire
 	Lampz.Callback(78) = "UpdateLightMapWithColor li230,PinCab_Rails_002_LM_Inserts_Lig, 100.0, " ' VLM.Lampz;Inserts-LightFire
-	Lampz.Callback(78) = "UpdateLightMapWithColor li230,RFlogo_003_LM_Inserts_LightFire, 100.0, " ' VLM.Lampz;Inserts-LightFire
 	Lampz.Callback(78) = "UpdateLightMapWithColor li230,Rivet_1_002_LM_Inserts_LightFir, 100.0, " ' VLM.Lampz;Inserts-LightFire
 	Lampz.Callback(78) = "UpdateLightMapWithColor li230,firebutton_base_LM_Inserts_Ligh, 100.0, " ' VLM.Lampz;Inserts-LightFire
 	Lampz.Callback(78) = "UpdateLightMapWithColor li230,firebutton_base_001_LM_Inserts_, 100.0, " ' VLM.Lampz;Inserts-LightFire
 	Lampz.Callback(78) = "UpdateLightMapWithColor li230,metal_plate_LM_Inserts_LightFir, 100.0, " ' VLM.Lampz;Inserts-LightFire
-	Lampz.Callback(78) = "UpdateLightMapWithColor li230,FireButton_LM_Inserts_LightFire, 100.0, " ' VLM.Lampz;Inserts-LightFire
 	Lampz.Callback(78) = "UpdateLightMapWithColor li230,lockdown_LM_Inserts_LightFire, 100.0, " ' VLM.Lampz;Inserts-LightFire
 	' Sync on LightShootAgain ' VLM.Lampz;Inserts-LightShootAgain
 	Lampz.Callback(1) = "UpdateLightMapWithColor LightShootAgain,Playfield_LM_Inserts_LightShoot, 100.0, " ' VLM.Lampz;Inserts-LightShootAgain
@@ -17167,6 +17203,7 @@ Sub LampzHelper
 	Lampz.Callback(71) = "UpdateLightMap Bumper_Ring_002_LM_Flashers_f23, 100.0, " ' VLM.Lampz;Flashers-f236
 	Lampz.Callback(71) = "UpdateLightMap Plastic_door_LM_Flashers_f236, 100.0, " ' VLM.Lampz;Flashers-f236
 	Lampz.Callback(71) = "UpdateLightMap Spinners_LM_Flashers_f236, 100.0, " ' VLM.Lampz;Flashers-f236
+	Lampz.Callback(71) = "UpdateLightMap Target90_LM_Flashers_f236, 100.0, " ' VLM.Lampz;Flashers-f236
 	Lampz.Callback(71) = "UpdateLightMap metalPlates_002_LM_Flashers_f23, 100.0, " ' VLM.Lampz;Flashers-f236
 	Lampz.Callback(71) = "UpdateLightMap ram_LM_Flashers_f236, 100.0, " ' VLM.Lampz;Flashers-f236
 	Lampz.Callback(71) = "UpdateLightMap targets_007_LM_Flashers_f236, 100.0, " ' VLM.Lampz;Flashers-f236
@@ -17188,7 +17225,7 @@ Sub LampzHelper
 	Lampz.Callback(73) = "UpdateLightMap LFlogo_001_LM_Flashers_f242, 100.0, " ' VLM.Lampz;Flashers-f242
 	Lampz.Callback(73) = "UpdateLightMap Spinners_LM_Flashers_f242, 100.0, " ' VLM.Lampz;Flashers-f242
 	Lampz.Callback(73) = "UpdateLightMap Target90_LM_Flashers_f242, 100.0, " ' VLM.Lampz;Flashers-f242
-	Lampz.Callback(73) = "UpdateLightMap targets_001_LM_Flashers_f242, 100.0, " ' VLM.Lampz;Flashers-f242
+	Lampz.Callback(73) = "UpdateLightMap firebutton_base_LM_Flashers_f24, 100.0, " ' VLM.Lampz;Flashers-f242
 	Lampz.Callback(73) = "UpdateLightMap targets_005_LM_Flashers_f242, 100.0, " ' VLM.Lampz;Flashers-f242
 	Lampz.Callback(73) = "UpdateLightMap targets_018_LM_Flashers_f242, 100.0, " ' VLM.Lampz;Flashers-f242
 	Lampz.Callback(73) = "UpdateLightMap targets_019_LM_Flashers_f242, 100.0, " ' VLM.Lampz;Flashers-f242
@@ -17212,6 +17249,8 @@ Sub LampzHelper
 	Lampz.Callback(75) = "UpdateLightMap targets_001_LM_Flashers_f244A, 100.0, " ' VLM.Lampz;Flashers-f244A
 	Lampz.Callback(75) = "UpdateLightMap targets_004_LM_Flashers_f244A, 100.0, " ' VLM.Lampz;Flashers-f244A
 	Lampz.Callback(75) = "UpdateLightMap targets_005_LM_Flashers_f244A, 100.0, " ' VLM.Lampz;Flashers-f244A
+	Lampz.Callback(75) = "UpdateLightMap targets_009_LM_Flashers_f244A, 100.0, " ' VLM.Lampz;Flashers-f244A
+	Lampz.Callback(75) = "UpdateLightMap targets_010_LM_Flashers_f244A, 100.0, " ' VLM.Lampz;Flashers-f244A
 	Lampz.Callback(75) = "UpdateLightMap targets_018_LM_Flashers_f244A, 100.0, " ' VLM.Lampz;Flashers-f244A
 	Lampz.Callback(75) = "UpdateLightMap targets_019_LM_Flashers_f244A, 100.0, " ' VLM.Lampz;Flashers-f244A
 	Lampz.Callback(75) = "UpdateLightMap Playfield_LM_Flashers_f244B, 100.0, " ' VLM.Lampz;Flashers-f244B
@@ -17234,7 +17273,6 @@ Sub LampzHelper
 	Lampz.Callback(76) = "UpdateLightMap Layer2_LM_Flashers_f245, 100.0, " ' VLM.Lampz;Flashers-f245
 	Lampz.Callback(76) = "UpdateLightMap Layer3_LM_Flashers_f245, 100.0, " ' VLM.Lampz;Flashers-f245
 	Lampz.Callback(76) = "UpdateLightMap Layer4_LM_Flashers_f245, 100.0, " ' VLM.Lampz;Flashers-f245
-	Lampz.Callback(76) = "UpdateLightMap Layer5_LM_Flashers_f245, 100.0, " ' VLM.Lampz;Flashers-f245
 	Lampz.Callback(76) = "UpdateLightMap Bumper_Ring_LM_Flashers_f245, 100.0, " ' VLM.Lampz;Flashers-f245
 	Lampz.Callback(76) = "UpdateLightMap Bumper_Ring_001_LM_Flashers_f24, 100.0, " ' VLM.Lampz;Flashers-f245
 	Lampz.Callback(76) = "UpdateLightMap Gates_001_LM_Flashers_f245, 100.0, " ' VLM.Lampz;Flashers-f245
@@ -17277,8 +17315,8 @@ Sub LampzHelper
 	Lampz.Callback(82) = "UpdateLightMap Layer3_LM_GI3, 100.0, " ' VLM.Lampz;GI3
 	Lampz.Callback(82) = "UpdateLightMap Layer5_LM_GI3, 100.0, " ' VLM.Lampz;GI3
 	Lampz.Callback(82) = "UpdateLightMap LorbitSW30_LM_GI3, 100.0, " ' VLM.Lampz;GI3
+	Lampz.Callback(82) = "UpdateLightMap Micro_Switch_LM_GI3, 100.0, " ' VLM.Lampz;GI3
 	Lampz.Callback(82) = "UpdateLightMap PinCab_Rails_002_LM_GI3, 100.0, " ' VLM.Lampz;GI3
-	Lampz.Callback(82) = "UpdateLightMap RFlogo_001_LM_GI3, 100.0, " ' VLM.Lampz;GI3
 	Lampz.Callback(82) = "UpdateLightMap Spinners_LM_GI3, 100.0, " ' VLM.Lampz;GI3
 	Lampz.Callback(82) = "UpdateLightMap Target90_LM_GI3, 100.0, " ' VLM.Lampz;GI3
 	Lampz.Callback(82) = "UpdateLightMap metalPlates_002_LM_GI3, 100.0, " ' VLM.Lampz;GI3
@@ -17343,7 +17381,6 @@ Sub LampzHelper
 	Lampz.Callback(2) = "UpdateLightMapWithColor li11,Playfield_LM_Inserts_li11, 100.0, " ' VLM.Lampz;Inserts-li11
 	' Sync on li120 ' VLM.Lampz;Inserts-li120
 	Lampz.Callback(37) = "UpdateLightMapWithColor li120,Playfield_LM_Inserts_li120, 100.0, " ' VLM.Lampz;Inserts-li120
-	Lampz.Callback(37) = "UpdateLightMapWithColor li120,Target90_LM_Inserts_li120, 100.0, " ' VLM.Lampz;Inserts-li120
 	Lampz.Callback(37) = "UpdateLightMapWithColor li120,ram_LM_Inserts_li120, 100.0, " ' VLM.Lampz;Inserts-li120
 	Lampz.Callback(37) = "UpdateLightMapWithColor li120,targets_006_LM_Inserts_li120, 100.0, " ' VLM.Lampz;Inserts-li120
 	' Sync on li123 ' VLM.Lampz;Inserts-li123
@@ -17351,26 +17388,30 @@ Sub LampzHelper
 	Lampz.Callback(38) = "UpdateLightMapWithColor li123,Target90_LM_Inserts_li123, 100.0, " ' VLM.Lampz;Inserts-li123
 	' Sync on li126 ' VLM.Lampz;Inserts-li126
 	Lampz.Callback(39) = "UpdateLightMapWithColor li126,Playfield_LM_Inserts_li126, 100.0, " ' VLM.Lampz;Inserts-li126
+	Lampz.Callback(39) = "UpdateLightMapWithColor li126,Spinners_LM_Inserts_li126, 100.0, " ' VLM.Lampz;Inserts-li126
 	Lampz.Callback(39) = "UpdateLightMapWithColor li126,Target90_LM_Inserts_li126, 100.0, " ' VLM.Lampz;Inserts-li126
 	' Sync on li129 ' VLM.Lampz;Inserts-li129
 	Lampz.Callback(40) = "UpdateLightMapWithColor li129,Playfield_LM_Inserts_li129, 100.0, " ' VLM.Lampz;Inserts-li129
 	Lampz.Callback(40) = "UpdateLightMapWithColor li129,PinCab_Rails_002_LM_Inserts_li1, 100.0, " ' VLM.Lampz;Inserts-li129
+	Lampz.Callback(40) = "UpdateLightMapWithColor li129,Spinners_LM_Inserts_li129, 100.0, " ' VLM.Lampz;Inserts-li129
 	Lampz.Callback(40) = "UpdateLightMapWithColor li129,Target90_LM_Inserts_li129, 100.0, " ' VLM.Lampz;Inserts-li129
 	' Sync on li132 ' VLM.Lampz;Inserts-li132
 	Lampz.Callback(41) = "UpdateLightMapWithColor li132,Playfield_LM_Inserts_li132, 100.0, " ' VLM.Lampz;Inserts-li132
+	Lampz.Callback(41) = "UpdateLightMapWithColor li132,Spinners_LM_Inserts_li132, 100.0, " ' VLM.Lampz;Inserts-li132
 	Lampz.Callback(41) = "UpdateLightMapWithColor li132,Target90_LM_Inserts_li132, 100.0, " ' VLM.Lampz;Inserts-li132
 	Lampz.Callback(41) = "UpdateLightMapWithColor li132,targets_006_LM_Inserts_li132, 100.0, " ' VLM.Lampz;Inserts-li132
 	' Sync on li135 ' VLM.Lampz;Inserts-li135
 	Lampz.Callback(42) = "UpdateLightMapWithColor li135,Playfield_LM_Inserts_li135, 100.0, " ' VLM.Lampz;Inserts-li135
-	Lampz.Callback(42) = "UpdateLightMapWithColor li135,Spinners_LM_Inserts_li135, 100.0, " ' VLM.Lampz;Inserts-li135
 	Lampz.Callback(42) = "UpdateLightMapWithColor li135,Target90_LM_Inserts_li135, 100.0, " ' VLM.Lampz;Inserts-li135
 	Lampz.Callback(42) = "UpdateLightMapWithColor li135,ram_LM_Inserts_li135, 100.0, " ' VLM.Lampz;Inserts-li135
 	Lampz.Callback(42) = "UpdateLightMapWithColor li135,targets_007_LM_Inserts_li135, 100.0, " ' VLM.Lampz;Inserts-li135
 	' Sync on li138 ' VLM.Lampz;Inserts-li138
 	Lampz.Callback(43) = "UpdateLightMapWithColor li138,Playfield_LM_Inserts_li138, 100.0, " ' VLM.Lampz;Inserts-li138
+	Lampz.Callback(43) = "UpdateLightMapWithColor li138,Spinners_LM_Inserts_li138, 100.0, " ' VLM.Lampz;Inserts-li138
 	Lampz.Callback(43) = "UpdateLightMapWithColor li138,Target90_LM_Inserts_li138, 100.0, " ' VLM.Lampz;Inserts-li138
 	' Sync on li141 ' VLM.Lampz;Inserts-li141
 	Lampz.Callback(44) = "UpdateLightMapWithColor li141,Playfield_LM_Inserts_li141, 100.0, " ' VLM.Lampz;Inserts-li141
+	Lampz.Callback(44) = "UpdateLightMapWithColor li141,Spinners_LM_Inserts_li141, 100.0, " ' VLM.Lampz;Inserts-li141
 	Lampz.Callback(44) = "UpdateLightMapWithColor li141,Target90_LM_Inserts_li141, 100.0, " ' VLM.Lampz;Inserts-li141
 	' Sync on li144 ' VLM.Lampz;Inserts-li144
 	Lampz.Callback(45) = "UpdateLightMapWithColor li144,Playfield_LM_Inserts_li144, 100.0, " ' VLM.Lampz;Inserts-li144
@@ -17387,6 +17428,7 @@ Sub LampzHelper
 	' Sync on li153 ' VLM.Lampz;Inserts-li153
 	Lampz.Callback(48) = "UpdateLightMapWithColor li153,Playfield_LM_Inserts_li153, 100.0, " ' VLM.Lampz;Inserts-li153
 	Lampz.Callback(48) = "UpdateLightMapWithColor li153,Target90_LM_Inserts_li153, 100.0, " ' VLM.Lampz;Inserts-li153
+	Lampz.Callback(48) = "UpdateLightMapWithColor li153,lockpost_001_LM_Inserts_li153, 100.0, " ' VLM.Lampz;Inserts-li153
 	Lampz.Callback(48) = "UpdateLightMapWithColor li153,targets_009_LM_Inserts_li153, 100.0, " ' VLM.Lampz;Inserts-li153
 	' Sync on li156 ' VLM.Lampz;Inserts-li156
 	Lampz.Callback(49) = "UpdateLightMapWithColor li156,Playfield_LM_Inserts_li156, 100.0, " ' VLM.Lampz;Inserts-li156
@@ -17497,6 +17539,7 @@ Sub LampzHelper
 	Lampz.Callback(77) = "UpdateLightMapWithColor li222,Playfield_LM_Upper_GI, 100.0, " ' VLM.Lampz;Upper GI
 	Lampz.Callback(77) = "UpdateLightMapWithColor li222,Layer1_LM_Upper_GI, 100.0, " ' VLM.Lampz;Upper GI
 	Lampz.Callback(77) = "UpdateLightMapWithColor li222,Layer4_LM_Upper_GI, 100.0, " ' VLM.Lampz;Upper GI
+	Lampz.Callback(77) = "UpdateLightMapWithColor li222,Gates_001_LM_Upper_GI, 100.0, " ' VLM.Lampz;Upper GI
 	Lampz.Callback(77) = "UpdateLightMapWithColor li222,LFlogo_001_LM_Upper_GI, 100.0, " ' VLM.Lampz;Upper GI
 	Lampz.Callback(77) = "UpdateLightMapWithColor li222,Lwing_LM_Upper_GI, 100.0, " ' VLM.Lampz;Upper GI
 	Lampz.Callback(77) = "UpdateLightMapWithColor li222,RFlogo_001_LM_Upper_GI, 100.0, " ' VLM.Lampz;Upper GI
@@ -17509,123 +17552,115 @@ Sub LampzHelper
 	Lampz.Callback(77) = "UpdateLightMapWithColor li222,targets_011_LM_Upper_GI, 100.0, " ' VLM.Lampz;Upper GI
 	Lampz.Callback(77) = "UpdateLightMapWithColor li222,targets_012_LM_Upper_GI, 100.0, " ' VLM.Lampz;Upper GI
 	' Sync on li23 ' VLM.Lampz;Inserts-li23
-	Lampz.Callback(6) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li23, 100.0, " ' VLM.Lampz;Inserts-li23
-	Lampz.Callback(6) = "UpdateLightMapWithColor li20,Spinners_LM_Inserts_li23, 100.0, " ' VLM.Lampz;Inserts-li23
-	Lampz.Callback(6) = "UpdateLightMapWithColor li20,targets_001_LM_Inserts_li23, 100.0, " ' VLM.Lampz;Inserts-li23
-	Lampz.Callback(6) = "UpdateLightMapWithColor li20,targets_018_LM_Inserts_li23, 100.0, " ' VLM.Lampz;Inserts-li23
-	Lampz.Callback(6) = "UpdateLightMapWithColor li20,targets_019_LM_Inserts_li23, 100.0, " ' VLM.Lampz;Inserts-li23
+	Lampz.Callback(6) = "UpdateLightMapWithColor li23,Playfield_LM_Inserts_li23, 100.0, " ' VLM.Lampz;Inserts-li23
+	Lampz.Callback(6) = "UpdateLightMapWithColor li23,Spinners_LM_Inserts_li23, 100.0, " ' VLM.Lampz;Inserts-li23
+	Lampz.Callback(6) = "UpdateLightMapWithColor li23,targets_001_LM_Inserts_li23, 100.0, " ' VLM.Lampz;Inserts-li23
+	Lampz.Callback(6) = "UpdateLightMapWithColor li23,targets_018_LM_Inserts_li23, 100.0, " ' VLM.Lampz;Inserts-li23
+	Lampz.Callback(6) = "UpdateLightMapWithColor li23,targets_019_LM_Inserts_li23, 100.0, " ' VLM.Lampz;Inserts-li23
 	' Sync on li26 ' VLM.Lampz;Inserts-li26
-	Lampz.Callback(7) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li26, 100.0, " ' VLM.Lampz;Inserts-li26
-	Lampz.Callback(7) = "UpdateLightMapWithColor li20,targets_001_LM_Inserts_li26, 100.0, " ' VLM.Lampz;Inserts-li26
-	Lampz.Callback(7) = "UpdateLightMapWithColor li20,targets_018_LM_Inserts_li26, 100.0, " ' VLM.Lampz;Inserts-li26
-	Lampz.Callback(7) = "UpdateLightMapWithColor li20,targets_019_LM_Inserts_li26, 100.0, " ' VLM.Lampz;Inserts-li26
+	Lampz.Callback(7) = "UpdateLightMapWithColor li26,Playfield_LM_Inserts_li26, 100.0, " ' VLM.Lampz;Inserts-li26
+	Lampz.Callback(7) = "UpdateLightMapWithColor li26,targets_001_LM_Inserts_li26, 100.0, " ' VLM.Lampz;Inserts-li26
+	Lampz.Callback(7) = "UpdateLightMapWithColor li26,targets_018_LM_Inserts_li26, 100.0, " ' VLM.Lampz;Inserts-li26
+	Lampz.Callback(7) = "UpdateLightMapWithColor li26,targets_019_LM_Inserts_li26, 100.0, " ' VLM.Lampz;Inserts-li26
 	' Sync on li29 ' VLM.Lampz;Inserts-li29
-	Lampz.Callback(8) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li29, 100.0, " ' VLM.Lampz;Inserts-li29
-	Lampz.Callback(8) = "UpdateLightMapWithColor li20,targets_001_LM_Inserts_li29, 100.0, " ' VLM.Lampz;Inserts-li29
-	Lampz.Callback(8) = "UpdateLightMapWithColor li20,targets_018_LM_Inserts_li29, 100.0, " ' VLM.Lampz;Inserts-li29
-	Lampz.Callback(8) = "UpdateLightMapWithColor li20,targets_019_LM_Inserts_li29, 100.0, " ' VLM.Lampz;Inserts-li29
+	Lampz.Callback(8) = "UpdateLightMapWithColor li29,Playfield_LM_Inserts_li29, 100.0, " ' VLM.Lampz;Inserts-li29
+	Lampz.Callback(8) = "UpdateLightMapWithColor li29,targets_001_LM_Inserts_li29, 100.0, " ' VLM.Lampz;Inserts-li29
+	Lampz.Callback(8) = "UpdateLightMapWithColor li29,targets_018_LM_Inserts_li29, 100.0, " ' VLM.Lampz;Inserts-li29
 	' Sync on li32 ' VLM.Lampz;Inserts-li32
-	Lampz.Callback(9) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li32, 100.0, " ' VLM.Lampz;Inserts-li32
-	Lampz.Callback(9) = "UpdateLightMapWithColor li20,targets_001_LM_Inserts_li32, 100.0, " ' VLM.Lampz;Inserts-li32
-	Lampz.Callback(9) = "UpdateLightMapWithColor li20,targets_018_LM_Inserts_li32, 100.0, " ' VLM.Lampz;Inserts-li32
-	Lampz.Callback(9) = "UpdateLightMapWithColor li20,targets_019_LM_Inserts_li32, 100.0, " ' VLM.Lampz;Inserts-li32
+	Lampz.Callback(9) = "UpdateLightMapWithColor li32,Playfield_LM_Inserts_li32, 100.0, " ' VLM.Lampz;Inserts-li32
+	Lampz.Callback(9) = "UpdateLightMapWithColor li32,targets_018_LM_Inserts_li32, 100.0, " ' VLM.Lampz;Inserts-li32
+	Lampz.Callback(9) = "UpdateLightMapWithColor li32,targets_019_LM_Inserts_li32, 100.0, " ' VLM.Lampz;Inserts-li32
 	' Sync on li35 ' VLM.Lampz;Inserts-li35
-	Lampz.Callback(10) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li35, 100.0, " ' VLM.Lampz;Inserts-li35
-	Lampz.Callback(10) = "UpdateLightMapWithColor li20,targets_019_LM_Inserts_li35, 100.0, " ' VLM.Lampz;Inserts-li35
+	Lampz.Callback(10) = "UpdateLightMapWithColor li35,Playfield_LM_Inserts_li35, 100.0, " ' VLM.Lampz;Inserts-li35
+	Lampz.Callback(10) = "UpdateLightMapWithColor li35,targets_019_LM_Inserts_li35, 100.0, " ' VLM.Lampz;Inserts-li35
 	' Sync on li38 ' VLM.Lampz;Inserts-li38
-	Lampz.Callback(11) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li38, 100.0, " ' VLM.Lampz;Inserts-li38
-	Lampz.Callback(11) = "UpdateLightMapWithColor li20,LFlogo_003_LM_Inserts_li38, 100.0, " ' VLM.Lampz;Inserts-li38
-	Lampz.Callback(11) = "UpdateLightMapWithColor li20,RFlogo_003_LM_Inserts_li38, 100.0, " ' VLM.Lampz;Inserts-li38
-	Lampz.Callback(11) = "UpdateLightMapWithColor li20,targets_001_LM_Inserts_li38, 100.0, " ' VLM.Lampz;Inserts-li38
-	Lampz.Callback(11) = "UpdateLightMapWithColor li20,targets_018_LM_Inserts_li38, 100.0, " ' VLM.Lampz;Inserts-li38
+	Lampz.Callback(11) = "UpdateLightMapWithColor li38,Playfield_LM_Inserts_li38, 100.0, " ' VLM.Lampz;Inserts-li38
+	Lampz.Callback(11) = "UpdateLightMapWithColor li38,LFlogo_003_LM_Inserts_li38, 100.0, " ' VLM.Lampz;Inserts-li38
+	Lampz.Callback(11) = "UpdateLightMapWithColor li38,RFlogo_003_LM_Inserts_li38, 100.0, " ' VLM.Lampz;Inserts-li38
 	' Sync on li41 ' VLM.Lampz;Inserts-li41
-	Lampz.Callback(12) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li41, 100.0, " ' VLM.Lampz;Inserts-li41
-	Lampz.Callback(12) = "UpdateLightMapWithColor li20,LFlogo_003_LM_Inserts_li41, 100.0, " ' VLM.Lampz;Inserts-li41
-	Lampz.Callback(12) = "UpdateLightMapWithColor li20,RFlogo_003_LM_Inserts_li41, 100.0, " ' VLM.Lampz;Inserts-li41
-	Lampz.Callback(12) = "UpdateLightMapWithColor li20,targets_001_LM_Inserts_li41, 100.0, " ' VLM.Lampz;Inserts-li41
-	Lampz.Callback(12) = "UpdateLightMapWithColor li20,targets_018_LM_Inserts_li41, 100.0, " ' VLM.Lampz;Inserts-li41
-	Lampz.Callback(12) = "UpdateLightMapWithColor li20,targets_019_LM_Inserts_li41, 100.0, " ' VLM.Lampz;Inserts-li41
+	Lampz.Callback(12) = "UpdateLightMapWithColor li41,Playfield_LM_Inserts_li41, 100.0, " ' VLM.Lampz;Inserts-li41
+	Lampz.Callback(12) = "UpdateLightMapWithColor li41,LFlogo_003_LM_Inserts_li41, 100.0, " ' VLM.Lampz;Inserts-li41
+	Lampz.Callback(12) = "UpdateLightMapWithColor li41,RFlogo_003_LM_Inserts_li41, 100.0, " ' VLM.Lampz;Inserts-li41
+	Lampz.Callback(12) = "UpdateLightMapWithColor li41,targets_001_LM_Inserts_li41, 100.0, " ' VLM.Lampz;Inserts-li41
+	Lampz.Callback(12) = "UpdateLightMapWithColor li41,targets_018_LM_Inserts_li41, 100.0, " ' VLM.Lampz;Inserts-li41
 	' Sync on li44 ' VLM.Lampz;Inserts-li44
-	Lampz.Callback(13) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li44, 100.0, " ' VLM.Lampz;Inserts-li44
-	Lampz.Callback(13) = "UpdateLightMapWithColor li20,LFlogo_003_LM_Inserts_li44, 100.0, " ' VLM.Lampz;Inserts-li44
-	Lampz.Callback(13) = "UpdateLightMapWithColor li20,RFlogo_003_LM_Inserts_li44, 100.0, " ' VLM.Lampz;Inserts-li44
+	Lampz.Callback(13) = "UpdateLightMapWithColor li44,Playfield_LM_Inserts_li44, 100.0, " ' VLM.Lampz;Inserts-li44
+	Lampz.Callback(13) = "UpdateLightMapWithColor li44,LFlogo_003_LM_Inserts_li44, 100.0, " ' VLM.Lampz;Inserts-li44
+	Lampz.Callback(13) = "UpdateLightMapWithColor li44,RFlogo_003_LM_Inserts_li44, 100.0, " ' VLM.Lampz;Inserts-li44
 	' Sync on li47 ' VLM.Lampz;Inserts-li47
-	Lampz.Callback(14) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li47, 100.0, " ' VLM.Lampz;Inserts-li47
-	Lampz.Callback(14) = "UpdateLightMapWithColor li20,LFlogo_003_LM_Inserts_li47, 100.0, " ' VLM.Lampz;Inserts-li47
-	Lampz.Callback(14) = "UpdateLightMapWithColor li20,RFlogo_003_LM_Inserts_li47, 100.0, " ' VLM.Lampz;Inserts-li47
+	Lampz.Callback(14) = "UpdateLightMapWithColor li47,Playfield_LM_Inserts_li47, 100.0, " ' VLM.Lampz;Inserts-li47
+	Lampz.Callback(14) = "UpdateLightMapWithColor li47,LFlogo_003_LM_Inserts_li47, 100.0, " ' VLM.Lampz;Inserts-li47
+	Lampz.Callback(14) = "UpdateLightMapWithColor li47,RFlogo_003_LM_Inserts_li47, 100.0, " ' VLM.Lampz;Inserts-li47
 	' Sync on li50 ' VLM.Lampz;Inserts-li50
-	Lampz.Callback(15) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li50, 100.0, " ' VLM.Lampz;Inserts-li50
-	Lampz.Callback(15) = "UpdateLightMapWithColor li20,LFlogo_003_LM_Inserts_li50, 100.0, " ' VLM.Lampz;Inserts-li50
-	Lampz.Callback(15) = "UpdateLightMapWithColor li20,RFlogo_003_LM_Inserts_li50, 100.0, " ' VLM.Lampz;Inserts-li50
+	Lampz.Callback(15) = "UpdateLightMapWithColor li50,Playfield_LM_Inserts_li50, 100.0, " ' VLM.Lampz;Inserts-li50
+	Lampz.Callback(15) = "UpdateLightMapWithColor li50,LFlogo_003_LM_Inserts_li50, 100.0, " ' VLM.Lampz;Inserts-li50
+	Lampz.Callback(15) = "UpdateLightMapWithColor li50,RFlogo_003_LM_Inserts_li50, 100.0, " ' VLM.Lampz;Inserts-li50
 	' Sync on li53 ' VLM.Lampz;Inserts-li53
-	Lampz.Callback(16) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li53, 100.0, " ' VLM.Lampz;Inserts-li53
-	Lampz.Callback(16) = "UpdateLightMapWithColor li20,LFlogo_003_LM_Inserts_li53, 100.0, " ' VLM.Lampz;Inserts-li53
-	Lampz.Callback(16) = "UpdateLightMapWithColor li20,RFlogo_003_LM_Inserts_li53, 100.0, " ' VLM.Lampz;Inserts-li53
+	Lampz.Callback(16) = "UpdateLightMapWithColor li53,Playfield_LM_Inserts_li53, 100.0, " ' VLM.Lampz;Inserts-li53
+	Lampz.Callback(16) = "UpdateLightMapWithColor li53,LFlogo_003_LM_Inserts_li53, 100.0, " ' VLM.Lampz;Inserts-li53
+	Lampz.Callback(16) = "UpdateLightMapWithColor li53,RFlogo_003_LM_Inserts_li53, 100.0, " ' VLM.Lampz;Inserts-li53
 	' Sync on li56 ' VLM.Lampz;Inserts-li56
-	Lampz.Callback(17) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li56, 100.0, " ' VLM.Lampz;Inserts-li56
-	Lampz.Callback(17) = "UpdateLightMapWithColor li20,LFlogo_003_LM_Inserts_li56, 100.0, " ' VLM.Lampz;Inserts-li56
-	Lampz.Callback(17) = "UpdateLightMapWithColor li20,RFlogo_003_LM_Inserts_li56, 100.0, " ' VLM.Lampz;Inserts-li56
+	Lampz.Callback(17) = "UpdateLightMapWithColor li56,Playfield_LM_Inserts_li56, 100.0, " ' VLM.Lampz;Inserts-li56
+	Lampz.Callback(17) = "UpdateLightMapWithColor li56,LFlogo_003_LM_Inserts_li56, 100.0, " ' VLM.Lampz;Inserts-li56
+	Lampz.Callback(17) = "UpdateLightMapWithColor li56,RFlogo_003_LM_Inserts_li56, 100.0, " ' VLM.Lampz;Inserts-li56
 	' Sync on li59 ' VLM.Lampz;Inserts-li59
-	Lampz.Callback(18) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li59, 100.0, " ' VLM.Lampz;Inserts-li59
-	Lampz.Callback(18) = "UpdateLightMapWithColor li20,LFlogo_003_LM_Inserts_li59, 100.0, " ' VLM.Lampz;Inserts-li59
-	Lampz.Callback(18) = "UpdateLightMapWithColor li20,RFlogo_003_LM_Inserts_li59, 100.0, " ' VLM.Lampz;Inserts-li59
-	Lampz.Callback(18) = "UpdateLightMapWithColor li20,FireButton_LM_Inserts_li59, 100.0, " ' VLM.Lampz;Inserts-li59
+	Lampz.Callback(18) = "UpdateLightMapWithColor li59,Playfield_LM_Inserts_li59, 100.0, " ' VLM.Lampz;Inserts-li59
+	Lampz.Callback(18) = "UpdateLightMapWithColor li59,LFlogo_003_LM_Inserts_li59, 100.0, " ' VLM.Lampz;Inserts-li59
+	Lampz.Callback(18) = "UpdateLightMapWithColor li59,RFlogo_003_LM_Inserts_li59, 100.0, " ' VLM.Lampz;Inserts-li59
+	Lampz.Callback(18) = "UpdateLightMapWithColor li59,FireButton_LM_Inserts_li59, 100.0, " ' VLM.Lampz;Inserts-li59
 	' Sync on li62 ' VLM.Lampz;Inserts-li62
-	Lampz.Callback(19) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li62, 100.0, " ' VLM.Lampz;Inserts-li62
-	Lampz.Callback(19) = "UpdateLightMapWithColor li20,LFlogo_003_LM_Inserts_li62, 100.0, " ' VLM.Lampz;Inserts-li62
-	Lampz.Callback(19) = "UpdateLightMapWithColor li20,RFlogo_003_LM_Inserts_li62, 100.0, " ' VLM.Lampz;Inserts-li62
+	Lampz.Callback(19) = "UpdateLightMapWithColor li62,Playfield_LM_Inserts_li62, 100.0, " ' VLM.Lampz;Inserts-li62
+	Lampz.Callback(19) = "UpdateLightMapWithColor li62,LFlogo_003_LM_Inserts_li62, 100.0, " ' VLM.Lampz;Inserts-li62
+	Lampz.Callback(19) = "UpdateLightMapWithColor li62,RFlogo_003_LM_Inserts_li62, 100.0, " ' VLM.Lampz;Inserts-li62
 	' Sync on li65 ' VLM.Lampz;Inserts-li65
-	Lampz.Callback(20) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li65, 100.0, " ' VLM.Lampz;Inserts-li65
-	Lampz.Callback(20) = "UpdateLightMapWithColor li20,LFlogo_003_LM_Inserts_li65, 100.0, " ' VLM.Lampz;Inserts-li65
-	Lampz.Callback(20) = "UpdateLightMapWithColor li20,RFlogo_003_LM_Inserts_li65, 100.0, " ' VLM.Lampz;Inserts-li65
+	Lampz.Callback(20) = "UpdateLightMapWithColor li65,Playfield_LM_Inserts_li65, 100.0, " ' VLM.Lampz;Inserts-li65
+	Lampz.Callback(20) = "UpdateLightMapWithColor li65,LFlogo_003_LM_Inserts_li65, 100.0, " ' VLM.Lampz;Inserts-li65
+	Lampz.Callback(20) = "UpdateLightMapWithColor li65,RFlogo_003_LM_Inserts_li65, 100.0, " ' VLM.Lampz;Inserts-li65
 	' Sync on li71 ' VLM.Lampz;Inserts-li71
-	Lampz.Callback(21) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li71, 100.0, " ' VLM.Lampz;Inserts-li71
+	Lampz.Callback(21) = "UpdateLightMapWithColor li71,Playfield_LM_Inserts_li71, 100.0, " ' VLM.Lampz;Inserts-li71
 	' Sync on li74 ' VLM.Lampz;Inserts-li74
-	Lampz.Callback(22) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li74, 100.0, " ' VLM.Lampz;Inserts-li74
+	Lampz.Callback(22) = "UpdateLightMapWithColor li74,Playfield_LM_Inserts_li74, 100.0, " ' VLM.Lampz;Inserts-li74
 	' Sync on li77 ' VLM.Lampz;Inserts-li77
-	Lampz.Callback(23) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li77, 100.0, " ' VLM.Lampz;Inserts-li77
-	Lampz.Callback(23) = "UpdateLightMapWithColor li20,outlane_right_LM_Inserts_li77, 100.0, " ' VLM.Lampz;Inserts-li77
-	Lampz.Callback(23) = "UpdateLightMapWithColor li20,sword_003_LM_Inserts_li77, 100.0, " ' VLM.Lampz;Inserts-li77
+	Lampz.Callback(23) = "UpdateLightMapWithColor li77,Playfield_LM_Inserts_li77, 100.0, " ' VLM.Lampz;Inserts-li77
+	Lampz.Callback(23) = "UpdateLightMapWithColor li77,outlane_right_LM_Inserts_li77, 100.0, " ' VLM.Lampz;Inserts-li77
+	Lampz.Callback(23) = "UpdateLightMapWithColor li77,sword_003_LM_Inserts_li77, 100.0, " ' VLM.Lampz;Inserts-li77
 	' Sync on li80 ' VLM.Lampz;Inserts-li80
-	Lampz.Callback(24) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li80, 100.0, " ' VLM.Lampz;Inserts-li80
-	Lampz.Callback(24) = "UpdateLightMapWithColor li20,lockpost_001_LM_Inserts_li80, 100.0, " ' VLM.Lampz;Inserts-li80
-	Lampz.Callback(24) = "UpdateLightMapWithColor li20,sword_002_LM_Inserts_li80, 100.0, " ' VLM.Lampz;Inserts-li80
-	Lampz.Callback(24) = "UpdateLightMapWithColor li20,sword_003_LM_Inserts_li80, 100.0, " ' VLM.Lampz;Inserts-li80
-	Lampz.Callback(24) = "UpdateLightMapWithColor li20,targets_009_LM_Inserts_li80, 100.0, " ' VLM.Lampz;Inserts-li80
-	Lampz.Callback(24) = "UpdateLightMapWithColor li20,targets_010_LM_Inserts_li80, 100.0, " ' VLM.Lampz;Inserts-li80
+	Lampz.Callback(24) = "UpdateLightMapWithColor li80,Playfield_LM_Inserts_li80, 100.0, " ' VLM.Lampz;Inserts-li80
+	Lampz.Callback(24) = "UpdateLightMapWithColor li80,lockpost_001_LM_Inserts_li80, 100.0, " ' VLM.Lampz;Inserts-li80
+	Lampz.Callback(24) = "UpdateLightMapWithColor li80,sword_002_LM_Inserts_li80, 100.0, " ' VLM.Lampz;Inserts-li80
+	Lampz.Callback(24) = "UpdateLightMapWithColor li80,sword_003_LM_Inserts_li80, 100.0, " ' VLM.Lampz;Inserts-li80
+	Lampz.Callback(24) = "UpdateLightMapWithColor li80,targets_009_LM_Inserts_li80, 100.0, " ' VLM.Lampz;Inserts-li80
+	Lampz.Callback(24) = "UpdateLightMapWithColor li80,targets_010_LM_Inserts_li80, 100.0, " ' VLM.Lampz;Inserts-li80
 	' Sync on li83 ' VLM.Lampz;Inserts-li83
-	Lampz.Callback(25) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li83, 100.0, " ' VLM.Lampz;Inserts-li83
-	Lampz.Callback(25) = "UpdateLightMapWithColor li20,lockpost_001_LM_Inserts_li83, 100.0, " ' VLM.Lampz;Inserts-li83
-	Lampz.Callback(25) = "UpdateLightMapWithColor li20,sword_003_LM_Inserts_li83, 100.0, " ' VLM.Lampz;Inserts-li83
-	Lampz.Callback(25) = "UpdateLightMapWithColor li20,targets_010_LM_Inserts_li83, 100.0, " ' VLM.Lampz;Inserts-li83
+	Lampz.Callback(25) = "UpdateLightMapWithColor li83,Playfield_LM_Inserts_li83, 100.0, " ' VLM.Lampz;Inserts-li83
+	Lampz.Callback(25) = "UpdateLightMapWithColor li83,lockpost_001_LM_Inserts_li83, 100.0, " ' VLM.Lampz;Inserts-li83
+	Lampz.Callback(25) = "UpdateLightMapWithColor li83,sword_003_LM_Inserts_li83, 100.0, " ' VLM.Lampz;Inserts-li83
+	Lampz.Callback(25) = "UpdateLightMapWithColor li83,targets_010_LM_Inserts_li83, 100.0, " ' VLM.Lampz;Inserts-li83
 	' Sync on li86 ' VLM.Lampz;Inserts-li86
-	Lampz.Callback(26) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li86, 100.0, " ' VLM.Lampz;Inserts-li86
-	Lampz.Callback(26) = "UpdateLightMapWithColor li20,Spinners_LM_Inserts_li86, 100.0, " ' VLM.Lampz;Inserts-li86
-	Lampz.Callback(26) = "UpdateLightMapWithColor li20,targets_001_LM_Inserts_li86, 100.0, " ' VLM.Lampz;Inserts-li86
-	Lampz.Callback(26) = "UpdateLightMapWithColor li20,targets_018_LM_Inserts_li86, 100.0, " ' VLM.Lampz;Inserts-li86
-	Lampz.Callback(26) = "UpdateLightMapWithColor li20,targets_019_LM_Inserts_li86, 100.0, " ' VLM.Lampz;Inserts-li86
+	Lampz.Callback(26) = "UpdateLightMapWithColor li86,Playfield_LM_Inserts_li86, 100.0, " ' VLM.Lampz;Inserts-li86
+	Lampz.Callback(26) = "UpdateLightMapWithColor li86,Spinners_LM_Inserts_li86, 100.0, " ' VLM.Lampz;Inserts-li86
+	Lampz.Callback(26) = "UpdateLightMapWithColor li86,targets_001_LM_Inserts_li86, 100.0, " ' VLM.Lampz;Inserts-li86
+	Lampz.Callback(26) = "UpdateLightMapWithColor li86,targets_018_LM_Inserts_li86, 100.0, " ' VLM.Lampz;Inserts-li86
+	Lampz.Callback(26) = "UpdateLightMapWithColor li86,targets_019_LM_Inserts_li86, 100.0, " ' VLM.Lampz;Inserts-li86
 	' Sync on li89 ' VLM.Lampz;Inserts-li89
-	Lampz.Callback(27) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li89, 100.0, " ' VLM.Lampz;Inserts-li89
-	Lampz.Callback(27) = "UpdateLightMapWithColor li20,Spinners_LM_Inserts_li89, 100.0, " ' VLM.Lampz;Inserts-li89
-	Lampz.Callback(27) = "UpdateLightMapWithColor li20,targets_001_LM_Inserts_li89, 100.0, " ' VLM.Lampz;Inserts-li89
-	Lampz.Callback(27) = "UpdateLightMapWithColor li20,targets_018_LM_Inserts_li89, 100.0, " ' VLM.Lampz;Inserts-li89
-	Lampz.Callback(27) = "UpdateLightMapWithColor li20,targets_019_LM_Inserts_li89, 100.0, " ' VLM.Lampz;Inserts-li89
+	Lampz.Callback(27) = "UpdateLightMapWithColor li89,Playfield_LM_Inserts_li89, 100.0, " ' VLM.Lampz;Inserts-li89
+	Lampz.Callback(27) = "UpdateLightMapWithColor li89,Spinners_LM_Inserts_li89, 100.0, " ' VLM.Lampz;Inserts-li89
 	' Sync on li92 ' VLM.Lampz;Inserts-li92
-	Lampz.Callback(28) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li92, 100.0, " ' VLM.Lampz;Inserts-li92
-	Lampz.Callback(28) = "UpdateLightMapWithColor li20,PinCab_Rails_002_LM_Inserts_li9, 100.0, " ' VLM.Lampz;Inserts-li92
-	Lampz.Callback(28) = "UpdateLightMapWithColor li20,Spinners_LM_Inserts_li92, 100.0, " ' VLM.Lampz;Inserts-li92
-	Lampz.Callback(28) = "UpdateLightMapWithColor li20,targets_004_LM_Inserts_li92, 100.0, " ' VLM.Lampz;Inserts-li92
-	Lampz.Callback(28) = "UpdateLightMapWithColor li20,targets_012_LM_Inserts_li92, 100.0, " ' VLM.Lampz;Inserts-li92
+	Lampz.Callback(28) = "UpdateLightMapWithColor li92,Playfield_LM_Inserts_li92, 100.0, " ' VLM.Lampz;Inserts-li92
+	Lampz.Callback(28) = "UpdateLightMapWithColor li92,PinCab_Rails_002_LM_Inserts_li9, 100.0, " ' VLM.Lampz;Inserts-li92
+	Lampz.Callback(28) = "UpdateLightMapWithColor li92,Spinners_LM_Inserts_li92, 100.0, " ' VLM.Lampz;Inserts-li92
+	Lampz.Callback(28) = "UpdateLightMapWithColor li92,targets_001_LM_Inserts_li92, 100.0, " ' VLM.Lampz;Inserts-li92
+	Lampz.Callback(28) = "UpdateLightMapWithColor li92,targets_004_LM_Inserts_li92, 100.0, " ' VLM.Lampz;Inserts-li92
+	Lampz.Callback(28) = "UpdateLightMapWithColor li92,targets_012_LM_Inserts_li92, 100.0, " ' VLM.Lampz;Inserts-li92
+	Lampz.Callback(28) = "UpdateLightMapWithColor li92,targets_018_LM_Inserts_li92, 100.0, " ' VLM.Lampz;Inserts-li92
 	' Sync on li95 ' VLM.Lampz;Inserts-li95
-	Lampz.Callback(29) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li95, 100.0, " ' VLM.Lampz;Inserts-li95
-	Lampz.Callback(29) = "UpdateLightMapWithColor li20,Layer3_LM_Inserts_li95, 100.0, " ' VLM.Lampz;Inserts-li95
-	Lampz.Callback(29) = "UpdateLightMapWithColor li20,targets_004_LM_Inserts_li95, 100.0, " ' VLM.Lampz;Inserts-li95
+	Lampz.Callback(29) = "UpdateLightMapWithColor li95,Playfield_LM_Inserts_li95, 100.0, " ' VLM.Lampz;Inserts-li95
+	Lampz.Callback(29) = "UpdateLightMapWithColor li95,Layer3_LM_Inserts_li95, 100.0, " ' VLM.Lampz;Inserts-li95
+	Lampz.Callback(29) = "UpdateLightMapWithColor li95,targets_004_LM_Inserts_li95, 100.0, " ' VLM.Lampz;Inserts-li95
 	' Sync on li98 ' VLM.Lampz;Inserts-li98
-	Lampz.Callback(30) = "UpdateLightMapWithColor li20,Playfield_LM_Inserts_li98, 100.0, " ' VLM.Lampz;Inserts-li98
-	Lampz.Callback(30) = "UpdateLightMapWithColor li20,Layer3_LM_Inserts_li98, 100.0, " ' VLM.Lampz;Inserts-li98
+	Lampz.Callback(30) = "UpdateLightMapWithColor li98,Playfield_LM_Inserts_li98, 100.0, " ' VLM.Lampz;Inserts-li98
+	Lampz.Callback(30) = "UpdateLightMapWithColor li98,Layer3_LM_Inserts_li98, 100.0, " ' VLM.Lampz;Inserts-li98
 End Sub
-
-
 
 ' ===============================================================
 ' The following code can serve as a base for movable position synchronization.
@@ -17842,6 +17877,7 @@ Sub HideLightHelper
 
 	li222.Visible = False
     li230.Visible = False
+    li231.Visible = False
 
     fl235.Visible = False
     fl236.Visible = False
