@@ -1,13 +1,13 @@
-'        ,@@@*********@@@@                                                                                                                    
-'     .@@%              (&         %            @              &    %%%%%%%%%%,                                                               
-'    @@@                          @@#           @@.          .@@      @@*    /                                                                
-'   (@@                          @% @/          @@@%        #@@@      @@*           .@@&@(   (@@@@@                                           
-'   @@@                         #@  /@*        #@ &@@      @@ &@.     @@/....@    &&  %*   @  @                                               
-'   (@@,               @@@     /@@@@@@@*       @%  /@@    @&   @&     @@/    @    @   %*   &# @@@..                                           
-'    @@@,              @@@    ,@      @@/      @    .@@  @/    @@     @@/          @  %*   @  @                                               
-'     &@@@             @@@   .@        @@@    ,@      @@@      @@.    @@/     (       #@(    . .                                              
-'       #@@@@          @@@             @@@@@(%@@@#     ,       @@@@% %@@@@@@@@,                                                               
-'           *@@@@@@@@@@/                                                                                                                      
+'        ,@@@********@@@@                                                                                                                    
+'     .@@%             (&         %            @              &    %%%%%%%%%%,                                                               
+'    @@@                         @@#           @@.          .@@      @@*    /                                                                
+'   (@@                         @% @/          @@@%        #@@@      @@*           .@@&@(   (@@@@@                                           
+'   @@@                        #@  /@*        #@ &@@      @@ &@.     @@/....@    &&  %*   @  @                                               
+'   (@@,              @@@     /@@@@@@@*       @%  /@@    @&   @&     @@/    @    @   %*   &# @@@..                                           
+'    @@@,             @@@    ,@      @@/      @    .@@  @/    @@     @@/          @  %*   @  @                                               
+'     &@@@            @@@   .@        @@@    ,@      @@@      @@.    @@/     (       #@(    . .                                              
+'       #@@@@         @@@             @@@@@(%@@@#     ,       @@@@% %@@@@@@@@,                                                               
+'           *@@@@@@@@@/                                                                                                                      
 '                           @@&##################################################################################################%@*          
 '                          ,@       .@@@                                                                                          @.          
 '                                   .@@@  ...  .      ...  . .&&&&&&%*             &@@@@@(        &          .%###(  &&&&&&&&&@      .&@@@@,  
@@ -61,6 +61,8 @@
 ' 124 - Merge in Blender changes; Refactor high score sequence; Fix Ball save bug; use timer to trigger Baratheon battle hit after target hit, to hopefully fix OOM errors; Bump up time for battle instructions
 ' 125/126 - tomate - New blender render: fix PF inserts, fix target orientation, add lockbar light
 ' 127 - Merge in blender changes
+' 128 - Sixtoe - Fixed ramp to UPF, Fixed drop targets not dropping (vlm.solid to vlm.active), fixed insert primitives and lighting and rough pass on light tuning, redid light materials, removed old text layers, removed vpx bloom lighting, removed rundundant images from file, added Apophis Backdrop, 
+' 129 - apophis - Fixed target rotations. Hooked up standup target animations. Updating target BM and LM animations at same rate. Added dynamic ball brightness code. 
 
 'On the DOF website put Exxx
 '101 Left Flipper
@@ -78,7 +80,7 @@
 '118
 '119 Reset drop Targets
 '120 AutoFire
-'122 knocker
+'122 knocker 
 '123 ballrelease
 '
 ' Lamps
@@ -1586,6 +1588,11 @@ Const Thinness				= 5		'Sets minimum as ball moves away from source
 
 ' ***														***
 
+Const falloff   			= 150 	'Max distance to light sources, can be changed if you have a reason
+Dim GIfalloff : GIfalloff   = 250
+Const PLOffset = 0.05
+Dim PLGain: PLGain = (1-PLOffset)/(1260-2100)
+
 ' *** Trim or extend these to *match* the number of balls/primitives/flashers on the table!
 dim objrtx1(9), objrtx2(9)
 dim objBallShadow(9)
@@ -1657,7 +1664,6 @@ Sub BallOnPlayfieldNow(yeh, num)		'Only update certain things once, save some cy
 End Sub
 
 Sub DynamicBSUpdate
-	Dim falloff: falloff = 150 'Max distance to light sources, can be changed dynamically if you have a reason
 	Dim ShadowOpacity1, ShadowOpacity2 
 	Dim s, LSd, iii
 	Dim dist1, dist2, src1, src2
@@ -1674,7 +1680,32 @@ Sub DynamicBSUpdate
 	If UBound(gBOT) < lob Then Exit Sub		'No balls in play, exit
 
 'The Magic happens now
+	Dim l
+	Dim d_w
+	Dim b_base, b_r, b_g, b_b
+	b_base = 100 * 0.01 * Playfield_LM_GI1.Opacity + 55 * (RoomLightLevel / 100) + 10
 	For s = lob to UBound(gBOT)
+
+' *** Compute ball lighting from GI and ambient lighting
+		d_w = GIfalloff
+		For Each l in aGiLights
+			LSd = Distance(gBOT(s).x, gBOT(s).y, l.x, l.y) 'Calculating the Linear distance to the Source
+			If LSd < d_w then d_w = LSd
+		Next
+		d_w = b_base + 70 * (1 - d_w / GIfalloff) * 0.01 * Playfield_LM_GI1.Opacity
+		' Handle plunger lane
+		If InRect(gBOT(s).x,gBOT(s).y,870,2100,870,1260,930,1260,930,2100) Then 
+			d_w = d_w*(PLOffset+PLGain*(gBOT(s).y-2100))
+		End If
+		' Assign color
+		b_r = Int(d_w)
+		b_g = Int(d_w)
+		b_b = Int(d_w)
+		If b_r > 255 Then b_r = 255
+		If b_g > 255 Then b_g = 255
+		If b_b > 255 Then b_b = 255
+		gBot(s).color = b_r + (b_g * 256) + (b_b * 256 * 256)
+		'debug.print "--- ball.color level="&b_r
 
 ' *** Normal "ambient light" ball shadow
 	'Layered from top to bottom. If you had an upper pf at for example 80 units and ramps even above that, your segments would be z>110; z<=110 And z>100; z<=100 And z>30; z<=30 And z>20; Else invisible
@@ -9906,11 +9937,13 @@ Sub Target7_Timer: Me.TimerEnabled = 0 : ResetDropTargets : End Sub
 ' Wildfire target hits
 '*********************
 Sub Target43_Hit
-    doWFTargetHit 0
+	STHit 9
+'    doWFTargetHit 0
 End Sub
 
 Sub Target44_Hit
-    doWFTargetHit 1
+	STHit 10
+'    doWFTargetHit 1
 End Sub
 
 Sub doWFTargetHit(t)
@@ -10305,7 +10338,8 @@ End Sub
 ' Left target
 Sub Target80_Hit
     If Tilted then Exit Sub
-    House(CurrentPlayer).RegisterUPFHit 2
+	STHit 13
+'    House(CurrentPlayer).RegisterUPFHit 2
 End Sub
 
 'Left outlane
@@ -10318,7 +10352,8 @@ End Sub
 'Center target
 Sub Target81_Hit
     If Tilted then Exit Sub
-    House(CurrentPlayer).RegisterUPFHit 4
+	STHit 12
+'    House(CurrentPlayer).RegisterUPFHit 4
 End Sub
 
 ' Right outlane
@@ -10331,7 +10366,8 @@ End Sub
 ' Right target
 Sub Target82_Hit
     If Tilted then Exit Sub
-    House(CurrentPlayer).RegisterUPFHit 6
+	STHit 11
+'    House(CurrentPlayer).RegisterUPFHit 6
 End Sub
 
 ' Left inlane
@@ -10368,19 +10404,24 @@ End Sub
 ' Gold targets hit
 '*****************
 Sub Target32_Hit
-    GoldHit 0
+	STHit 4
+'    GoldHit 0
 End Sub
 Sub Target33_Hit
-    GoldHit 1
+	STHit 5
+'    GoldHit 1
 End Sub
 Sub Target34_Hit
-    GoldHit 2
+	STHit 6
+'    GoldHit 2
 End Sub
 Sub Target35_Hit
-    GoldHit 3
+	STHit 7
+'    GoldHit 3
 End Sub
 Sub Target36_Hit
-    GoldHit 4
+	STHit 8
+'    GoldHit 4
 End Sub
 
 Sub GoldHit(n)
@@ -14981,7 +15022,8 @@ tmrDTAnim.enabled = True
 
 Sub tmrDTAnim_Timer
 	DoDTAnim
-	'DoSTAnim
+	DoSTAnim
+	TargetMovableHelper
 End Sub
 
 ' For each drop target, we'll use two wall objects for physics calculations and one primitive for visuals and   
@@ -15314,7 +15356,7 @@ End Function
 '******************************************************
 
 'Define a variable for each stand-up target
-Dim ST11, ST12, ST13
+Dim ST04, ST05, ST06, ST07, ST08, ST09, ST10, ST11, ST12, ST13
 
 'Set array with stand-up target objects
 '
@@ -15329,14 +15371,22 @@ Dim ST11, ST12, ST13
 'You will also need to add a secondary hit object for each stand up (name sw11o, sw12o, and sw13o on the example Table1)
 'these are inclined primitives to simulate hitting a bent target and should provide so z velocity on high speed impacts
 
-'ST11 = Array(sw11, psw11,11, 0)
-'ST12 = Array(sw12, psw12,12, 0)
-'ST13 = Array(sw13, psw13,13, 0)
+ST04 = Array(Target32, targets_004_BM_Dark_Room, 4,  0)
+ST05 = Array(Target33, targets_005_BM_Dark_Room, 5,  0)
+ST06 = Array(Target34, targets_006_BM_Dark_Room, 6,  0)
+ST07 = Array(Target35, targets_007_BM_Dark_Room, 7,  0)
+ST08 = Array(Target36, targets_008_BM_Dark_Room, 8,  0)
+ST09 = Array(Target43, targets_009_BM_Dark_Room, 9,  0)
+ST10 = Array(Target44, targets_010_BM_Dark_Room, 10, 0)
+ST11 = Array(Target82, targets_011_BM_Dark_Room, 11, 0)
+ST12 = Array(Target81, targets_012_BM_Dark_Room, 12, 0)
+ST13 = Array(Target80, targets_BM_Dark_Room    , 13, 0)
+
 
 'Add all the Stand-up Target Arrays to Stand-up Target Animation Array
 ' STAnimationArray = Array(ST1, ST2, ....)
 Dim STArray
-'STArray = Array(ST11, ST12, ST13)
+STArray = Array(ST04, ST05, ST06, ST07, ST08, ST09, ST10, ST11, ST12, ST13)
 
 'Configure the behavior of Stand-up Targets
 Const STAnimStep =  1.5 				'vpunits per animation step (control return to Start)
@@ -15433,14 +15483,21 @@ End Function
 
 Sub STAction(Switch)
 	Select Case Switch
-		Case 11:
-
-		Case 12:
-
-		Case 13:
-
+		Case 4:  GoldHit 0
+		Case 5:  GoldHit 1
+		Case 6:  GoldHit 2
+		Case 7:  GoldHit 3
+		Case 8:  GoldHit 4
+		Case 9:  doWFTargetHit 0
+		Case 10: doWFTargetHit 1
+		Case 11: House(CurrentPlayer).RegisterUPFHit 6
+		Case 12: House(CurrentPlayer).RegisterUPFHit 4
+		Case 13: House(CurrentPlayer).RegisterUPFHit 2
 	End Select
 End Sub
+
+
+
 
 '******************************************************
 '		END STAND-UP TARGETS
@@ -15518,86 +15575,84 @@ LampTimer2.Interval = -1
 LampTimer2.Enabled = True
 Sub LampTimer2_Timer()
 
-	LightShootAgainbloom.colorfull=LightShootAgain.colorfull : ponLightShootAgain.color = LightShootAgain.colorfull 
-	li26bloom.colorfull=li26.colorfull : p26on.color = li26.colorfull 
-	li32bloom.colorfull=li32.colorfull : p32on.color = li32.colorfull 
-	li38bloom.colorfull=li38.colorfull : p38on.color = li38.colorfull
-	li41bloom.colorfull=li41.colorfull : p41on.color = li41.colorfull
-	li44bloom.colorfull=li44.colorfull : p44on.color = li44.colorfull
-	li47bloom.colorfull=li47.colorfull : p47on.color = li47.colorfull
-	li50bloom.colorfull=li50.colorfull : p50on.color = li50.colorfull
-	li53bloom.colorfull=li53.colorfull : p53on.color = li53.colorfull
-	li11bloom.colorfull=li11.colorfull : p11on.color = li11.colorfull
-	li14bloom.colorfull=li14.colorfull : p14on.color = li14.colorfull
-	li29bloom.colorfull=li29.colorfull : p29on.color = li29.colorfull
-	li35bloom.colorfull=li35.colorfull : p35on.color = li35.colorfull
-	li71bloom.colorfull=li71.colorfull : p71on.color = li71.colorfull
-	li74bloom.colorfull=li74.colorfull : p74on.color = li74.colorfull
+	ponLightShootAgain.color = LightShootAgain.colorfull 
+	p26on.color = li26.colorfull 
+	p32on.color = li32.colorfull 
+	p38on.color = li38.colorfull
+	p41on.color = li41.colorfull
+	p44on.color = li44.colorfull
+	p47on.color = li47.colorfull
+	p50on.color = li50.colorfull
+	p53on.color = li53.colorfull
+	p11on.color = li11.colorfull
+	p14on.color = li14.colorfull
+	p29on.color = li29.colorfull
+	p35on.color = li35.colorfull
+	p71on.color = li71.colorfull
+	p74on.color = li74.colorfull
 
-	li17bloom.colorfull=li17.colorfull : p17on.color = li17.colorfull
-	li20bloom.colorfull=li20.colorfull : p20on.color = li20.colorfull
-	li23bloom.colorfull=li23.colorfull : p23on.color = li23.colorfull
-	li80bloom.colorfull=li80.colorfull : p80on.color = li80.colorfull
-	li83bloom.colorfull=li83.colorfull : p83on.color = li83.colorfull
+	p17on.color = li17.colorfull
+	p20on.color = li20.colorfull
+	p23on.color = li23.colorfull
+	p80on.color = li80.colorfull
+	p83on.color = li83.colorfull
 
-	li86bloom.colorfull=li86.colorfull : p86on.color = li86.colorfull
-	li98bloom.colorfull=li98.colorfull : p98on.color = li98.colorfull
-	li114bloom.colorfull=li114.colorfull : p114on.color = li114.colorfull
-	li141bloom.colorfull=li141.colorfull : p141on.color = li141.colorfull
-	li156bloom.colorfull=li156.colorfull : p156on.color = li156.colorfull
-	li77bloom.colorfull=li77.colorfull : p77on.color = li77.colorfull
-	li95bloom.colorfull=li95.colorfull : p95on.color = li95.colorfull
-	li111bloom.colorfull=li111.colorfull : p111on.color = li111.colorfull
-	li108bloom.colorfull=li108.colorfull : p108on.color = li108.colorfull
-	li138bloom.colorfull=li138.colorfull : p138on.color = li138.colorfull
-	li153bloom.colorfull=li153.colorfull : p153on.color = li153.colorfull
-	li150bloom.colorfull=li150.colorfull : p150on.color = li150.colorfull
-	li92bloom.colorfull=li92.colorfull : p92on.color = li92.colorfull
-	li105bloom.colorfull=li105.colorfull : p105on.color = li105.colorfull
-	li120bloom.colorfull=li120.colorfull : p120on.color = li120.colorfull
-	li135bloom.colorfull=li135.colorfull : p135on.color = li135.colorfull
-	li147bloom.colorfull=li147.colorfull : p147on.color = li147.colorfull
+	p86on.color = li86.colorfull
+	p98on.color = li98.colorfull
+	p114on.color = li114.colorfull
+	p141on.color = li141.colorfull
+	p156on.color = li156.colorfull
+	p77on.color = li77.colorfull
+	p95on.color = li95.colorfull
+	p111on.color = li111.colorfull
+	p108on.color = li108.colorfull
+	p138on.color = li138.colorfull
+	p153on.color = li153.colorfull
+	p150on.color = li150.colorfull
+	p92on.color = li92.colorfull
+	p105on.color = li105.colorfull
+	p120on.color = li120.colorfull
+	p135on.color = li135.colorfull
+	p147on.color = li147.colorfull
 
-	li89bloom.colorfull=li89.colorfull : p89on.color = li89.colorfull
-	li101bloom.colorfull=li101.colorfull : p101on.color = li101.colorfull
-	li117bloom.colorfull=li117.colorfull : p117on.color = li117.colorfull
-	li132bloom.colorfull=li132.colorfull : p132on.color = li132.colorfull
-	li144bloom.colorfull=li144.colorfull : p144on.color = li144.colorfull
-	li159bloom.colorfull=li159.colorfull : p159on.color = li159.colorfull
-	li62bloom.colorfull=li62.colorfull : p62on.color = li62.colorfull
-	li65bloom.colorfull=li65.colorfull : p65on.color = li65.colorfull
-	li56bloom.colorfull=li56.colorfull : p56on.color = li56.colorfull
-	li59bloom.colorfull=li59.colorfull : p59on.color = li59.colorfull
+	p89on.color = li89.colorfull
+	p101on.color = li101.colorfull
+	p117on.color = li117.colorfull
+	p132on.color = li132.colorfull
+	p144on.color = li144.colorfull
+	p159on.color = li159.colorfull
+	p62on.color = li62.colorfull
+	p65on.color = li65.colorfull
+	p56on.color = li56.colorfull
+	p59on.color = li59.colorfull
 
-	li123bloom.colorfull=li123.colorfull : p123on.color = li123.colorfull
-	li126bloom.colorfull=li126.colorfull : p126on.color = li126.colorfull
-	li129bloom.colorfull=li129.colorfull : p129on.color = li129.colorfull
+	p123on.color = li123.colorfull
+	p126on.color = li126.colorfull
+	p129on.color = li129.colorfull
 
-	'li242bloom.colorfull=fl242.colorfull : p242on.color = fl242.colorfull
     p242on.color = fl242.colorfull
-	li162bloom.colorfull=li162.colorfull : p162on.color = li162.colorfull
-	li165bloom.colorfull=li165.colorfull : p165on.color = li165.colorfull
+	p162on.color = li162.colorfull
+	p165on.color = li165.colorfull
+    
     'UPF
-    li180bloom.colorfull=li180.colorfull : p180on.color = li180.colorfull
-    li183bloom.colorfull=li183.colorfull : p183on.color = li183.colorfull
-    li186bloom.colorfull=li186.colorfull : p186on.color = li186.colorfull
-    li189bloom.colorfull=li189.colorfull : p189on.color = li189.colorfull
-    li192bloom.colorfull=li192.colorfull : p192on.color = li192.colorfull
-    li195bloom.colorfull=li195.colorfull : p195on.color = li195.colorfull
-    li198bloom.colorfull=li198.colorfull : p198on.color = li198.colorfull
-    li201bloom.colorfull=li201.colorfull : p201on.color = li201.colorfull
-    li204bloom.colorfull=li204.colorfull : p204on.color = li204.colorfull
-    li207bloom.colorfull=li207.colorfull : p207on.color = li207.colorfull
-    li210bloom.colorfull=li210.colorfull : p210on.color = li210.colorfull
-    li213bloom.colorfull=li213.colorfull : p213on.color = li213.colorfull
-    li216bloom.colorfull=li216.colorfull : p216on.color = li216.colorfull
+    p180on.color = li180.colorfull
+    p183on.color = li183.colorfull
+    p186on.color = li186.colorfull
+    p189on.color = li189.colorfull
+    p192on.color = li192.colorfull
+    p195on.color = li195.colorfull
+    p198on.color = li198.colorfull
+    p201on.color = li201.colorfull
+    p204on.color = li204.colorfull
+    p207on.color = li207.colorfull
+    p210on.color = li210.colorfull
+    p213on.color = li213.colorfull
+    p216on.color = li216.colorfull
 
     'Bumpers
     li168a.colorfull=li168.colorfull : li168b.colorfull = li168.colorfull
     li171a.colorfull=li171.colorfull : li171b.colorfull = li171.colorfull
     li174a.colorfull=li174.colorfull : li174b.colorfull = li174.colorfull
-
-
 
 	FrameTime = gametime - InitFrameTime : InitFrameTime = gametime	'Count frametime. Unused atm?
 	Lampz.Update 'updates on frametime (Object updates only)
@@ -15702,233 +15757,234 @@ Sub InitLampsNF()
     'are named starting with "lc"). Then, lights should always be controlled via these control lights, including
     'when using Light Sequencers.
 
-
 	Lampz.MassAssign(1)= LightShootAgain
-	Lampz.MassAssign(1)= LightShootAgainbloom
-	Lampz.Callback(1) = "UpdateLightMap ponLightShootAgain, 300,"	
+'	Lampz.MassAssign(1)= LightShootAgainbloom
+	Lampz.Callback(1) = "DisableLighting ponLightShootAgain, 50,"	
 
 	Lampz.MassAssign(2)= li11
-	Lampz.MassAssign(2)= li11bloom
-	Lampz.Callback(2) = "UpdateLightMap  p11on, 200,"
+'	Lampz.MassAssign(2)= li11bloom
+	Lampz.Callback(2) = "DisableLighting  p11on, 50,"
 	Lampz.MassAssign(3)= li14
-	Lampz.MassAssign(3)= li14bloom
-	Lampz.Callback(3) = "UpdateLightMap  p14on, 200,"
+'	Lampz.MassAssign(3)= li14bloom
+	Lampz.Callback(3) = "DisableLighting  p14on, 50,"
 
 	Lampz.MassAssign(4)= li17
-	Lampz.MassAssign(4)= li17bloom
-	Lampz.Callback(4) = "UpdateLightMap  p17on, 200,"
+'	Lampz.MassAssign(4)= li17bloom
+	Lampz.Callback(4) = "DisableLighting  p17on, 50,"
 	Lampz.MassAssign(5)= li20
-	Lampz.MassAssign(5)= li20bloom
-	Lampz.Callback(5) = "UpdateLightMap  p20on, 200,"
+'	Lampz.MassAssign(5)= li20bloom
+	Lampz.Callback(5) = "DisableLighting  p20on, 50,"
 	Lampz.MassAssign(6)= li23
-	Lampz.MassAssign(6)= li23bloom
-	Lampz.Callback(6) = "UpdateLightMap  p23on, 200,"
+'	Lampz.MassAssign(6)= li23bloom
+	Lampz.Callback(6) = "DisableLighting  p23on, 50,"
 	Lampz.MassAssign(7)= li26							' control light -100h
-	Lampz.MassAssign(7)= li26bloom						' bloom light +1 height
-	Lampz.Callback(7) = "UpdateLightMap  p26on, 200,"	' on primitive
+'	Lampz.MassAssign(7)= li26bloom						' bloom light +1 height
+	Lampz.Callback(7) = "DisableLighting  p26on, 100,"	' on primitive
 
 	Lampz.MassAssign(8)= li29
-	Lampz.MassAssign(8)= li29bloom
-	Lampz.Callback(8) = "UpdateLightMap  p29on, 200,"
+'	Lampz.MassAssign(8)= li29bloom
+	Lampz.Callback(8) = "DisableLighting  p29on, 50,"
 	Lampz.MassAssign(9)= li32
-	Lampz.MassAssign(9)= li32bloom
-	Lampz.Callback(9) = "UpdateLightMap  p32on, 200,"
+'	Lampz.MassAssign(9)= li32bloom
+	Lampz.Callback(9) = "DisableLighting  p32on, 100,"
     Lampz.MassAssign(10)= li35
-	Lampz.MassAssign(10)= li35bloom
-	Lampz.Callback(10) = "UpdateLightMap  p35on, 200,"
+'	Lampz.MassAssign(10)= li35bloom
+	Lampz.Callback(10) = "DisableLighting  p35on, 50,"
 	Lampz.MassAssign(11)= li38
-	Lampz.MassAssign(11)= li38bloom
-	Lampz.Callback(11) = "UpdateLightMap  p38on, 200,"
+'	Lampz.MassAssign(11)= li38bloom
+	Lampz.Callback(11) = "DisableLighting  p38on, 100,"
 	Lampz.MassAssign(12)= li41
-	Lampz.MassAssign(12)= li41bloom
-	Lampz.Callback(12) = "UpdateLightMap  p41on, 200,"
+'	Lampz.MassAssign(12)= li41bloom
+	Lampz.Callback(12) = "DisableLighting  p41on, 100,"
 	Lampz.MassAssign(13)= li44
-	Lampz.MassAssign(13)= li44bloom
-	Lampz.Callback(13) = "UpdateLightMap  p44on, 200,"
+'	Lampz.MassAssign(13)= li44bloom
+	Lampz.Callback(13) = "DisableLighting  p44on, 100,"
 	Lampz.MassAssign(14)= li47
-	Lampz.MassAssign(14)= li47bloom
-	Lampz.Callback(14) = "UpdateLightMap  p47on, 200,"
+'	Lampz.MassAssign(14)= li47bloom
+	Lampz.Callback(14) = "DisableLighting  p47on, 100,"
 	Lampz.MassAssign(15)= li50
-	Lampz.MassAssign(15)= li50bloom
-	Lampz.Callback(15) = "UpdateLightMap  p50on, 200,"
+'	Lampz.MassAssign(15)= li50bloom
+	Lampz.Callback(15) = "DisableLighting  p50on, 100,"
 	Lampz.MassAssign(16)= li53
-	Lampz.MassAssign(16)= li53bloom
-	Lampz.Callback(16) = "UpdateLightMap  p53on, 200,"
+'	Lampz.MassAssign(16)= li53bloom
+	Lampz.Callback(16) = "DisableLighting  p53on, 100,"
 	Lampz.MassAssign(17)= li56
-	Lampz.MassAssign(17)= li56bloom
-	Lampz.Callback(17) = "UpdateLightMap  p56on, 250,"
+'	Lampz.MassAssign(17)= li56bloom
+	Lampz.Callback(17) = "DisableLighting  p56on, 50,"
 	Lampz.MassAssign(18)= li59
-	Lampz.MassAssign(18)= li59bloom
-	Lampz.Callback(18) = "UpdateLightMap  p59on, 250,"
+'	Lampz.MassAssign(18)= li59bloom
+	Lampz.Callback(18) = "DisableLighting  p59on, 50,"
 	Lampz.MassAssign(19)= li62
-	Lampz.MassAssign(19)= li62bloom
-	Lampz.Callback(19) = "UpdateLightMap  p62on, 250,"
+'	Lampz.MassAssign(19)= li62bloom
+	Lampz.Callback(19) = "DisableLighting  p62on, 50,"
 	Lampz.MassAssign(20)= li65
-	Lampz.MassAssign(20)= li65bloom
-	Lampz.Callback(20) = "UpdateLightMap  p65on, 250,"
+'	Lampz.MassAssign(20)= li65bloom
+	Lampz.Callback(20) = "DisableLighting  p65on, 50,"
 	Lampz.MassAssign(21)= li71
-	Lampz.MassAssign(21)= li71bloom
-	Lampz.Callback(21) = "UpdateLightMap  p71on, 200,"
+'	Lampz.MassAssign(21)= li71bloom
+	Lampz.Callback(21) = "DisableLighting  p71on, 50,"
 	Lampz.MassAssign(22)= li74
-	Lampz.MassAssign(22)= li74bloom
-	Lampz.Callback(22) = "UpdateLightMap  p74on, 200,"
+'	Lampz.MassAssign(22)= li74bloom
+	Lampz.Callback(22) = "DisableLighting  p74on, 50,"
 	Lampz.MassAssign(23)= li77
-	Lampz.MassAssign(23)= li77bloom
-	Lampz.Callback(23) = "UpdateLightMap  p77on, 200,"
+'	Lampz.MassAssign(23)= li77bloom
+	Lampz.Callback(23) = "DisableLighting  p77on, 100,"
 	Lampz.MassAssign(24)= li80
-	Lampz.MassAssign(24)= li80bloom
-	Lampz.Callback(24) = "UpdateLightMap  p80on, 200,"
+'	Lampz.MassAssign(24)= li80bloom
+	Lampz.Callback(24) = "DisableLighting  p80on, 50,"
 	Lampz.MassAssign(25)= li83
-	Lampz.MassAssign(25)= li83bloom
-	Lampz.Callback(25) = "UpdateLightMap  p83on, 200,"
+'	Lampz.MassAssign(25)= li83bloom
+	Lampz.Callback(25) = "DisableLighting  p83on, 50,"
 	Lampz.MassAssign(26)= li86
-	Lampz.MassAssign(26)= li86bloom
-	Lampz.Callback(26) = "UpdateLightMap  p86on, 200,"
+'	Lampz.MassAssign(26)= li86bloom
+	Lampz.Callback(26) = "DisableLighting  p86on, 100,"
 	Lampz.MassAssign(27)= li89
-	Lampz.MassAssign(27)= li89bloom
-	Lampz.Callback(27) = "UpdateLightMap  p89on, 200,"
+'	Lampz.MassAssign(27)= li89bloom
+	Lampz.Callback(27) = "DisableLighting  p89on, 50,"
 
 	Lampz.MassAssign(28)= li92
-	Lampz.MassAssign(28)= li92bloom
-	Lampz.Callback(28) = "UpdateLightMap  p92on, 500,"
+'	Lampz.MassAssign(28)= li92bloom
+	Lampz.Callback(28) = "DisableLighting  p92on, 50,"
 	Lampz.MassAssign(29)= li95
-	Lampz.MassAssign(29)= li95bloom
-	Lampz.Callback(29) = "UpdateLightMap  p95on, 200,"
+'	Lampz.MassAssign(29)= li95bloom
+	Lampz.Callback(29) = "DisableLighting  p95on, 50,"
 	Lampz.MassAssign(30)= li98
-	Lampz.MassAssign(30)= li98bloom
-	Lampz.Callback(30) = "UpdateLightMap  p98on, 200,"
+'	Lampz.MassAssign(30)= li98bloom
+	Lampz.Callback(30) = "DisableLighting  p98on, 100,"
 	Lampz.MassAssign(31)= li101
-	Lampz.MassAssign(31)= li101bloom
-	Lampz.Callback(31) = "UpdateLightMap  p101on, 200,"
+'	Lampz.MassAssign(31)= li101bloom
+	Lampz.Callback(31) = "DisableLighting  p101on, 50,"
 
 	Lampz.MassAssign(32)= li105
-	Lampz.MassAssign(32)= li105bloom
-	Lampz.Callback(32) = "UpdateLightMap  p105on, 500,"
+'	Lampz.MassAssign(32)= li105bloom
+	Lampz.Callback(32) = "DisableLighting  p105on, 50,"
 
 	Lampz.MassAssign(33)= li108
-	Lampz.MassAssign(33)= li108bloom
-	Lampz.Callback(33) = "UpdateLightMap  p108on, 400,"
+'	Lampz.MassAssign(33)= li108bloom
+	Lampz.Callback(33) = "DisableLighting  p108on, 50,"
 
 	Lampz.MassAssign(34)= li111
-	Lampz.MassAssign(34)= li111bloom
-	Lampz.Callback(34) = "UpdateLightMap  p111on, 400,"
+'	Lampz.MassAssign(34)= li111bloom
+	Lampz.Callback(34) = "DisableLighting  p111on, 50,"
 
 	Lampz.MassAssign(35)= li114
-	Lampz.MassAssign(35)= li114bloom
-	Lampz.Callback(35) = "UpdateLightMap  p114on, 200,"
+'	Lampz.MassAssign(35)= li114bloom
+	Lampz.Callback(35) = "DisableLighting  p114on, 100,"
 	Lampz.MassAssign(36)= li117
-	Lampz.MassAssign(36)= li117bloom
-	Lampz.Callback(36) = "UpdateLightMap  p117on, 200,"
+'	Lampz.MassAssign(36)= li117bloom
+	Lampz.Callback(36) = "DisableLighting  p117on, 50,"
 	Lampz.MassAssign(37)= li120
-	Lampz.MassAssign(37)= li120bloom
-	Lampz.Callback(37) = "UpdateLightMap  p120on, 500,"
+'	Lampz.MassAssign(37)= li120bloom
+	Lampz.Callback(37) = "DisableLighting  p120on, 50,"
 	Lampz.MassAssign(38)= li123
-	Lampz.MassAssign(38)= li123bloom
-	Lampz.Callback(38) = "UpdateLightMap  p123on, 200,"
+'	Lampz.MassAssign(38)= li123bloom
+	Lampz.Callback(38) = "DisableLighting  p123on, 50,"
 	Lampz.MassAssign(39)= li126
-	Lampz.MassAssign(39)= li126bloom
-	Lampz.Callback(39) = "UpdateLightMap  p126on, 200,"
+'	Lampz.MassAssign(39)= li126bloom
+	Lampz.Callback(39) = "DisableLighting  p126on, 50,"
 	Lampz.MassAssign(40)= li129
-	Lampz.MassAssign(40)= li129bloom
-	Lampz.Callback(40) = "UpdateLightMap  p129on, 200,"
+'	Lampz.MassAssign(40)= li129bloom
+	Lampz.Callback(40) = "DisableLighting  p129on, 50,"
 	Lampz.MassAssign(41)= li132
-	Lampz.MassAssign(41)= li132bloom
-	Lampz.Callback(41) = "UpdateLightMap  p132on, 200,"
+'	Lampz.MassAssign(41)= li132bloom
+	Lampz.Callback(41) = "DisableLighting  p132on, 50,"
 	Lampz.MassAssign(42)= li135
-	Lampz.MassAssign(42)= li135bloom
-	Lampz.Callback(42) = "UpdateLightMap  p135on, 500,"
+'	Lampz.MassAssign(42)= li135bloom
+	Lampz.Callback(42) = "DisableLighting  p135on, 50,"
     Lampz.MassAssign(43)= li138
-	Lampz.MassAssign(43)= li138bloom
-	Lampz.Callback(43) = "UpdateLightMap  p138on, 200,"
+'	Lampz.MassAssign(43)= li138bloom
+	Lampz.Callback(43) = "DisableLighting  p138on, 50,"
 	Lampz.MassAssign(44)= li141
-	Lampz.MassAssign(44)= li141bloom
-	Lampz.Callback(44) = "UpdateLightMap  p141on, 200,"
+'	Lampz.MassAssign(44)= li141bloom
+	Lampz.Callback(44) = "DisableLighting  p141on, 100,"
     Lampz.MassAssign(45)= li144
-	Lampz.MassAssign(45)= li144bloom
-	Lampz.Callback(45) = "UpdateLightMap  p144on, 200,"
+'	Lampz.MassAssign(45)= li144bloom
+	Lampz.Callback(45) = "DisableLighting  p144on, 50,"
     Lampz.MassAssign(46)= li147
-	Lampz.MassAssign(46)= li147bloom
-	Lampz.Callback(46) = "UpdateLightMap  p147on, 500,"
+'	Lampz.MassAssign(46)= li147bloom
+	Lampz.Callback(46) = "DisableLighting  p147on, 50,"
 	Lampz.MassAssign(47)= li150
-	Lampz.MassAssign(47)= li150bloom
-	Lampz.Callback(47) = "UpdateLightMap  p150on, 200,"
+'	Lampz.MassAssign(47)= li150bloom
+	Lampz.Callback(47) = "DisableLighting  p150on, 50,"
     Lampz.MassAssign(48)= li153
-	Lampz.MassAssign(48)= li153bloom
-	Lampz.Callback(48) = "UpdateLightMap  p153on, 200,"
+'	Lampz.MassAssign(48)= li153bloom
+	Lampz.Callback(48) = "DisableLighting  p153on, 50,"
 	Lampz.MassAssign(49)= li156
-	Lampz.MassAssign(49)= li156bloom
-	Lampz.Callback(49) = "UpdateLightMap  p156on, 200,"
+'	Lampz.MassAssign(49)= li156bloom
+	Lampz.Callback(49) = "DisableLighting  p156on, 100,"
     Lampz.MassAssign(50)= li159
-	Lampz.MassAssign(50)= li159bloom
-	Lampz.Callback(50) = "UpdateLightMap  p159on, 200,"
+'	Lampz.MassAssign(50)= li159bloom
+	Lampz.Callback(50) = "DisableLighting  p159on, 50,"
 	Lampz.MassAssign(51)= li162
-	Lampz.MassAssign(51)= li162bloom
-	Lampz.Callback(51) = "UpdateLightMap  p162on, 200,"
+'	Lampz.MassAssign(51)= li162bloom
+	Lampz.Callback(51) = "DisableLighting  p162on, 50,"
 	Lampz.MassAssign(52)= li165
-	Lampz.MassAssign(52)= li165bloom
-	Lampz.Callback(52) = "UpdateLightMap  p165on, 200,"
+'	Lampz.MassAssign(52)= li165bloom
+	Lampz.Callback(52) = "DisableLighting  p165on, 50,"
+
+
     ' UPF
     Lampz.MassAssign(53)= li180
-	Lampz.MassAssign(53)= li180bloom
-	Lampz.Callback(53) = "DisableLighting  p180on, 600,"
+'	Lampz.MassAssign(53)= li180bloom
+	Lampz.Callback(53) = "DisableLighting  p180on, 200,"
     Lampz.MassAssign(54)= li183
-	Lampz.MassAssign(54)= li183bloom
-	Lampz.Callback(54) = "DisableLighting  p183on, 600,"
+'	Lampz.MassAssign(54)= li183bloom
+	Lampz.Callback(54) = "DisableLighting  p183on, 200,"
     Lampz.MassAssign(55)= li186
-	Lampz.MassAssign(55)= li186bloom
-	Lampz.Callback(55) = "DisableLighting  p186on, 600,"
+'	Lampz.MassAssign(55)= li186bloom
+	Lampz.Callback(55) = "DisableLighting  p186on, 200,"
     Lampz.MassAssign(56)= li189
-	Lampz.MassAssign(56)= li189bloom
-	Lampz.Callback(56) = "DisableLighting  p189on, 600,"
+'	Lampz.MassAssign(56)= li189bloom
+	Lampz.Callback(56) = "DisableLighting  p189on, 200,"
     Lampz.MassAssign(57)= li192
-	Lampz.MassAssign(57)= li192bloom
-	Lampz.Callback(57) = "DisableLighting  p192on, 600,"
+'	Lampz.MassAssign(57)= li192bloom
+	Lampz.Callback(57) = "DisableLighting  p192on, 200,"
     Lampz.MassAssign(58)= li195
-	Lampz.MassAssign(58)= li195bloom
-	Lampz.Callback(58) = "DisableLighting  p195on, 600,"
+'	Lampz.MassAssign(58)= li195bloom
+	Lampz.Callback(58) = "DisableLighting  p195on, 200,"
     Lampz.MassAssign(59)= li198
-	Lampz.MassAssign(59)= li198bloom
-	Lampz.Callback(59) = "DisableLighting  p198on, 100,"
+'	Lampz.MassAssign(59)= li198bloom
+	Lampz.Callback(59) = "DisableLighting  p198on, 200,"
     Lampz.MassAssign(60)= li201
-	Lampz.MassAssign(60)= li201bloom
-	Lampz.Callback(60) = "DisableLighting  p201on, 300,"
+'	Lampz.MassAssign(60)= li201bloom
+	Lampz.Callback(60) = "DisableLighting  p201on, 200,"
     Lampz.MassAssign(61)= li204
-	Lampz.MassAssign(61)= li204bloom
-	Lampz.Callback(61) = "DisableLighting  p204on, 300,"
+'	Lampz.MassAssign(61)= li204bloom
+	Lampz.Callback(61) = "DisableLighting  p204on, 200,"
     Lampz.MassAssign(62)= li207
-	Lampz.MassAssign(62)= li207bloom
-	Lampz.Callback(62) = "DisableLighting  p207on, 300,"
+'	Lampz.MassAssign(62)= li207bloom
+	Lampz.Callback(62) = "DisableLighting  p207on, 200,"
     Lampz.MassAssign(63)= li210
-	Lampz.MassAssign(63)= li210bloom
-	Lampz.Callback(63) = "DisableLighting  p210on, 300,"
+'	Lampz.MassAssign(63)= li210bloom
+	Lampz.Callback(63) = "DisableLighting  p210on, 200,"
     Lampz.MassAssign(64)= li213
-	Lampz.MassAssign(64)= li213bloom
-	Lampz.Callback(64) = "DisableLighting  p213on, 300,"
+'	Lampz.MassAssign(64)= li213bloom
+	Lampz.Callback(64) = "DisableLighting  p213on, 200,"
     Lampz.MassAssign(65)= li216
-	Lampz.MassAssign(65)= li216bloom
-	Lampz.Callback(65) = "DisableLighting  p216on, 300,"
+'	Lampz.MassAssign(65)= li216bloom
+	Lampz.Callback(65) = "DisableLighting  p216on, 200,"
     'Bumpers
     Lampz.MassAssign(66)= li168
 	Lampz.MassAssign(66)= li168a
 	Lampz.MassAssign(66)= li168b
-    Lampz.MassAssign(66)= li168bloom
+ '   Lampz.MassAssign(66)= li168bloom
 
     Lampz.MassAssign(67)= li171
 	Lampz.MassAssign(67)= li171a
 	Lampz.MassAssign(67)= li171b
-    Lampz.MassAssign(67)= li171bloom
+  '  Lampz.MassAssign(67)= li171bloom
 
 
     Lampz.MassAssign(68)= li174
 	Lampz.MassAssign(68)= li174a
 	Lampz.MassAssign(68)= li174b
-    Lampz.MassAssign(68)= li174bloom
+   ' Lampz.MassAssign(68)= li174bloom
 
     ' Spinner Flasher
     For x = 70 to 76 : Lampz.FadeSpeedUp(x) = 1 : Lampz.FadeSpeedDown(x) = 1 : Next
     Lampz.MassAssign(73)= fl242
 	'Lampz.MassAssign(73)= li242bloom
-	Lampz.Callback(73) = "UpdateLightMap  p242on, 1000,"
+	Lampz.Callback(73) = "DisableLighting  p242on, 100,"
 
     ' Other Flashers - most not yet programmed
     ' Sword flasher
@@ -16281,6 +16337,15 @@ Dim targets_BL: targets_BL=Array(targets_BM_Dark_Room, targets_LM_Inserts_li104,
 Dim targets_001_BL: targets_001_BL=Array(targets_001_BM_Dark_Room, targets_001_LM_Flashers_f244A, targets_001_LM_Flashers_f244B, targets_001_LM_GI1, targets_001_LM_GI3, targets_001_LM_Inserts_li17, targets_001_LM_Inserts_li20, targets_001_LM_Lit_Room) ' VLM.Array;BL;targets_001
 Dim targets_002_BL: targets_002_BL=Array(targets_002_BM_Dark_Room, targets_002_LM_Flashers_f244A, targets_002_LM_Flashers_f244B, targets_002_LM_GI1, targets_002_LM_GI3, targets_002_LM_Inserts_li17, targets_002_LM_Inserts_li20, targets_002_LM_Inserts_li23, targets_002_LM_Lit_Room) ' VLM.Array;BL;targets_002
 Dim targets_003_BL: targets_003_BL=Array(targets_003_BM_Dark_Room, targets_003_LM_Flashers_f235, targets_003_LM_Flashers_f244A, targets_003_LM_Flashers_f244B, targets_003_LM_GI1, targets_003_LM_GI3, targets_003_LM_Inserts_li20, targets_003_LM_Inserts_li23, targets_003_LM_Lit_Room) ' VLM.Array;BL;targets_003
+Dim targets_004_BL: targets_004_BL=Array(targets_004_BM_Dark_Room, targets_004_LM_Flashers_f244A, targets_004_LM_Inserts_li92, targets_004_LM_Inserts_li95, targets_004_LM_Lit_Room) ' VLM.Array;BL;targets_004
+Dim targets_005_BL: targets_005_BL=Array(targets_005_BM_Dark_Room, targets_005_LM_Flashers_f242, targets_005_LM_Flashers_f244A, targets_005_LM_Inserts_li105, targets_005_LM_Inserts_li117, targets_005_LM_Lit_Room) ' VLM.Array;BL;targets_005
+Dim targets_006_BL: targets_006_BL=Array(targets_006_BM_Dark_Room, targets_006_LM_Flashers_f235, targets_006_LM_Inserts_li117, targets_006_LM_Inserts_li120, targets_006_LM_Inserts_li132, targets_006_LM_Lit_Room) ' VLM.Array;BL;targets_006
+Dim targets_007_BL: targets_007_BL=Array(targets_007_BM_Dark_Room, targets_007_LM_Inserts_li135, targets_007_LM_Lit_Room) ' VLM.Array;BL;targets_007
+Dim targets_008_BL: targets_008_BL=Array(targets_008_BM_Dark_Room, targets_008_LM_Flashers_f235, targets_008_LM_GI1, targets_008_LM_Inserts_li147, targets_008_LM_Lit_Room) ' VLM.Array;BL;targets_008
+Dim targets_009_BL: targets_009_BL=Array(targets_009_BM_Dark_Room, targets_009_LM_Flashers_f235, targets_009_LM_Flashers_f244A, targets_009_LM_Flashers_f244B, targets_009_LM_GI1, targets_009_LM_Inserts_li153, targets_009_LM_Inserts_li80, targets_009_LM_Lit_Room) ' VLM.Array;BL;targets_009
+Dim targets_010_BL: targets_010_BL=Array(targets_010_BM_Dark_Room, targets_010_LM_Flashers_f235, targets_010_LM_Flashers_f244B, targets_010_LM_GI1, targets_010_LM_Inserts_li80, targets_010_LM_Inserts_li83, targets_010_LM_Lit_Room) ' VLM.Array;BL;targets_010
+Dim targets_011_BL: targets_011_BL=Array(targets_011_BM_Dark_Room, targets_011_LM_Inserts_li104, targets_011_LM_Inserts_li183, targets_011_LM_Inserts_li192, targets_011_LM_Inserts_li195, targets_011_LM_Lit_Room, targets_011_LM_Upper_GI) ' VLM.Array;BL;targets_011
+Dim targets_012_BL: targets_012_BL=Array(targets_012_BM_Dark_Room, targets_012_LM_Inserts_li104, targets_012_LM_Inserts_li180, targets_012_LM_Inserts_li183, targets_012_LM_Inserts_li189, targets_012_LM_Inserts_li192, targets_012_LM_Inserts_li195, targets_012_LM_Inserts_li92, targets_012_LM_Lit_Room, targets_012_LM_Upper_GI) ' VLM.Array;BL;targets_012
 Dim Target90_BL: Target90_BL=Array(Target90_BM_Dark_Room, Target90_LM_Flashers_f235, Target90_LM_Flashers_f242, Target90_LM_Flashers_f244A, Target90_LM_Flashers_f244B, Target90_LM_GI1, Target90_LM_Inserts_li159, Target90_LM_Lit_Room) ' VLM.Array;BL;Target90
 Dim Spinners_BL: Spinners_BL=Array(Spinners_BM_Dark_Room, Spinners_LM_Flashers_f235, Spinners_LM_Flashers_f236, Spinners_LM_Flashers_f242, Spinners_LM_Flashers_f243, Spinners_LM_Flashers_f244A, Spinners_LM_GI3, Spinners_LM_Inserts_li101, Spinners_LM_Inserts_li105, Spinners_LM_Inserts_li23, Spinners_LM_Inserts_li26, Spinners_LM_Inserts_li86, Spinners_LM_Inserts_li89, Spinners_LM_Inserts_li92, Spinners_LM_Lit_Room) ' VLM.Array;BL;Spinners
 Dim lockpost_001_BL: lockpost_001_BL=Array(lockpost_001_BM_Dark_Room, lockpost_001_LM_Flashers_f235, lockpost_001_LM_Flashers_f244B, lockpost_001_LM_GI1, lockpost_001_LM_Inserts_li80, lockpost_001_LM_Inserts_li83, lockpost_001_LM_Lit_Room) ' VLM.Array;BL;lockpost_001
@@ -16977,12 +17042,21 @@ Sub MovableHelper
     For each f in REMK_BL : f.RotX = x2 : Next
 
     ' Battering ram
-    y = ram_BM_Dark_Room.TransZ
+    y = ram_BM_Dark_Room.TransY
     For each f in ram_BL : f.transy = y : Next
 
     ' Left Orbit Spinner
     Dim a:a=Spinner001.currentAngle
     For each f in Spinners_BL : f.RotX = a : Next
+
+    ' Right Ramp top gate
+    a = Gate001.currentAngle
+    For each t in Gates_001_BL : t.RotZ=a : Next
+
+End Sub
+
+Sub TargetMovableHelper
+	Dim t
 
     ' Castle Gate drop target
     For each t in Target90_BL : t.transz = target90_BL(0).transz : t.rotx = target90_BL(0).rotx : t.roty = target90_BL(0).roty : Next
@@ -16992,9 +17066,16 @@ Sub MovableHelper
     For each t in targets_002_BL : t.transz = targets_002_BL(0).transz : t.rotx = targets_002_BL(0).rotx : t.roty = targets_002_BL(0).roty : Next
     For each t in targets_003_BL : t.transz = targets_003_BL(0).transz : t.rotx = targets_003_BL(0).rotx : t.roty = targets_003_BL(0).roty : Next
 
-    ' Right Ramp top gate
-    a = Gate001.currentAngle
-    For each t in Gates_001_BL : t.RotZ=a : Next
+    ' Stand Up Targets
+    For each t in targets_004_BL : t.transz = targets_004_BL(0).transz : t.rotx = targets_004_BL(0).rotx : t.roty = targets_004_BL(0).roty : Next
+    For each t in targets_005_BL : t.transz = targets_005_BL(0).transz : t.rotx = targets_005_BL(0).rotx : t.roty = targets_005_BL(0).roty : Next
+    For each t in targets_006_BL : t.transz = targets_006_BL(0).transz : t.rotx = targets_006_BL(0).rotx : t.roty = targets_006_BL(0).roty : Next
+    For each t in targets_007_BL : t.transz = targets_007_BL(0).transz : t.rotx = targets_007_BL(0).rotx : t.roty = targets_007_BL(0).roty : Next
+    For each t in targets_008_BL : t.transz = targets_008_BL(0).transz : t.rotx = targets_008_BL(0).rotx : t.roty = targets_008_BL(0).roty : Next
+    For each t in targets_009_BL : t.transz = targets_009_BL(0).transz : t.rotx = targets_009_BL(0).rotx : t.roty = targets_009_BL(0).roty : Next
+    For each t in targets_010_BL : t.transz = targets_010_BL(0).transz : t.rotx = targets_010_BL(0).rotx : t.roty = targets_010_BL(0).roty : Next
+    For each t in targets_011_BL : t.transz = targets_011_BL(0).transz : t.rotx = targets_011_BL(0).rotx : t.roty = targets_011_BL(0).roty : Next
+    For each t in targets_012_BL : t.transz = targets_012_BL(0).transz : t.rotx = targets_012_BL(0).rotx : t.roty = targets_012_BL(0).roty : Next
 
 End Sub
 
@@ -17129,21 +17210,16 @@ Sub HideLightHelper
     li210.Visible = False
     li213.Visible = False
     li216.Visible = False
-    li180bloom.Visible = False
-    li183bloom.Visible = False
-    li186bloom.Visible = False
-    li189bloom.Visible = False
-    li192bloom.Visible = False
-    li195bloom.Visible = False
-    li198bloom.Visible = False
-    li201bloom.Visible = False
-    li204bloom.Visible = False
-    li207bloom.Visible = False
-    li210bloom.Visible = False
-    li213bloom.Visible = False
-    li216bloom.Visible = False
 
-    'li32bloom.Visible = False
+	li222.Visible = False
+
+    fl235.Visible = False
+    fl236.Visible = False
+    fl242.Visible = False
+    fl243.Visible = False
+    fl244.Visible = False
+    fl245.Visible = False
+
 End Sub
 
 
@@ -17211,14 +17287,13 @@ Sub FrameTimer_Timer
 End Sub
 
 
-' ============================
+'============================
 ' Outstanding Issues/To-Dos
-'=============================
-
-' Visuals
-'--------
-' Bumper caps are maybe too dim?
+'============================
 '
+' Visuals
+' -------
+' Bumper caps are maybe too dim?
 '
 '
 ' Coding
