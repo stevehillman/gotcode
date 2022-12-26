@@ -81,6 +81,9 @@
 ' 147 - Sixtoe - Image and file optimisation, removed old unused stuff, blocker wall added under upper playfield
 ' 148 - minor bug fixes
 ' 149 - Fixed a few crashes, boost intensity of shield lamps, tweak flipper strength
+' 150 - apophis - Moved upper PF inserts to z=169. Added desktop action button. Digital nudge strength increased a tad.
+' 151 - minor bug fixes; Add warning if FlexDMD dir not found
+
 
 'On the DOF website put Exxx
 '101 Left Flipper
@@ -119,8 +122,6 @@ Option Explicit
 Randomize
 
 Const TableVersion = "0.148"
-
-Const bDebug = False
 
 '***********TABLE VOLUME LEVELS ********* 
 ' [Value is from 0 to 1 where 1 is full volume. 
@@ -162,6 +163,7 @@ Dim Topper: Topper = 1			     '0 - VR Topper Off  1 - VR Topper On
 '/////// No User Configurable options beyond this point ////////
 
 If RenderingMode = 2 Then VRRoom = VRRoomChoice Else VRRoom = 0
+Dim DesktopMode: DesktopMode = table1.ShowDT
 
 'VR Room Init
 Dim Stuff ' for Hybrid Toggle
@@ -313,7 +315,7 @@ Sub Table1_Init()
     Randomize
 
 	vpmNudge.TiltSwitch = 14
-    vpmNudge.Sensitivity = 1
+    vpmNudge.Sensitivity = 5
     vpmNudge.TiltObj = Array(Bumper1, bumper2, bumper3, LeftSlingshot, RightSlingshot)
 	
 	bTableReady=False
@@ -403,6 +405,11 @@ Sub Table1_Init()
     ' Start the RealTime timer
     RealTime.Enabled = 1
 
+	'Desktop mode Stuff
+	EMReel1.visible = DesktopMode
+	EMReel2.visible = DesktopMode
+	liDTaction.visible = DesktopMode
+
 End Sub
 
 Private Function BigMod(Value1, Value2)
@@ -438,9 +445,9 @@ Sub Table1_KeyDown(ByVal Keycode)
     end if
     ' end VR Specific
 
-    If keycode = LeftTiltKey Then Nudge 90, 1:SoundNudgeLeft()
-    If keycode = RightTiltKey Then Nudge 270, 1:SoundNudgeRight()
-    If keycode = CenterTiltKey Then Nudge 0, 1:SoundNudgeCenter()
+    If keycode = LeftTiltKey Then Nudge 90, 2:SoundNudgeLeft()
+    If keycode = RightTiltKey Then Nudge 270, 2:SoundNudgeRight()
+    If keycode = CenterTiltKey Then Nudge 0, 2:SoundNudgeCenter()
 
     If bInOptions Then
 		Options_KeyDown keycode
@@ -572,7 +579,7 @@ Sub Table1_KeyDown(ByVal Keycode)
     Else ' If (GameInPlay)
 
         If keycode = StartGameKey or keycode = LockBarKey Then
-            If(DMDStd(kDMDStd_FreePlay) = True)Then
+            If(DMDStd(kDMDStd_FreePlay))Then
                 If(BallsOnPlayfield = 0)Then
                     ResetForNewGame()
                 End If
@@ -782,7 +789,6 @@ End Sub
 
 Sub DisableTable(Enabled)
     If Enabled Then
-        if bDebug Then Wall075.collidable=0
         If Song <> "" Then StopSound Song : Song=""
         'turn off GI and turn off all the lights
         GiOff
@@ -808,7 +814,6 @@ Sub DisableTable(Enabled)
         RightSlingshot.Disabled = 0
         'clean up the buffer display
         DMDFlush
-        Wall075.collidable=bDebug
     End If
 End Sub
 
@@ -3419,7 +3424,7 @@ Sub LoadFlexDMD
     Dim curDir
 	Set FlexDMD = CreateObject("FlexDMD.FlexDMD")
     If FlexDMD is Nothing Then
-        MsgBox "No FlexDMD found. This table will not be as good without it."
+        MsgBox "No FlexDMD found. This table will not run without it."
         bUseFlexDMD = False
         Exit Sub
     End If
@@ -3441,6 +3446,13 @@ Sub LoadFlexDMD
     'Set fso = CreateObject("Scripting.FileSystemObject")
     'curDir = fso.GetAbsolutePathName(".")
     'FlexPath = curDir & "\"&myGameName &".FlexDMD\"
+    
+    ' Check to make sure FlexDMD media is present
+    Dim actor
+    Set actor = FlexDMD.NewVideo("testvid","got-intro.gif")
+    if actor is Nothing Then 
+        msgbox "FlexDMD directory gameofthrones.FlexDMD appears to be missing. Game will not run. Check to make sure it's in your Tables directory or wherever this table's VPX file is"
+    End If
 End Sub
 
 Sub DMD_Clearforhighscore()
@@ -5800,26 +5812,6 @@ Class cHouse
         If h = Baratheon Then AdvanceWallMultiball 2 : WallJPValue = 9250000 Else WallJPValue = 3400000
         PlaySoundVol "say-"&HouseToString(h)&"motto",VolCallout
 
-        If bDebug Then
-            WICs = 3 ' For testing Winter Has Come
-            ' For testing HOTK:
-            If h = Stark Then bCompleted(Stark) = True : bCompleted(Baratheon) = True: bCompleted(Targaryen) = True : bQualified(Martell) = True
-             ' For testing Wall MB quickly
-            if h = Baratheon Then AdvanceWallMultiball 3
-            ' For testing Castle MB
-            if h = lannister Then
-                UPFLevel=4
-            End If
-            ' For testing Iron Throne
-            If h = Martell Then
-                Dim i
-                For i = 1 to 7
-                    bQualified(i) = True : QualifyCount(i) = 3
-                    If i <> Martell Then bCompleted(i) = True
-                Next
-                bHotkMBDone = True : WiCMask = 254
-            End If
-        End If
         If h = Greyjoy Then 
             bCompleted(h) = True 
         ElseIf h = Targaryen Then
@@ -8400,7 +8392,6 @@ End Sub
 Sub ResetForNewGame()
     Dim i
 
-    Wall075.collidable=bDebug : Wall075a.collidable=bDebug : Wall075b.collidable=bDebug ' For debugging
     bGameInPLay = True
     Tilted = False
     GameTimeStamp = 0
@@ -9221,7 +9212,7 @@ Sub EndOfBallComplete()
 
         DMDDoMatchScene Match
 		
-		vpmtimer.addtimer 9500, "if bShowMatch then EndOfGame() '"
+		vpmtimer.addtimer 8500, "if bShowMatch then DMDBlank : EndOfGame() '"
 		
     Else
         ' set the next player
@@ -9283,7 +9274,7 @@ Sub PlayYouMatched
 	'PlaySoundVol "YouMatchedPlayAgain", VolDef
 	DOF 140, DOFOn
 	DMDFlush
-	DMD "_", CL(1, "CREDITS: " & Credits), "", eNone, eNone, eNone, 2500, True, ""
+	DMD "_", CL(1, "CREDITS: " & Credits), "", eNone, eNone, eNone, 4000, True, ""
     KnockerSolenoid : DOF 122, DOFPulse
 End Sub 
 
@@ -9663,11 +9654,11 @@ Sub SetLockbarLight
             If col <> 0 Then st = 1 Else st = 0
         End if
     Else
-        If (DMDStd(kDMDStd_FreePlay) = True Or Credits > 0) Then st = 2 : col = Baratheon 
+        If (DMDStd(kDMDStd_FreePlay) Or Credits > 0) Then st = 2 : col = Baratheon 
     End if
 
     ' Set the light state
-    If bHaveLockbarButton and st < 2 Then
+    If st < 2 Then
         For b = 1 to 7
             If b = col Then DOF 140+b,DOFon Else DOF 140+b,DOFoff
         Next
@@ -9692,17 +9683,15 @@ Sub li230_Timer
     me.TimerEnabled = False
     tmp = me.UserValue
     tmp = tmp+1
-    if tmp > li230States(0) Then tmp = 1
-    If bHaveLockbarButton Then
-        For i = 141 to 147 : DOF i,DOFOff : Next
-    End if
+    if tmp > li230States(0) Then tmp = 1    
+    For i = 141 to 147 : DOF i,DOFOff : Next
     if li230States(tmp) > 0 then 
         if Cabinetmode And Not bHaveLockbarButton Then
             SetLightColor li231,HouseColor(li230States(tmp)),1
         Else
             SetLightColor li230,HouseColor(li230States(tmp)),1
         End If
-        if bHaveLockbarButton Then DOF 140+li230States(tmp),DOFOn
+        DOF 140+li230States(tmp),DOFOn
     Else 
         SetLightColor li230,white,0
         SetLightColor li231,white,0
@@ -11217,7 +11206,6 @@ Sub DoMysteryAward
         i = RndNbr(28)
     Loop Until MysteryAwards(i)(1) < CurrentGold And i <> MysteryVals(2) And MysteryAwardGoNoGo(i)
     MysteryVals(1) = i
-    if bDebug And SelectedHouse = Lannister Then MysteryVals(1) = 24 : If bBonusHeld=0 Then MysteryVals(2) = 25
     bMysteryAwardActive = True
     MysterySelected = 0
     bMysteryLit = False : SetMysteryLight
@@ -12031,7 +12019,6 @@ Sub StartMidnightMadnessMBIntro
     SwordWall.collidable = False : MoveSword True
     LockWall.collidable = False : Lockwall.Uservalue = 0 : LockPost False
     RealBallsInLock = 0
-    If bDebug Then Wall075.collidable = False
 
     debug.print "Timer: "&Timer()
     
@@ -14287,9 +14274,13 @@ Sub DMDPlayHitScene(vid,sound,delay,line1,line2,line3,combo,format)
                 Set font3 = FlexDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0)
                 l3vis = True
             Case 1
-                Set font1 = FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0)
+                if Len(line1) > 12 Then
+                    Set font1 = FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbWhite, 0)
+                Else 
+                    Set font1 = FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0)
+                End if
                 Set font2 = FlexDMD.NewFont("skinny7x12.fnt", vbWhite, vbWhite, 0)
-                set font3 = font1
+                set font3 = FlexDMD.NewFont("FlexDMD.Resources.udmd-f5by7.fnt", vbWhite, vbWhite, 0)
             Case 2
                 Set font1 = FlexDMD.NewFont("udmd-f3by7.fnt", vbWhite, vbWhite, 0)
                 Set font2 = font1
@@ -15459,7 +15450,6 @@ Sub DMDDoMatchScene(m)
     Else
         DisplayDMDText "","MATCH "&m,8000
     End If
-    Wall075.collidable=False
 End Sub
 
 Sub GameDoDMDHighScoreScene(scoremask)
@@ -15489,7 +15479,7 @@ Sub GameDoDMDHighScoreScene(scoremask)
     Next
     DMDFlush
     DMDDisplayScene scene
-    vpmTimer.AddTimer 2000+2000*scenenum-100,"StopSound ""got-track-hstd"" : hsbModeActive=0 : tmrDMDUpdate.Enabled = True : EndOfBallComplete() '"
+    vpmTimer.AddTimer 2000+2000*scenenum-100,"StopSound ""got-track-hstd"" : hsbModeActive=0 : DMDBlank : tmrDMDUpdate.Enabled = True : EndOfBallComplete() '"
 End Sub
 
 
@@ -16156,6 +16146,10 @@ Sub LampTimer2_Timer()
     li171a.colorfull=li171.colorfull : li171b.colorfull = li171.colorfull
     li174a.colorfull=li174.colorfull : li174b.colorfull = li174.colorfull
 
+	'Desktop action button
+	liDTaction.colorfull = li230.colorfull
+
+
 	FrameTime = gametime - InitFrameTime : InitFrameTime = gametime	'Count frametime. Unused atm?
 	Lampz.Update 'updates on frametime (Object updates only)
 End Sub
@@ -16506,6 +16500,7 @@ Sub InitLampsNF()
 
     ' Lockbar Button Light
     Lampz.MassAssign(78)= li230
+	If DesktopMode Then Lampz.MassAssign(78)= liDTaction
     ' Apron button light
     Lampz.MassAssign(79)= li231
 
@@ -16938,8 +16933,8 @@ Sub Options_OnOptChg
 		OptBot.Text = Options_OnOffText(CabinetMode)
 		SaveValue cGameName, "CABINET", CabinetMode
     ElseIf OptPos = Opt_LockBar Then
-        OptTop.text = "HAVE LOCKBAR BUTTON"
-        OptBot.Text = Options_OnOffText(bHaveLockbarButton)
+        OptTop.text = "PHYSICAL LOCKBAR BUTTON"
+        If bHaveLockbarButton Then OptBot.Text = "YES" Else OptBot.Text = "NO"
         SaveValue cGameName, "LBBUT", bHaveLockbarButton
 	ElseIf OptPos = Opt_DynBallShadow Then
 		OptTop.Text = "DYN. BALL SHADOWS"
@@ -18620,40 +18615,3 @@ Sub VRTopperLights_Timer
 End Sub
 ' End VR stuff ***************************************************************************************
 
-
-'============================
-' Outstanding Issues/To-Dos
-'============================
-'
-' Coding
-'-------
-' - add "<n>X SUPER JACKPOT" wording to SJP award scene
-' - Make sure score doesn't show again after HighScore or Match scenes
-'
-' √? Check timing for how long score stays on the screen at the end of a game. If you get a high score, probably want it to cycle through which scores you got before moving to Attract mode
-' Game froze when PSD was entering his initials once
-' √? UPF can't handle multiball and battle at the same time - needs refactoring
-' √? Need to implement timer to reset Wildfire targets to unlit after 2 BWMBs completed. Timer needs to be cleared at end-of-ball
-' Add the "Action Button" animation to "Choose your house" - should play every 30 seconds or so
-'
-' - Need to allow for Blackwater to be stacked with WHC - it CAN happen.
-
-' √? Need to save scores for IT, HOTK, WHC
-
-' - Add-a-ball relit ball saver, but a ball lost down the outlane triggered LoL save and turned off outlane light
-
-' - dual battle ended but battle scene didn't redraw - still had dual battle mode with greyjoy timer at 0.
-
-' - Choose Battle was lit even though no houses were qualified, when playing in Lannister debug mode
-' - Choose Battle was lit during Iron Throne mode after losing a ball and going onto Ball 2.
-' - mystery light is lit during battle, even though mystery can't be collected
-'    - it's a mystery - shouldn't happen
-' √? Dragon Fire light seq during Targaryen Level 3 doesn't include the right lights and sometimes doesn't play at all
-' √? during HOTK, Stark bonus mode went to -2 or -3 before switching scenes
-' √? Targaryen hurry-up doesn't start if the mode is restarted
-
-' TODO:
-' - need special ball rolling on ramps
-
-' Nice-To-Haves
-' - fix blink patterns. Some lights do "110" pattern rather than 10
