@@ -108,7 +108,7 @@
 Option Explicit
 Randomize
 
-Const TableVersion = "0.137"
+Const TableVersion = "0.130"
 
 Const bDebug = False
 
@@ -141,38 +141,44 @@ Const AmbientBallShadowOn = 1		'0 = Static shadow under ball ("flasher" image, l
 									'1 = Moving ball shadow ("primitive" object, like ninuzzu's) - This is the only one that shows up on the pf when in ramps and fades when close to lights!
 									'2 = flasher image shadow, but it moves like ninuzzu's
 
-
-'***** VR Options *********
-Dim VRRoom  
-Dim VRRoomChoice: VRRoomChoice = 1         '0 - Desktop/FS   1 - Minimal Room    2 - Ultra Minimal Room
-Dim Scratches: Scratches = 1    '0 - VR Glass Scratches Off  1 - VR Glass Scratches On  
-Dim Topper: Topper = 1			'0 - VR Topper Off  1 - VR Topper On
+Dim VRRoom 
+'***** VR Options ********* 
+Dim VRRoomChoice: VRRoomChoice = 1   '0 - Desktop/FS   1 - Minimal Room    2 - Ultra Minimal Room
+Dim Scratches: Scratches = 1    	 '0 - VR Glass Scratches Off  1 - VR Glass Scratches On  
+Dim Topper: Topper = 1				 '0 - VR Topper Off  1 - VR Topper On
 '**************************
 
 '/////// No User Configurable options beyond this point ////////
 
 If RenderingMode = 2 Then VRRoom = VRRoomChoice Else VRRoom = 0
 
+
 'VR Room Init
 Dim Stuff ' for Hybrid Toggle
 VRRoomInit
 
 Sub VRRoomInit 
-    If VRRoom = 1 Then 
-        StartButtonTimer.enabled = true
-        VRPlunger2.enabled = true ' starts the timer needed for VR Plunger animation
-        for each Stuff in VR_Cab: Stuff.visible = true: next
-        for each Stuff in VR_Room: Stuff.visible = true: next
-        If Scratches = 1 then GlassImpurities.visible = true
-        if Topper = 1 then EggTimer.enabled = true: RedEgg.visible = true: GreenEgg.visible = true
-    End if
+	If VRRoom = 1 Then 
+	StartButtonTimer.enabled = true
+	VRPlunger2.enabled = true ' starts the timer needed for VR Plunger animation
+	for each Stuff in VR_Cab: Stuff.visible = true: next
+	for each Stuff in VR_Room: Stuff.visible = true: next
+	If Scratches = 1 then GlassImpurities.visible = true
 
-    If VRRoom = 2 Then 
-        for each Stuff in VR_UltraMin: Stuff.visible = true: next
-        PinCab_Rails.visible = true
-    End if
-    ' End VR Room Init....
+	if Topper = 1 then 
+	StartVRDragon
+	VRTopperTimer.enabled = true
+	SmokeTimer.enabled = true
+	for each Stuff in VR_Topper: Stuff.visible = true: next
+	end if
+	End if
+
+	If VRRoom = 2 Then 
+	for each Stuff in VR_UltraMin: Stuff.visible = true: next
+	PinCab_Rails.visible = true
+	End if
 End Sub
+' End VR Room Init....
 
 
 Const BallSize = 50     ' 50 is the normal size used in the core.vbs, VP kicker routines uses this value divided by 2
@@ -414,21 +420,24 @@ End Sub
 
 Sub Table1_KeyDown(ByVal Keycode)
 
-    'VR Specific...
-    If keycode = LeftMagnaSave and VRRoom = 1 then VRCabArt =  VRCabArt + 1: ArtSwap
+'VR Specific...
+If keycode = LeftMagnaSave and VRRoom = 1 then VRCabArt =  VRCabArt + 1: ArtSwap
+If keycode = LeftFlipperKey and VRRoom = 1 then VR_FlipperLeft.x = VR_FlipperLeft.x + 5
+If keycode = RightFlipperKey and VRRoom = 1 then VR_FlipRight.x = VR_FlipRight.x - 5
+If keycode = StartGameKey and VRRoom = 1 then 
+VR_StartButtOuter.y = VR_StartButtOuter.y - 4 
+StartButtonTimer.enabled = false
+VR_StartButtOuter.blenddisablelighting = 0 
+VR_TourneyButt.blenddisablelighting = 0
+	If Topper = 1 then
+	StopVRDragon
+	VRTopperTimer.enabled = false
+	TopperLightsOff
+	VRTopperLights.enabled = true
+	End if
+end if
+' end VR Specific
 
-    If keycode = StartGameKey and VRRoom = 1 then 
-        VR_StartButtOuter.y = VR_StartButtOuter.y - 4 
-        StartButtonTimer.enabled = false
-        VR_StartButtOuter.blenddisablelighting = 0 
-        VR_TourneyButt.blenddisablelighting = 0
-    end if
-
-    If keycode = LeftFlipperKey and VRRoom = 1 then VR_FlipperLeft.x = VR_FlipperLeft.x + 5
-    If keycode = RightFlipperKey and VRRoom = 1 then VR_FlipRight.x = VR_FlipRight.x - 5
-    ' end VR Specific
-
-    if bDebug and keycode = LeftMagnaSave and bGameInPlay Then Score(CurrentPlayer) = HighScore(4)+100 : CheckHighscore
 
     If keycode = LeftTiltKey Then Nudge 90, 1:SoundNudgeLeft()
     If keycode = RightTiltKey Then Nudge 270, 1:SoundNudgeRight()
@@ -438,13 +447,12 @@ Sub Table1_KeyDown(ByVal Keycode)
 		Options_KeyDown keycode
 		Exit Sub
 	End If
-
     If keycode = LeftMagnaSave Then
+
 		If bOptionsMagna Then Options_Open() Else bOptionsMagna = True
     ElseIf keycode = RightMagnaSave Then
 		If bOptionsMagna Then 
             Options_Open() 
-            Exit Sub
         Else 
             If Not bGameInPlay Then bOptionsMagna = True
         End if
@@ -563,7 +571,7 @@ Sub Table1_KeyDown(ByVal Keycode)
         End If
     Else ' If (GameInPlay)
 
-        If keycode = StartGameKey or keycode = RightMagnaSave or keycode = LockBarKey Then
+        If keycode = StartGameKey Then
             If(DMDStd(kDMDStd_FreePlay) = True)Then
                 If(BallsOnPlayfield = 0)Then
                     ResetForNewGame()
@@ -2827,6 +2835,8 @@ Sub TargetBounce_Hit(idx)
 End Sub
 
 
+
+
 ' Slingshots has been hit
 
 Dim LStep, RStep
@@ -3059,7 +3069,7 @@ Sub EnterHighScoreKey(keycode)
         HighScoreDisplayNameNow()
     End If
 
-    If keycode = PlungerKey OR keycode = StartGameKey Or keycode = RightMagnaSave Or keycode = LockBarKey Then
+    If keycode = PlungerKey OR keycode = StartGameKey Then
         if(mid(hsValidLetters, hsCurrentLetter, 1) <> "<")then
             'playsound "fx_Enter"
             'Table-specific
@@ -9033,7 +9043,9 @@ Sub EndOfGame()
 
     vpmTimer.AddTimer 3000,"StartAttractMode '"
 
-	if VRRoom = 1 then VR_StartButtOuter.blenddisablelighting = 0.8: StartButtonTimer.enabled = true  ' start the Front button temp attract lighting
+	' start the Front button attract lighting and topper attract for VR
+	if VRRoom = 1 then VR_StartButtOuter.blenddisablelighting = 0.8: StartButtonTimer.enabled = true 
+	if VRRoom = 1 and Topper = 1 then StartVRDragon: VRTopperTimer.enabled = true: SmokeTimer.enabled = true :VRTopperLights.enabled = false
 
 End Sub
 
@@ -9420,8 +9432,6 @@ Sub SetLockbarLight
             col = House(CurrentPlayer).HasActionAbility
             If col <> 0 Then st = 1 Else st = 0
         End if
-    Else
-        If (DMDStd(kDMDStd_FreePlay) = True Or Credits > 0) Then st = 2 : col = Baratheon 
     End if
 
     ' Set the light state
@@ -10896,6 +10906,7 @@ Sub DoDragonRoar(num)
         DragonFire.Visible = 1
         DragonFire.TimerInterval = 100
         DragonFire.TimerEnabled = True
+		If VRroom = 1 and Topper = 1 then StartVRDragon
     End If
 End Sub
 
@@ -10907,6 +10918,7 @@ Sub DragonFire_Timer
     DragonFire.TimerEnabled = 0
     If i > 5 Then
         DragonFire.visible = 0
+		If VRroom = 1 and Topper = 1 then StopVRDragon
     Else
         DragonFire.ImageA = "flame"&i
         DragonFire.UserValue = i
@@ -15161,8 +15173,8 @@ Sub GameDoDMDHighScoreScene(scoremask)
         End If
     Next
     DMDFlush
-    DMDDisplayScene scene
-    vpmTimer.AddTimer 2000+2000*scenenum-100,"StopSound ""got-track-hstd"" : tmrDMDUpdate.Enabled = True : EndOfBallComplete() '"
+    DMDEnqueueScene scene,0,2000*scenenum,2000*scenenum,4000,""
+    vpmTimer.AddTimer 2000*scenenum-100,"StopSound ""got-track-hstd"" : tmrDMDUpdate.Enabled = True : EndOfBallComplete() '"
 End Sub
 
 
@@ -17966,9 +17978,9 @@ Sub VRPlunger2_Timer
 	VR_Plunger.Y = -117.5515 + (5* Plunger.Position) -20
 End Sub
 
-'VR Start/Tournament button Atrract Lighting code...
+'VR Start/Tournament button Attract Lighting code...
 VR_StartButtOuter.blenddisablelighting = 0.8
-Sub StartButtonTimer_Timer  ' This is just here to test the start and tourney button lights for VR
+Sub StartButtonTimer_Timer  
 If VR_StartButtOuter.blenddisablelighting = 0.8 Then
 VR_StartButtOuter.blenddisablelighting = 0: VR_TourneyButt.blenddisablelighting = 0.8
 Else
@@ -17976,31 +17988,304 @@ VR_StartButtOuter.blenddisablelighting = 0.8: VR_TourneyButt.blenddisablelightin
 end if
 End Sub
 
-' Cab art swap stuff.....
-Dim VRCabArt: VRCabArt = 0
+' Cab art swap stuff..... This is set to single left magnasave press
+Dim VRCabArt: VRCabArt = 1
 
 Sub ArtSwap()
-If VRCabArt = 4 then VRCabArt = 1
-If VRCabArt = 1 then VRBackglassFlasher.imageA = "VRBG4": PinCab_Cabinet.image = "Pincab_Cabinet_DragonNEW":PinCab_Backbox.image = "Pincab_Backbox_Dragon"
-If VRCabArt = 2 then VRBackglassFlasher.imageA = "VRBG2": PinCab_Cabinet.image = "Pincab_Cabinet_CharsNEW"::PinCab_Backbox.image = "Pincab_Backbox_Chars"
-If VRCabArt = 3 then VRBackglassFlasher.imageA = "VRBG1": PinCab_Cabinet.image = "Pincab_Cabinet_WinterNEW"::PinCab_Backbox.image = "Pincab_Backbox_Winter"
+If VRCabArt = 5 then VRCabArt = 1
+
+If VRCabArt = 1 then 
+VRBackglassFlasher.imageA = "VRBG1" 
+PinCab_Cabinet.image = "Pincab_Cabinet_WinterNEW"
+PinCab_Backbox.image = "Pincab_Backbox_Winter"
+BackboxTrimLeft.visible = false
+BackboxTrimRight.visible = false
+BackboxTrimLeftsilver.visible = true
+BackboxTrimRightsilver.visible = true
+LELabel.visible = false
+VR_FlipRight.image = "FlipperBlue"
+VR_FlipperLeft.image = "FlipperBlue"
+PinCab_FlipperRing.image = "FlipperBlue"
+end If
+
+If VRCabArt = 2 then 
+VRBackglassFlasher.imageA = "VRBG2" 
+PinCab_Cabinet.image = "Pincab_Cabinet_DragonNEW"
+PinCab_Backbox.image = "Pincab_Backbox_Dragon"
+BackboxTrimLeftsilver.visible = false
+BackboxTrimRightsilver.visible = false
+LELabel.visible = true
+BackboxTrimLeft.visible = true
+BackboxTrimRight.visible = true
+VR_FlipRight.image = "FlipperRed"
+VR_FlipperLeft.image = "FlipperRed"
+PinCab_FlipperRing.image = "FlipperRed"
+End if
+
+If VRCabArt = 3 then 
+VRBackglassFlasher.imageA = "VRBG5"
+PinCab_Cabinet.image = "Pincab_Cabinet_CharsNEW"
+PinCab_Backbox.image = "Pincab_Backbox_Chars"
+BackboxTrimRight.visible = false
+BackboxTrimLeft.visible = false
+LELabel.visible = false
+end If
+
+If VRCabArt = 4 then 
+VRBackglassFlasher.imageA = "VRBG4"
+PinCab_Cabinet.image = "Pincab_Cabinet_CharsNEW"
+PinCab_Backbox.image = "Pincab_Backbox_Chars"
+LELabel.visible = false
+end If
 End Sub
 
 ' VR Topper....
-Dim EggSpeed
-EggSpeed = true
-GreenEgg.blenddisablelighting = 0
-RedEgg.blenddisablelighting = 4
+Dim TopperLight
+Topperlight = 0
 
-Sub EggTimer_timer
-if EggSpeed = True then GreenEgg.blenddisablelighting = GreenEgg.blenddisablelighting + 0.03
-if EggSpeed = False then GreenEgg.blenddisablelighting = GreenEgg.blenddisablelighting - 0.03
-if EggSpeed = True then RedEgg.blenddisablelighting = RedEgg.blenddisablelighting - 0.03
-if EggSpeed = False then RedEgg.blenddisablelighting = RedEgg.blenddisablelighting + 0.03
-if GreenEgg.blenddisablelighting > 4 then EggSpeed = false
-if GreenEgg.blenddisablelighting < 0 then EggSpeed = true
-end Sub
+' VR Topper Attract sequence
+Sub VRTopperTimer_timer 
+TopperLight = Topperlight + 1
+If TopperLight = 25 then TopperLight = 1
+If TopperLight = 1 then StartVRDragon
+If TopperLight = 13 then StopVRDragon
+If TopperLight = 1 or TopperLight = 13 Then TopperLightsOff:VRMartellON 
+If TopperLight = 2 or TopperLight = 14 Then TopperLightsOff:VRGreyON
+If TopperLight = 3 or TopperLight = 15 Then TopperLightsOff:VRStarkON
+If TopperLight = 4 or TopperLight = 16 Then TopperLightsOff:VRTargON
+If TopperLight = 5 or TopperLight = 17 Then TopperLightsOff:VRLanON
+If TopperLight = 6 or TopperLight = 18 Then TopperLightsOff:VRBarON 
+If TopperLight = 7 or TopperLight = 19 Then TopperLightsOff:VRTyrellON
+If TopperLight = 8 or TopperLight = 20 Then TopperLightsOff:VRBarON
+If TopperLight = 9 or TopperLight = 21 Then TopperLightsOff:VRLanON
+If TopperLight = 10 or TopperLight = 22 Then TopperLightsOff:VRTargON
+If TopperLight = 11 or TopperLight = 23 Then TopperLightsOff:VRStarkON
+If TopperLight = 12 or TopperLight = 24 Then TopperLightsOff:VRGreyON 
+End Sub
 
+
+' All of the Topper VR light control subs below...
+Sub VRMartellON
+VRMartell.imageA = "MartellOn"
+VRMartellFlash.visible = true
+End Sub
+Sub VRMartellOFF
+VRMartell.imageA = "MartellOff"
+VRMartellFlash.visible = false
+End Sub
+
+Sub VRGreyON
+VRGrey.imageA = "GreyJoyOn"
+VRGreyFlash.visible = true
+End Sub
+Sub VRGreyOFF
+VRGrey.imageA = "GreyJoyOff"
+VRGreyFlash.visible = false
+End Sub
+
+Sub VRStarkON
+VRStark.imageA = "StarkOn"
+VRStarkFlash.visible = true
+End Sub
+Sub VRStarkOFF
+VRStark.imageA = "StarkOff"
+VRStarkFlash.visible = false
+End Sub
+
+Sub VRTargON
+VRTarg.imageA = "TargOn"
+VRTargFlash.visible = true
+End Sub
+Sub VRTargOFF
+VRTarg.imageA = "TargOff"
+VRTargFlash.visible = false
+End Sub
+
+Sub VRLanON
+VRLan.imageA = "LanOn"
+VRLanFlash.visible = true
+End Sub
+Sub VRLanOFF
+VRLan.imageA = "LanOff"
+VRLanFlash.visible = false
+End Sub
+
+Sub VRBarON
+VRBar.imageA = "BarOn"
+VRBarFlash.visible = true
+End Sub
+Sub VRBarOFF
+VRBar.imageA = "BarOff"
+VRBarFlash.visible = false
+End Sub
+
+Sub VRTyrellON
+VRTyrell.imageA = "TyrellOn"
+VRTyrellFlash.visible = true
+End Sub
+Sub VRTyrellOFF
+VRTyrell.imageA = "TyrellOff"
+VRTyrellFlash.visible = false
+End Sub
+
+Sub TopperLightsOff
+VRMartell.imageA = "MartellOff"
+VRGrey.imageA = "GreyJoyOff"
+VRStark.imageA = "StarkOff"
+VRTarg.imageA = "TargOff"
+VRLan.imageA = "LanOff"
+VRBar.imageA = "BarOff"
+VRTyrell.imageA = "TyrellOff"
+
+VRMartellFlash.visible = false
+VRGreyFlash.visible = false
+VRStarkFlash.visible = false
+VRTargFlash.visible = false
+VRLanFlash.visible = false
+VRBarFlash.visible = false
+VRTyrellFlash.visible = false
+End Sub
+
+'************************
+' VR Dragon Control
+'************************
+
+'Call these to start or stop the VR Dragon topper at any time.  It runs the wings and Strobe lights and smoke.
+'StartVRDragon
+'StopVRDragon
+
+Dim VRWingSteps
+VRWingSteps = Array(0,0,1,3,9,15,21,27,29,30,30,29,27,21,15,9,3,1,0)
+Dim SmokeRunning
+SmokeRunning = false
+
+Sub StartVRDragon
+    VRtmrDragonWings.UserValue = 0
+    VRtmrDragonWings.Interval = 75
+    VRtmrDragonWings.Enabled = True
+	VRTopperLightTimer.enabled = true
+	SmokeRunning = true
+End Sub
+
+Sub StopVRDragon
+		VRTopperLightTimer.enabled = false
+		VRTopperLightRight.visible = False
+		VRTopperLightLeft.visible = False
+		VRTopperLightCenter.visible = true
+		dragonbody.image = "Dragon_body_unlit_texture"
+		dragonleftwing.image = "Dragon_leftwing_unlit_texture"
+		dragonrightwing.image = "Dragon_rightwing_unlit_texture"
+		SmokeRunning = false
+
+    If VRtmrDragonWings.UserValue > 0 Then 
+       VRtmrDragonWings.Uservalue = VRtmrDragonWings.UserValue * -1
+    Else If VRtmrDragonWings.UserValue = 0 Then 
+        VRtmrDragonWings.Enabled = False
+    End If
+end if
+End Sub
+
+Sub VRtmrDragonWings_Timer
+    Dim i,wi
+    i = VRtmrDragonWings.UserValue
+    i = i + 1
+    If i > 18 Then i = 1
+    DragonRightWing.ObjRotY = WingSteps(Abs(i))
+    DragonLeftWing.ObjRotY = WingSteps(Abs(i))*-1
+    VRtmrDragonWings.UserValue = i
+    If i = 0 Then VRtmrDragonWings.Enabled = False 
+End Sub
+
+
+Sub VRTopperLightTimer_Timer
+if VRTopperLightRight.visible = False then 
+VRTopperLightRight.visible = true
+VRTopperLightLeft.visible = false
+VRTopperLightCenter.visible = false
+dragonbody.image = "Dragon_body_unlit_texture"
+dragonleftwing.image = "Dragon_leftwing_unlit_texture"
+dragonrightwing.image = "Dragon_rightwing_unlit_texture"
+else
+VRTopperLightRight.visible = false
+VRTopperLightLeft.visible = true
+dragonbody.image = "Dragon_body_lit_texture"
+dragonleftwing.image = "Dragon_leftwing_lit_texture"
+dragonrightwing.image = "Dragon_rightwing_lit_texture"
+VRTopperLightCenter.visible = true
+exit sub
+end If
+End Sub
+
+
+Sub SmokeTimer_timer()  
+Smoke.height = Smoke.height + 7
+Smoke.opacity = Smoke.opacity  - 0.51 ' only 0.51 or higher works now?  so confused.  WHY????
+Smoke2.height = Smoke2.height + 9
+Smoke2.opacity = Smoke2.opacity  - 0.51 ' only 0.51 or higher works now?  so confused.  WHY????
+
+if Smoke.height > 2200 then 
+if SmokeRunning = true then
+Smoke.height = 1780
+Smoke.opacity = 50
+if Smoke.Roty = 0 Then 
+Smoke.Roty = 180
+else 
+Smoke.Roty = 0
+end if
+end if
+end If
+
+if Smoke2.height > 2200 then 
+if SmokeRunning = true then
+Smoke2.height = 1780
+Smoke2.opacity = 50
+if Smoke2.Roty = 0 Then 
+Smoke2.Roty = 180
+else 
+Smoke2.Roty = 0
+end if
+end if
+end if
+End sub
+
+
+Sub VRTopperLights_Timer
+if p32on.DisableLighting = 0 then
+VRTargOFF
+Else
+VRTargON
+end If
+if p38on.DisableLighting = 0 then
+VRStarkOFF
+Else
+VRStarkON
+end If
+if p41on.DisableLighting = 0 then
+VRBarOFF
+Else
+VRBarON
+end If
+if p44on.DisableLighting = 0 then
+VRLanOFF
+Else
+VRLanON
+end If
+if p47on.DisableLighting = 0 then
+VRGreyOFF
+Else
+VRGreyON
+end If
+if p50on.DisableLighting = 0 then
+VRTyrellOFF
+Else
+VRTyrellON
+end If
+if p53on.DisableLighting = 0 then
+VRMartellOFF
+Else
+VRMartellON
+end If
+End Sub
 ' End VR stuff ***************************************************************************************
 
 
