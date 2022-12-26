@@ -66,6 +66,7 @@
 ' 130 - Sixtoe - Add VR components
 ' 131 - Add Options menu; minor bug fixes
 ' 132 - Rawd - Configured, placed, tweaked and coded all the VR room components for Hybrid use
+' 133 - Finish lockbar button lamp logic; bug fixes
 
 'On the DOF website put Exxx
 '101 Left Flipper
@@ -138,31 +139,36 @@ Const AmbientBallShadowOn = 1		'0 = Static shadow under ball ("flasher" image, l
 
 
 '***** VR Options *********
-Dim VRRoom:  VRRoom = 0         '0 - Desktop/FS   1 - Minimal Room    2 - Ultra Minimal Room
+Dim VRRoom  
+Dim VRRoomChoice: VRRoomChoice = 1         '0 - Desktop/FS   1 - Minimal Room    2 - Ultra Minimal Room
 Dim Scratches: Scratches = 1    '0 - VR Glass Scratches Off  1 - VR Glass Scratches On  
 Dim Topper: Topper = 1			'0 - VR Topper Off  1 - VR Topper On
 '**************************
 
 '/////// No User Configurable options beyond this point ////////
 
+If RenderingMode = 2 Then VRRoom = VRRoomChoice Else VRRoom = 0
 
 'VR Room Init
 Dim Stuff ' for Hybrid Toggle
- 
-If VRRoom = 1 Then 
-StartButtonTimer.enabled = true
-VRPlunger2.enabled = true ' starts the timer needed for VR Plunger animation
-for each Stuff in VR_Cab: Stuff.visible = true: next
-for each Stuff in VR_Room: Stuff.visible = true: next
-If Scratches = 1 then GlassImpurities.visible = true
-if Topper = 1 then EggTimer.enabled = true: RedEgg.visible = true: GreenEgg.visible = true
-End if
+VRRoomInit
 
-If VRRoom = 2 Then 
-for each Stuff in VR_UltraMin: Stuff.visible = true: next
-PinCab_Rails.visible = true
-End if
-' End VR Room Init....
+Sub VRRoomInit 
+    If VRRoom = 1 Then 
+        StartButtonTimer.enabled = true
+        VRPlunger2.enabled = true ' starts the timer needed for VR Plunger animation
+        for each Stuff in VR_Cab: Stuff.visible = true: next
+        for each Stuff in VR_Room: Stuff.visible = true: next
+        If Scratches = 1 then GlassImpurities.visible = true
+        if Topper = 1 then EggTimer.enabled = true: RedEgg.visible = true: GreenEgg.visible = true
+    End if
+
+    If VRRoom = 2 Then 
+        for each Stuff in VR_UltraMin: Stuff.visible = true: next
+        PinCab_Rails.visible = true
+    End if
+    ' End VR Room Init....
+End Sub
 
 
 Const BallSize = 50     ' 50 is the normal size used in the core.vbs, VP kicker routines uses this value divided by 2
@@ -387,12 +393,12 @@ Private Function BigMod(Value1, Value2)
 End Function
 
 Sub Table1_Exit()
-    If Not IsEmpty(FlexDMD) Then
-        If Not FlexDMD is Nothing Then   
+    If TypeName(FlexDMD) = "Object" And Not IsEmpty(FlexDMD) Then
+        If Not FlexDMD is Nothing Then
             FlexDMD.Show = False
             FlexDMD.Run = False
             FlexDMD = NULL
-        End If                  
+        End If
     End If
     If B2SOn Then Controller.Stop
 End Sub
@@ -444,13 +450,13 @@ If keycode = RightFlipperKey and VRRoom = 1 then VR_FlipRight.x = VR_FlipRight.x
     End If
 
     If keycode = PlungerKey Then 
-	Plunger.Pullback
-	SoundPlungerPull()
-	If VRroom > 0 then  'VR Specific
-		VRPlunger.Enabled = True
-		VRPlunger2.Enabled = False
-	End If
-End If
+        Plunger.Pullback
+        SoundPlungerPull()
+        If VRroom > 0 then  'VR Specific
+            VRPlunger.Enabled = True
+            VRPlunger2.Enabled = False
+        End If
+    End If
     If hsbModeActive Then
         EnterHighScoreKey(keycode)
         Exit Sub
@@ -582,7 +588,7 @@ End Sub
 
 Sub Table1_KeyUp(ByVal keycode)
 
-	'VR Specific....
+'VR Specific....
 	If keycode = StartGameKey and VRRoom = 1 then VR_StartButtOuter.y = VR_StartButtOuter.y + 4
 	If keycode = LeftFlipperKey and VRRoom = 1 then VR_FlipperLeft.x = VR_FlipperLeft.x - 5
 	If keycode = RightFlipperKey and VRRoom = 1 then VR_FlipRight.x = VR_FlipRight.x + 5
@@ -594,9 +600,9 @@ Sub Table1_KeyUp(ByVal keycode)
     If keycode = PlungerKey Then 
         Plunger.Fire	
 		If VRroom > 0 then  'VR Specific
-		VRPlunger.Enabled = False
-		VRPlunger2.Enabled = True
-		VR_Plunger.Y = -117.5515
+            VRPlunger.Enabled = False
+            VRPlunger2.Enabled = True
+            VR_Plunger.Y = -117.5515
 		End if
         If bBallInPlungerLane Then SoundPlungerReleaseBall() Else SoundPlungerReleaseNoBall()
     End If
@@ -4974,15 +4980,9 @@ Sub swPlungerRest_Hit()
         'debug.print "autofire the ball"
         vpmtimer.addtimer 1000, "PlungerIM.AutoFire:DOF 120, DOFPulse:PlaySoundAt ""fx_kicker"", swPlungerRest:bAutoPlunger = False:bAutoPlunged = True '"
     End If
-    'Start the Selection of the skillshot if ready
-    ' GoT Premium/LE has no skill shot
-    If bSkillShotReady Then
-        PlaySong "mu_shooterlane"
-        UpdateSkillshot()
-        ' show the message to shoot the ball in case the player has fallen sleep
-        SwPlungerCount = 0
-        swPlungerRest.TimerEnabled = 1
-    End If
+    
+    SetLockbarLight
+
     ' remember last trigger hit by the ball.
     LastSwitchHit = "swPlungerRest"
 End Sub
@@ -5003,6 +5003,7 @@ Sub swPlungerRest_UnHit()
     GameDoBallLaunched
     bAutoPlunged = False
     bBallSaved = False
+    SetLockbarLight
 End Sub
 
 Sub tmrJustPlunged_Timer : bJustPlunged = False : End Sub
@@ -5621,13 +5622,20 @@ Class cHouse
     End Sub
 
     Public Function HasActionAbility
+        Dim i
         HasActionAbility = ActionAbility
         Select Case ActionAbility
             Case Stark: If ActionButtonUsed Or PlayerMode <> 1 Then HasActionAbility = 0
             Case Baratheon: If ActionButtonUsed Or bLoLLit Then HasActionAbility = 0
             Case Lannister: If ActionButtonUsed >= DMDStd(kDMDFet_LannisterButtonsPerGame) Or CurrentGold < ((PlayfieldMultiplierVal+1) * 600) Then HasActionAbility = 0
-            Case Tyrell,Targaryen: If ActionButtonUsed Then HasActionAbility = 0
-            Case Martell: If ActionButtonUsed Or (bMultiBallMode = False And bITMBActive = False) Then HasActionAbility = 0
+            Case Tyrell
+                HasActionAbility = 0
+                If ActionButtonUsed Then Exit Function 
+                For i = 1 to 5
+                    If ComboMultiplier(i) > 1 Then HasActionAbility = Tyrell : Exit Function
+                Next
+            Case Targaryen: If ActionButtonUsed Then HasActionAbility = 0
+            Case Martell: If ActionButtonUsed Or (bMultiBallMode = False And bITMBActive = False) Or bMadnessMB  <> 0 Then HasActionAbility = 0
         End Select
     End Function
 
@@ -8186,7 +8194,6 @@ Sub ResetForNewGame()
     tmrGame.Enabled = 1
 
     vpmtimer.addtimer 1500, "FirstBall '"
-
 End Sub
 
 ' This is used to delay the start of a game to allow any attract sequence to
@@ -9226,6 +9233,7 @@ Sub ResetComboMultipliers
     Dim i
     For i = 0 to 5: ComboMultiplier(i) = 1: Next
     SetComboLights
+    SetLockbarLight
     SetTopGates
     DMDLocalScore
 End Sub
@@ -9348,62 +9356,96 @@ End Sub
 
 ' Known lockbar light states:
 ' During regular play
-'  - Lit solid for Baratheon, Tyrell, Targaryen if not yet used this ball
+'  - Lit solid for Baratheon, Targaryen if not yet used this ball
+'  - Lit solid for Tyrell if there's at least one shot lit for Combos, or a playfield multiplier
 '  - Lit solid for Lannister if sufficient gold
 ' During multiball
-'  - Also lit (flashing or solid?) for Martell if not yet used
+'  - Also lit solid for Martell if not yet used
 ' During Battle
-'  - Also lit for Stark (flashing or solid?)
+'  - Also lit solid for Stark
 ' During Choose House
 '  - Flashes colour of house
 ' During Mystery
 '  - Flashes white or yellow?
 ' During Battle Selection
-'  - Flashes red (or primary house color??)
+'  - Flashes red if one house is chosen; flashes between red and colour of second house if stacked
+' After first ball, when ball is in the plunger lane
+'  - Flashes white
 
 Sub SetLockbarLight
     Dim st,col,ab,b
-    st = 0 : col = white : ab=0' Defaults
+    st = 0 : col = 0 : ab=0 ' Defaults
+
+    ' Calculate the color and state of the action button
     If PlayerMode = -1 Then 
-        st = 2
+        If SelectedHouse = 8 Then 'Random
+            li230States(0) = 7
+            For b = 1 to 7 : li230States(b) = b : Next
+            st = 3
+        Else
+            st = 2 : col = SelectedHouse
+        End If
+    ElseIf bBallInPlungerLane Then
+        st = 2 : col = stark
     Elseif PlayerMode = 2 Then st = 0
+    ElseIf bMysteryAwardActive Then
+        st = 2 : col = baratheon
+    Elseif PlayerMode = -2 Then
+        st = 2 : col = lannister
+        If HouseBattle2 > 0 Then
+            st = 3
+            li230States(0) = 4
+            li230States(1) = 0
+            li230States(2) = Lannister
+            li230States(3) = 0
+            li230States(4) = HouseBattle2
+        End If
     Else
-        ab = House(CurrentPlayer).HasActionAbility
-        If ab <> 0 Then col = HouseColor(ab) : st = 1 : Else st = 0
+        col = House(CurrentPlayer).HasActionAbility
+        If col <> 0 Then st = 1 Else st = 0
     End if
 
-    If bMysteryAwardActive Then
-        st = 2 : col = white
-    ElseIf PlayerMode = -2 Then 
-        st = 2 : col = red ' or the chosen house?
-	End If
-
-    'DOF for Lockbar button light
+    ' Hide the virtual fire button if player has a real one
     If bHaveLockbarButton Then
         For each b in firebutton_base_BL : b.visible = false : Next
         For each b in firebutton_BL : b.visible = false : Next
+    End if
+
+    ' Set the light state
+    If bHaveLockbarButton and st < 2 Then
+        For b = 1 to 7
+            If b = col Then DOF 140+b,DOFon Else DOF 140+b,DOFoff
+        Next
+    End if
+    if st < 2 Then
+        li230.TimerEnabled = False
+        SetLightColor li230,HouseColor(col),st
+    ElseIf st = 2 Then
+        li230States(0) = 2 : li230States(1) = 0 : li230States(2) = col
     End If
-    Dim dofnum
-    if bHaveLockbarButton = False Then SetLightColor li230,col,st
-    Select Case st
-        Case 0
-            For dofnum = 141 to 147 : DOF dofnum,DOFOff : Next
-        Case 1
-            DOF 140 + ab, DOFOn
-        Case 2
-            If bMysteryAwardActive Then dofnum = 142 Else dofnum = 141
-            DOF dofnum,DOFOn
-    End Select
+
+    If st > 1 Then li230.TimerInterval = 100 : li230.TimerEnabled = True
 End Sub
 
-Sub LockbarFlasher_Timer
-    If me.UserValue = 0 Then
-        me.UserValue = 1
-        me.Visible = 1
-    Else
-        me.UserValue = 0
-        me.Visible = 0
-    End If
+Dim li230States(10)
+Sub li230_Timer
+    Dim tmp,st,i
+    me.TimerEnabled = False
+    tmp = me.UserValue
+    tmp = tmp+1
+    if tmp > li230States(0) Then tmp = 1
+    If bHaveLockbarButton Then
+        For i = 141 to 147 : DOF i,DOFOff : Next
+    End if
+    if li230States(tmp) > 0 then 
+        SetLightColor li230,HouseColor(li230States(tmp)),1
+        if bHaveLockbarButton Then DOF 140+li230States(tmp),DOFOn
+    Else 
+        SetLightColor li230,white,0
+    End if
+    me.UserValue = tmp
+    me.TimerInterval = 100
+    me.TimerEnabled = True
 End Sub
 
 
@@ -9809,6 +9851,7 @@ Sub IncreaseComboMultiplier(h)
     If c <> 0 Then LastComboHit = c
     SetGameTimer tmrComboMultplier,tmr
     SetComboLights
+    SetLockbarLight
     SetTopGates
     DMDLocalScore 'Update the DMD. TODO: On the real game, the DMD flashes the multipliers when they first change
 End Sub
@@ -9826,6 +9869,7 @@ Sub AddGold(g)
         scene.GetLabel("gold").SetAlignedPosition 2,27,FlexDMD_Align_BottomLeft
         DMDEnqueueScene scene,2,1200,2000,2000,""
     End If
+    SetLockbarLight
 End Sub
 
 Sub AddBonus(b)
@@ -9893,6 +9937,7 @@ Sub ChooseHouse(ByVal keycode)
         FlashShields SelectedHouse,True
         House(CurrentPlayer).Say(SelectedHouse)
     End If
+    SetLockbarLight
     DMDChooseScene1 "CHOOSE YOUR HOUSE",HouseToUCString(SelectedHouse), HouseAbility(SelectedHouse),"got-choose" & HouseToString(SelectedHouse)
 End Sub
 
@@ -10647,6 +10692,7 @@ Sub BatteringRam_Hit
             SetGameTimer tmrPFMultiplier,800-(PlayfieldMultiplierVal*100)
             SetPFMLights
             line1 = "+1  PLAYFIELD"&vbLf&"MULTIPLIER"
+            SetLockbarLight
         Case Else
             ' Special case. When the PF Multiplier timer runs out, there's a short grace period where a single
             ' hit will restore it
@@ -10654,6 +10700,7 @@ Sub BatteringRam_Hit
                 PlayfieldMultiplierVal = PFMState - 2
                 SetGameTimer tmrPFMultiplier,760-(PlayfieldMultiplierVal*80)
                 SetPFMLights
+                SetLockbarLight
                 PFMState = 3
                 line1 = ""
             End If
@@ -10718,6 +10765,7 @@ Sub PFMultiplierTimer
     PFMState = PlayfieldMultiplierVal + 2
     PlayfieldMultiplierVal = 1
     SetPFMLights
+    SetLockbarLight
     vpmTimer.AddTimer 4000,"PFMState=0 '"
 End Sub
 
@@ -10983,7 +11031,6 @@ End Sub
 Sub SelectMysteryAward
     Dim i,combo
     bMysteryAwardActive = False
-    SetLockbarLight
     bMysteryLit = False : SetMysteryLight : SetTopGates
     DMDMysteryAwardScene
     TimerFlags(tmrMysteryAward) = 0
@@ -11039,8 +11086,10 @@ Sub SelectMysteryAward
             DMD "BIGGEST POINTS",FormatScore(25000000*PlayfieldMultiplierVal*combo),"",eNone,eNone,eNone,1000,True,""
         Case 29: AwardSpecial   ' Not implemented
     End Select
+    CurrentGold = CurrentGold - MysteryAwards(MysteryVals(MysterySelected))(1)
     vpmTimer.AddTimer 500,"IronThroneKickout '"
     PlayModeSong
+    SetLockbarLight
 End Sub
 
 
@@ -11392,6 +11441,7 @@ Sub StartBWMultiball
     BlackwaterScore = 10000000
     DMDCreateBWMBScoreScene
     EnableBallSaver DMDStd(kDMDFet_BWMB_SaveTimer)+5 ' feature setting plus the 5 second delay before MB starts
+    SetLockbarLight
 End Sub
 
 Sub StartCastleMultiball
@@ -11419,6 +11469,7 @@ Sub StartCastleMultiball
     EnableBallSaver DMDStd(kDMDFet_CMB_SaveTimer)
     SetTopGates ' all shots go to upper PF
     PlayModeSong
+    SetLockbarLight
     StartNonBWMB 2
 End Sub
 
@@ -11453,6 +11504,7 @@ Sub StartWallMB
     DMDCreateWallMBScoreScene
     DoWallMBSeq
     PlayModeSong
+    SetLockbarLight
 End Sub
 
 Sub tmrStartWallMB_Timer
@@ -11498,6 +11550,7 @@ Sub StartWHCMB(shot)
     tmrWiCLightning.Interval = 50
     tmrWiCLightning.Enabled = True
     PlayModeSong
+    SetLockbarLight
 End Sub
 
 Sub CheckForHotkOrITReady
@@ -11641,6 +11694,7 @@ Sub StartHotkMB
     House(CurrentPlayer).ResetForHotkMB
     SetPlayfieldLights
     PlayModeSong
+    SetLockbarLight
     DMDCreateHotkMBScoreScene
 End Sub
 
@@ -11665,6 +11719,7 @@ Sub StartIronThroneMB
     House(CurrentPlayer).ResetForITMB
     SetPlayfieldLights
     PlayModeSong
+    SetLockbarLight
     DMDCreateITMBScoreScene 0,0,7
 End Sub
 
@@ -11810,7 +11865,7 @@ End Sub
 
 Sub LockPost(up)
     Dim Z,lp
-    If up then Z = 60 Else Z = 0
+    If up then Z = 0 Else Z = -60
     For each lp in lockpost_001_BL : lp.TransZ = Z : Next
 End Sub
     
@@ -12530,6 +12585,7 @@ Sub UpdateChooseBattle
     Next
     tmr = Int( (TimerTimestamp(tmrChooseBattle)-GameTimeStamp) / 10) + 1
     DMDChooseBattleScene "CHOOSE YOUR BATTLE", house1, house2, tmr
+    SetLockbarLight
 End Sub
 
 ' PreLaunchBattleMode
@@ -12549,6 +12605,7 @@ Sub PreLaunchBattleMode
         PlaySoundVol "gotfx-passfornow",VolDef
         PlayModeSong
         SetPlayfieldLights
+        SetLockbarLight
         DMDFlush
         LaunchBattleMode
         Exit Sub
@@ -12570,6 +12627,7 @@ Sub PreLaunchBattleMode
     If HouseBattle2 > 0 Then House(CurrentPlayer).BattleState(HouseBattle2).StartBattleMode
     House(CurrentPlayer).SetUPFState True
     SetPlayfieldLights
+    SetLockbarLight
 
     PlayModeSong
 
@@ -14908,7 +14966,9 @@ End Sub
 ' Set Score scene back to default for regular play
 Sub DMDResetScoreScene
     bAlternateScoreScene = False
-    If DisplayingScene Is ScoreScene Then DMDClearQueue
+    If Not IsEmpty(DisplayingScene) Then
+        If DisplayingScene Is ScoreScene Then DMDClearQueue
+    End if
     ScoreScene = Empty
     AlternateScoreSceneMask = 0
     DMDLocalScore
@@ -15158,7 +15218,7 @@ DTArray = Array(DT7, DT8, DT9, DT90)
 'Configure the behavior of Drop Targets.
 Const DTDropSpeed = 60 'in milliseconds
 Const DTDropUpSpeed = 30 'in milliseconds
-Const DTDropUnits = 44 'VP units primitive drops so top of at or below the playfield
+Const DTDropUnits = 50 'VP units primitive drops so top of at or below the playfield
 Const DTDropUpUnits = 5 'VP units primitive raises above the up position on drops up
 Const DTMaxBend = 6 'max degrees primitive rotates when hit
 Const DTDropDelay = 10 'time in milliseconds before target drops (due to friction/impact of the ball)
@@ -17840,7 +17900,7 @@ end Sub
 '
 ' Coding
 '-------
-' Need to implement Options FlexDMD table overlay
+' √? Need to implement Options FlexDMD table overlay
 ' √? Check timing for how long score stays on the screen at the end of a game. If you get a high score, probably want it to cycle through which scores you got before moving to Attract mode
 ' √? Match sometimes stays on screen for too little time - maybe when getting a high score?
 '  - How it should go:
@@ -17859,7 +17919,7 @@ end Sub
 ' √? UPF can't handle multiball and battle at the same time - needs refactoring
 ' √? Need to implement timer to reset Wildfire targets to unlit after 2 BWMBs completed. Timer needs to be cleared at end-of-ball
 ' √? fix font-centering of 10-char highscore usernames
-'
+' Add the "Action Button" animation to "Choose your house" - should play every 30 seconds or so
 '
 ' - Need to allow for Blackwater to be stacked with WHC - it CAN happen.
 
