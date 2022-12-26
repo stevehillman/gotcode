@@ -63,6 +63,8 @@
 ' 127 - Merge in blender changes
 ' 128 - Sixtoe - Fixed ramp to UPF, Fixed drop targets not dropping (vlm.solid to vlm.active), fixed insert primitives and lighting and rough pass on light tuning, redid light materials, removed old text layers, removed vpx bloom lighting, removed rundundant images from file, added Apophis Backdrop, 
 ' 129 - apophis - Fixed target rotations. Hooked up standup target animations. Updating target BM and LM animations at same rate. Added dynamic ball brightness code. 
+' 130 - Sixtoe - Add VR components
+' 131 - Add Options menu; minor bug fixes
 
 'On the DOF website put Exxx
 '101 Left Flipper
@@ -100,6 +102,8 @@
 Option Explicit
 Randomize
 
+Const TableVersion = "0.130"
+
 Const bDebug = False
 
 '***********TABLE VOLUME LEVELS ********* 
@@ -116,23 +120,20 @@ Const cVolTable = 0.2   ' Used by Daphishbowl's Service menu
 '// VolumeDial is the actual global volume multiplier for the mechanical sounds.
 '// Values smaller than 1 will decrease mechanical sounds volume.
 '// Recommended values should be no greater than 1.
-Const VolumeDial = 0.8
-Const BallRollVolume = 0.5
+Dim VolumeDial ' Now set in the Options menu = 0.8
+Dim BallRollVolume ' Now set in the Options menu = 0.5
 
 '////// Cabinet Options
-Const bHaveLockbarButton = false    ' Set to true if you have a lockdown bar button. Will disable the flasher on the apron
-Const bCabinetMode = False          ' Set to true to hide side rails
+Dim bHaveLockbarButton ' Set in Options menu now   -Set to true if you have a lockdown bar button. Will disable the flasher on the apron
 Const DMDMode = 1                   ' Use FlexDMD (currently the only option supported)
 Const bUsePlungerForSternKey = False ' If true, use the plunger key for the Action/Select button. 
 
 '----- Shadow Options -----
-Const DynamicBallShadowsOn = 1		'0 = no dynamic ball shadow ("triangles" near slings and such), 1 = enable dynamic ball shadow
+Dim DynamicBallShadowsOn    ' Set in the Options menu
+'DynamicBallShadowsOn = 1		'0 = no dynamic ball shadow ("triangles" near slings and such), 1 = enable dynamic ball shadow
 Const AmbientBallShadowOn = 1		'0 = Static shadow under ball ("flasher" image, like JP's)
 									'1 = Moving ball shadow ("primitive" object, like ninuzzu's) - This is the only one that shows up on the pf when in ramps and fades when close to lights!
 									'2 = flasher image shadow, but it moves like ninuzzu's
-
-'///// Game of Thrones Options - most from the real ROM
-Const bUseDragonFire = true             ' Whether to use dragon fire effect on the upper playfield. Looks cool but isn't true to real table
 
 '/////// No User Configurable options beyond this point ////////
 
@@ -226,7 +227,6 @@ Dim LastSwitchHit
 Dim LightSaveState(100,4)   ' Array for saving state of lights. We save state, colour, fade to restore after Sequences (sequences only save state)
 Dim LightNames(300)         ' Saves the mapping of light names (li<xxx>) to index into LightSaveState
 Dim TotalPlayfieldLights
-Dim RoomLightLevel : RoomLightLevel = 50
 
 ' flags
 Dim bMultiBallMode
@@ -301,8 +301,6 @@ Sub Table1_Init()
         .CreateEvents "plungerIM"
     End With
 
-    If bCabinetMode Then lrail.Visible = 0 : rrail.Visible = 0
-
     ' Misc. VP table objects Initialisation, droptargets, animations...
     VPObjects_Init
 
@@ -310,6 +308,7 @@ Sub Table1_Init()
     SavePlayfieldLightNames
 
     'load saved values, highscore, names, jackpot
+    Options_Load
     Loadhs
     DMDSettingsInit() ' Init the Service Menu
     ReplayScore = DMDStd(kDMDStd_AutoReplayStart)
@@ -380,15 +379,18 @@ Sub Table1_KeyDown(ByVal Keycode)
     If keycode = RightTiltKey Then Nudge 270, 1:SoundNudgeRight()
     If keycode = CenterTiltKey Then Nudge 0, 1:SoundNudgeCenter()
 
-    If keycode = LeftMagnaSave Then 
-        bLutActive = True
-        if bDebug And bGameInPlay And bBallInPlungerLane=False Then StartMidnightMadnessMBIntro
-    End if
-    If keycode = RightMagnaSave Then
-        If bLutActive Then
-            NxtLUT
-            Exit Sub
-        End If
+    If bInOptions Then
+		Options_KeyDown keycode
+		Exit Sub
+	End If
+    If keycode = LeftMagnaSave Then
+		If bOptionsMagna Then Options_Open() Else bOptionsMagna = True
+    ElseIf keycode = RightMagnaSave Then
+		If bOptionsMagna Then 
+            Options_Open() 
+        Else 
+            If Not bGameInPlay Then bOptionsMagna = True
+        End if
     End If
 
     If Keycode = AddCreditKey Then
@@ -530,7 +532,8 @@ End Sub
 
 Sub Table1_KeyUp(ByVal keycode)
 
-    If keycode = LeftMagnaSave Then bLutActive = False
+    If keycode = LeftMagnaSave And Not bInOptions Then bOptionsMagna = False
+    If keycode = RightMagnaSave And Not bInOptions Then bOptionsMagna = False
 
     If keycode = PlungerKey Then 
         Plunger.Fire
@@ -1683,7 +1686,7 @@ Sub DynamicBSUpdate
 	Dim l
 	Dim d_w
 	Dim b_base, b_r, b_g, b_b
-	b_base = 100 * 0.01 * Playfield_LM_GI1.Opacity + 55 * (RoomLightLevel / 100) + 10
+	b_base = 100 * 0.01 * Playfield_LM_GI1.Opacity + 55 * (LightLevel / 100) + 10
 	For s = lob to UBound(gBOT)
 
 ' *** Compute ball lighting from GI and ambient lighting
@@ -4849,6 +4852,7 @@ Sub Drain_Hit()
     'if Tilted the end Ball Mode
     If Tilted Then
         StopEndOfBallModes
+        if bMultiBallMode Then StopMBmodes
     End If
 
     ' if there is a game in progress AND it is not Tilted
@@ -8067,6 +8071,7 @@ Sub ResetForNewGame()
 
     Wall075.collidable=bDebug : Wall075a.collidable=bDebug : Wall075b.collidable=bDebug ' For debugging
     bGameInPLay = True
+    Tilted = False
     GameTimeStamp = 0
     'resets the score display, and turn off attract mode
     StopAttractMode
@@ -8922,8 +8927,10 @@ Sub EndOfGame()
     If bGameInPLay = True then Exit Sub ' In case someone pressed 'Start' during Match sequence
 	
     bGameInPLay = False	
+    Tilted = True
 	bShowMatch = False
 	tmrBallSearch.Enabled = False
+    TurnOffPlayfieldLights
     
     ' ensure that the flippers are down
     SolLFlipper 0
@@ -9041,7 +9048,7 @@ End Sub
 ' Called when the last ball of multiball is lost
 Sub StopMBmodes
     tmrMultiballCompleteScene.Interval = 1000
-    tmrMultiballCompleteScene.Enabled = 1
+    If Not Tilted Then tmrMultiballCompleteScene.Enabled = 1
     if bBWMultiballActive Then
         BWMultiballsCompleted = BWMultiballsCompleted + 1
         tmrMultiballCompleteScene.UserValue = "DMDBlackwaterCompleteScene"
@@ -9275,45 +9282,61 @@ Sub UPFFlasher002_Timer
     End if
 End Sub
 
+' Known lockbar light states:
+' During regular play
+'  - Lit solid for Baratheon, Targaryen if not yet used this ball
+'  - Lit solid for Tyrell if there's at least one shot lit for Combos, or a playfield multiplier
+'  - Lit solid for Lannister if sufficient gold
+' During multiball
+'  - Also lit (flashing or solid?) for Martell if not yet used
+' During Battle
+'  - Also lit for Stark (flashing or solid?)
+' During Choose House
+'  - Flashes colour of house
+' During Mystery
+'  - Flashes white or yellow?
+' During Battle Selection
+'  - Flashes red 
+' After first ball, when ball is in the plunger lane
+'  - Flashes white
+
 Sub SetLockbarLight
     Dim st,col,ab,b
     st = 0 : col = white : ab=0' Defaults
     If PlayerMode = -1 Then 
-        st = 2
+        st = 2 : col = HouseColor(SelectedHouse) ' TODO: Check this
+    ElseIf bBallInPlungerLane Then
+        st = 2 : col = white : dofnum = 151
     Elseif PlayerMode = 2 Then st = 0
+    ElseIf bMysteryAwardActive Then
+        st = 2 : col = yellow : dofnum = 152
+    Elseif PlayerMode = -2 Then
+        st = 2 : col = red : dofnum = 153
+        ' TODO: If stacked battle is chosen, button actually cycles between off/red/off/second-house-color. Can that even be done with DOF?
     Else
         ab = House(CurrentPlayer).HasActionAbility
         If ab <> 0 Then col = HouseColor(ab) : st = 1 : Else st = 0
     End if
 
-    If bMysteryAwardActive Or PlayerMode = -2 Then st = 2
-
     'DOF for Lockbar button light
     If bHaveLockbarButton Then
         For each b in firebutton_base_BL : b.visible = false : Next
         For each b in firebutton_BL : b.visible = false : Next
+    Else
+        SetLightColor li230,col,st
     End If
     Dim dofnum
-    if bHaveLockbarButton = False Then SetLightColor li230,col,st
     Select Case st
         Case 0
             For dofnum = 141 to 147 : DOF dofnum,DOFOff : Next
         Case 1
             DOF 140 + ab, DOFOn
         Case 2
-            If bMysteryAwardActive Then dofnum = 142 Else dofnum = 141
-            DOF dofnum,DOFOn
+            For b = 141 to 147 : DOF b,DOFOff : Next
+            For b = 151 to 157
+                If b = dofnum then DOF b,DOFon else DOF b,DOFoff
+            Next
     End Select
-End Sub
-
-Sub LockbarFlasher_Timer
-    If me.UserValue = 0 Then
-        me.UserValue = 1
-        me.Visible = 1
-    Else
-        me.UserValue = 0
-        me.Visible = 0
-    End If
 End Sub
 
 
@@ -10730,7 +10753,7 @@ End Sub
 Sub DoDragonRoar(num)
     If num > 0 Then PlaySoundVol "gotfx-dragonroar"&num,VolDef
     StartDragonWings False
-    If bUseDragonFire Then
+    If Options_Flames_Enabled Then
         DragonFire.UserValue = 1
         DragonFire.imageA = "flame1"
         DragonFire.Visible = 1
@@ -14117,7 +14140,8 @@ Sub DMDHouseBattleScene(hse)
         Else
             scene.GetLabel("objective").Visible = True
         End If
-        DMDEnqueueScene scene,1,SceneSoundLengths(h),SceneSoundLengths(h),10000,"gotfx-"&hname&"battleintro"
+'        DMDEnqueueScene scene,1,SceneSoundLengths(h),SceneSoundLengths(h),10000,"gotfx-"&hname&"battleintro"
+        DMDEnqueueScene scene,1,7000,7000,10000,"gotfx-"&hname&"battleintro"
         tmrStartBattleModeScene.Interval = SceneSoundLengths(h)
         tmrStartBattleModeScene.Enabled = 1
     Else
@@ -16285,6 +16309,404 @@ End Function
 '****  END LAMPZ
 '******************************************************
 
+
+'***********************************************************************
+'* TABLE OPTIONS *******************************************************
+'***********************************************************************
+
+Dim Cabinetmode				'0 - Siderails On, 1 - Siderails Off
+Dim OutPostMod
+Dim LightLevel : LightLevel = 50
+VolumeDial = 0.8			'Overall Mechanical sound effect volume. Recommended values should be no greater than 1.
+Dim RampRollVolume : RampRollVolume = 0.5 	'Level of ramp rolling volume. Value between 0 and 1
+DynamicBallShadowsOn = 1		'0 = no dynamic ball shadow ("triangles" near slings and such), 1 = enable dynamic ball shadow
+
+' Base options
+Const Opt_Light = 0
+'Const Opt_Outpost = 1
+Const Opt_Flames = 1
+Const Opt_Volume = 2
+Const Opt_Volume_Ramp = 3
+Const Opt_Volume_Ball = 4
+' Table mods & toys
+Const Opt_Cabinet = 5
+Const Opt_LockBar = 6
+' Advanced options
+Const Opt_DynBallShadow = 7
+' Informations
+Const Opt_Info_1 = 9
+Const Opt_Info_2 = 10
+Const Opt_LUT = 8
+
+Const NOptions = 11
+
+Dim OptionDMD: Set OptionDMD = Nothing
+Dim bOptionsMagna, bInOptions : bOptionsMagna = False
+Dim OptPos, OptSelected, OptN, OptTop, OptBot, OptSel
+Dim OptFontHi, OptFontLo
+Dim Options_Flames_Enabled
+
+Sub Options_Open
+	bOptionsMagna = False
+	Set OptionDMD = CreateObject("FlexDMD.FlexDMD")
+	If OptionDMD is Nothing Then
+		Debug.Print "FlexDMD is not installed"
+		Debug.Print "Option UI can not be opened"
+		Exit Sub
+	End If
+	Debug.Print "Option UI opened"
+	If ShowDT Then OptionDMDFlasher.RotX = -(Table1.Inclination + Table1.Layback)
+	bInOptions = True
+	OptPos = 0
+	OptSelected = False
+	OptionDMD.Show = False
+	OptionDMD.RenderMode = FlexDMD_RenderMode_DMD_GRAY_4
+	OptionDMD.Width = 128
+	OptionDMD.Height = 32
+	OptionDMD.Clear = True
+	OptionDMD.Run = True
+	Dim a, scene, font
+	Set scene = OptionDMD.NewGroup("Scene")
+	Set OptFontHi = OptionDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", vbWhite, vbWhite, 0)
+	Set OptFontLo = OptionDMD.NewFont("FlexDMD.Resources.teeny_tiny_pixls-5.fnt", RGB(100, 100, 100), RGB(100, 100, 100), 0)
+	Set OptSel = OptionDMD.NewGroup("Sel")
+	Set a = OptionDMD.NewLabel(">", OptFontLo, ">>>")
+	a.SetAlignedPosition 1, 16, FlexDMD_Align_Left
+	OptSel.AddActor a
+	Set a = OptionDMD.NewLabel(">", OptFontLo, "<<<")
+	a.SetAlignedPosition 127, 16, FlexDMD_Align_Right
+	OptSel.AddActor a
+	scene.AddActor OptSel
+	OptSel.SetBounds 0, 0, 128, 32
+	OptSel.Visible = False
+	
+	Set a = OptionDMD.NewLabel("Info1", OptFontLo, "MAGNA EXIT/ENTER")
+	a.SetAlignedPosition 1, 32, FlexDMD_Align_BottomLeft
+	scene.AddActor a
+	Set a = OptionDMD.NewLabel("Info2", OptFontLo, "FLIPPER SELECT")
+	a.SetAlignedPosition 127, 32, FlexDMD_Align_BottomRight
+	scene.AddActor a
+	Set OptN = OptionDMD.NewLabel("Pos", OptFontLo, "LINE 1")
+	Set OptTop = OptionDMD.NewLabel("Top", OptFontLo, "LINE 1")
+	Set OptBot = OptionDMD.NewLabel("Bottom", OptFontLo, "LINE 2")
+	scene.AddActor OptN
+	scene.AddActor OptTop
+	scene.AddActor OptBot
+	Options_OnOptChg
+	OptionDMD.LockRenderThread
+	OptionDMD.Stage.AddActor scene
+	OptionDMD.UnlockRenderThread
+	OptionDMDFlasher.Visible = True
+End Sub
+
+Sub Options_UpdateDMD
+	If OptionDMD is Nothing Then Exit Sub
+	Dim DMDp: DMDp = OptionDMD.DmdPixels
+	If Not IsEmpty(DMDp) Then
+		DMDWidth = OptionDMD.Width
+		DMDHeight = OptionDMD.Height
+		DMDPixels = DMDp
+	End If
+End Sub
+
+Sub Options_Close
+	bInOptions = False
+	OptionDMDFlasher.Visible = False
+	If OptionDMD is Nothing Then Exit Sub
+	OptionDMD.Run = False
+	Set OptionDMD = Nothing
+End Sub
+
+Function Options_OnOffText(opt)
+	If opt Then
+		Options_OnOffText = "ON"
+	Else
+		Options_OnOffText = "OFF"
+	End If
+End Function
+
+Sub Options_OnOptChg
+	If OptionDMD is Nothing Then Exit Sub
+	OptionDMD.LockRenderThread
+	OptN.Text = (OptPos+1) & "/" & NOptions
+	If OptSelected Then
+		OptTop.Font = OptFontLo
+		OptBot.Font = OptFontHi
+		OptSel.Visible = True
+	Else
+		OptTop.Font = OptFontHi
+		OptBot.Font = OptFontLo
+		OptSel.Visible = False
+	End If
+	If OptPos = Opt_Light Then
+		OptTop.Text = "LIGHT LEVEL"
+		OptBot.Text = "LEVEL " & LightLevel
+		SaveValue cGameName, "LIGHT", LightLevel
+	' ElseIf OptPos = Opt_Outpost Then
+	' 	OptTop.Text = "OUT POST DIFFICULTY"
+	' 	If OutPostMod = 0 Then
+	' 		OptBot.Text = "EASY"
+	' 	ElseIf OutPostMod = 1 Then
+	' 		OptBot.Text = "MEDIUM"
+	' 	ElseIf OutPostMod = 2 Then
+	' 		OptBot.Text = "HARD"
+	' 	ElseIf OutPostMod = 3 Then
+	' 		OptBot.Text = "HARDEST"
+	' 	End If
+	' 	SaveValue cGameName, "OUTPOST", OutPostMod
+    ElseIf OptPos = Opt_Flames Then
+        OptTop.Text = "DRAGON FLAMES"
+        OptBot.Text = Options_OnOffText(Options_Flames_Enabled)
+        SaveValue cGameName, "DRAGONFLAMES", Options_Flames_Enabled
+	ElseIf OptPos = Opt_Volume Then
+		OptTop.Text = "MECH VOLUME"
+		OptBot.Text = "LEVEL " & CInt(VolumeDial * 100)
+		SaveValue cGameName, "VOLUME", VolumeDial
+	ElseIf OptPos = Opt_Volume_Ramp Then
+		OptTop.Text = "RAMP VOLUME"
+		OptBot.Text = "LEVEL " & CInt(RampRollVolume * 100)
+		SaveValue cGameName, "RAMPVOLUME", RampRollVolume
+	ElseIf OptPos = Opt_Volume_Ball Then
+		OptTop.Text = "BALL VOLUME"
+		OptBot.Text = "LEVEL " & CInt(BallRollVolume * 100)
+		SaveValue cGameName, "BALLVOLUME", BallRollVolume
+	ElseIf OptPos = Opt_Cabinet Then
+		OptTop.Text = "CABINET MODE"
+		OptBot.Text = Options_OnOffText(CabinetMode)
+		SaveValue cGameName, "CABINET", CabinetMode
+    ElseIf OptPos = Opt_LockBar Then
+        OptTop.text = "HAVE LOCKBAR BUTTON"
+        OptBot.Text = Options_OnOffText(bHaveLockbarButton)
+        SaveValue cGameName, "LBBUT", bHaveLockbarButton
+	ElseIf OptPos = Opt_DynBallShadow Then
+		OptTop.Text = "DYN. BALL SHADOWS"
+		OptBot.Text = Options_OnOffText(DynamicBallShadowsOn)
+		SaveValue cGameName, "DYNBALLSH", DynamicBallShadowsOn
+	ElseIf OptPos = Opt_Info_1 Then
+		OptTop.Text = "VPX " & VersionMajor & "." & VersionMinor & "." & VersionRevision
+		OptBot.Text = "GAME OF THRONES " & TableVersion
+	ElseIf OptPos = Opt_Info_2 Then
+		OptTop.Text = "RENDER MODE"
+		If RenderingMode = 0 Then OptBot.Text = "DEFAULT"
+		If RenderingMode = 1 Then OptBot.Text = "STEREO 3D"
+		If RenderingMode = 2 Then OptBot.Text = "VR"
+    ElseIf OptPos = Opt_LUT Then
+        OptTop.Text = "LUT"
+        OptBot.Text = LUTImage
+	End If
+	OptTop.SetAlignedPosition 127, 1, FlexDMD_Align_TopRight
+	OptBot.SetAlignedPosition 64, 16, FlexDMD_Align_Center
+	OptionDMD.UnlockRenderThread
+	UpdateMods
+End Sub
+
+Sub Options_Toggle(amount)
+	If OptionDMD is Nothing Then Exit Sub
+	If OptPos = Opt_Light Then
+		LightLevel = LightLevel + amount * 10
+		If LightLevel < 0 Then LightLevel = 100
+		If LightLevel > 100 Then LightLevel = 0
+	' ElseIf OptPos = Opt_Outpost Then
+	' 	OutPostMod = OutPostMod + amount
+	' 	If OutPostMod < 0 Then OutPostMod = 3
+	' 	If OutPostMod > 3 Then OutPostMod = 0
+    ElseIf OptPos = Opt_Flames Then
+        Options_Flames_Enabled = 1 - Options_Flames_Enabled
+	ElseIf OptPos = Opt_Volume Then
+		VolumeDial = VolumeDial + amount * 0.1
+		If VolumeDial < 0 Then VolumeDial = 1
+		If VolumeDial > 1 Then VolumeDial = 0
+	ElseIf OptPos = Opt_Volume_Ramp Then
+		RampRollVolume = RampRollVolume + amount * 0.1
+		If RampRollVolume < 0 Then RampRollVolume = 1
+		If RampRollVolume > 1 Then RampRollVolume = 0
+	ElseIf OptPos = Opt_Volume_Ball Then
+		BallRollVolume = BallRollVolume + amount * 0.1
+		If BallRollVolume < 0 Then BallRollVolume = 1
+		If BallRollVolume > 1 Then BallRollVolume = 0
+	ElseIf OptPos = Opt_Cabinet Then
+		CabinetMode = 1 - CabinetMode
+    ElseIf OptPos = Opt_LockBar Then
+        bHaveLockbarButton = 1 - bHaveLockbarButton
+	ElseIf OptPos = Opt_DynBallShadow Then
+		DynamicBallShadowsOn = 1 - DynamicBallShadowsOn
+    Elseif OptPos = Opt_LUT Then
+        LUTImage = LUTImage + amount
+        If LUTImage < 0 Then LUTImage = 0
+        LUTImage = ABS(LUTImage) MOD 16
+        table1.ColorGradeImage = "LUT"&LUTImage
+        SaveLUT
+	End If
+End Sub
+
+Sub Options_KeyDown(ByVal keycode)
+	If OptSelected Then
+		If keycode = LeftMagnaSave Then ' Exit / Cancel
+			OptSelected = False
+		ElseIf keycode = RightMagnaSave Then ' Enter / Select
+			OptSelected = False
+		ElseIf keycode = LeftFlipperKey Then ' Next / +
+			Options_Toggle	-1
+		ElseIf keycode = RightFlipperKey Then ' Prev / -
+			Options_Toggle	1
+		End If
+	Else
+		If keycode = LeftMagnaSave Then ' Exit / Cancel
+			Options_Close
+		ElseIf keycode = RightMagnaSave Then ' Enter / Select
+			If OptPos < Opt_Info_1 Then OptSelected = True
+		ElseIf keycode = LeftFlipperKey Then ' Next / +
+			OptPos = OptPos - 1
+			If OptPos < 0 Then OptPos = NOptions - 1
+		ElseIf keycode = RightFlipperKey Then ' Prev / -
+			OptPos = OptPos + 1
+			If OptPos >= NOPtions Then OptPos = 0
+		End If
+	End If
+	Options_OnOptChg
+End Sub
+
+Sub Options_Load
+	Dim x
+    x = LoadValue(cGameName, "LIGHT")
+    If x <> "" Then LightLevel = CInt(x) Else LightLevel = 50
+    'x = LoadValue(cGameName, "OUTPOST")
+    'If x <> "" Then OutPostMod = CInt(x) Else OutPostMod = 1
+    x = LoadValue(cGameName,"DRAGONFLAMES")
+    If x <> "" Then Options_Flames_Enabled = CInt(x) Else Options_Flames_Enabled = 1
+    x = LoadValue(cGameName, "VOLUME")
+    If x <> "" Then VolumeDial = CNCDbl(x) Else VolumeDial = 0.8
+    x = LoadValue(cGameName, "RAMPVOLUME")
+    If x <> "" Then RampRollVolume = CNCDbl(x) Else RampRollVolume = 0.5
+    x = LoadValue(cGameName, "BALLVOLUME")
+    If x <> "" Then BallRollVolume = CNCDbl(x) Else BallRollVolume = 0.5
+    x = LoadValue(cGameName, "CABINET")
+    If x <> "" Then CabinetMode = CInt(x) Else CabinetMode = 0
+    x = LoadValue(cGameName,"LBBUT")
+    If x <> "" Then bHaveLockbarButton = CInt(x) Else bHaveLockbarButton = False
+    x = LoadValue(cGameName, "DYNBALLSH")
+    If x <> "" Then DynamicBallShadowsOn = CInt(x) Else DynamicBallShadowsOn = 1
+	UpdateMods
+End Sub
+
+Sub UpdateMods
+	Dim y, enabled
+
+    ' No rails present yet
+	' If CabinetMode Then
+	'     lrail.Visible = 0 : rrail.Visible = 0
+	' Else
+	'  	 lrail.Visible = 1 : rrail.Visible = 1
+	' End If
+
+    ' Not Implemented
+	' If OutPostMod = 0 Then ' Easy
+	' 	routpost_BM_Dark_Room.x = 817.4415
+	' 	routpost_BM_Dark_Room.y = 1469.287
+	' 	loutpost_BM_Dark_Room.x = 51.87117
+	' 	loutpost_BM_Dark_Room.y = 1469.451
+	' 	rout_easy.collidable = true
+	' 	rout_medium.collidable = false
+	' 	rout_hard.collidable = false
+	' 	rout_hardest.collidable = false
+	' 	lout_easy.collidable = true
+	' 	lout_medium.collidable = false
+	' 	lout_hard.collidable = false
+	' 	lout_hardest.collidable = false
+	' ElseIf OutPostMod = 1 Then ' Medium
+	' 	routpost_BM_Dark_Room.x = 823.0609
+	' 	routpost_BM_Dark_Room.y = 1459.596
+	' 	loutpost_BM_Dark_Room.x = 48.93166
+	' 	loutpost_BM_Dark_Room.y = 1457.558
+	' 	rout_easy.collidable = false
+	' 	rout_medium.collidable = true
+	' 	rout_hard.collidable = false
+	' 	rout_hardest.collidable = false
+	' 	lout_easy.collidable = false
+	' 	lout_medium.collidable = true
+	' 	lout_hard.collidable = false
+	' 	lout_hardest.collidable = false
+	' ElseIf OutPostMod = 2 Then ' Hard
+	' 	routpost_BM_Dark_Room.x = 829.0158
+	' 	routpost_BM_Dark_Room.y = 1449.152
+	' 	loutpost_BM_Dark_Room.x = 45.53271
+	' 	loutpost_BM_Dark_Room.y = 1446.529
+	' 	rout_easy.collidable = false
+	' 	rout_medium.collidable = false
+	' 	rout_hard.collidable = true
+	' 	rout_hardest.collidable = false
+	' 	lout_easy.collidable = false
+	' 	lout_medium.collidable = false
+	' 	lout_hard.collidable = true
+	' 	lout_hardest.collidable = false
+	' ElseIf OutPostMod = 3 Then ' Hardest
+	' 	routpost_BM_Dark_Room.x = 834.4323
+	' 	routpost_BM_Dark_Room.y = 1439.318
+	' 	loutpost_BM_Dark_Room.x = 42.86211
+	' 	loutpost_BM_Dark_Room.y = 1435.624
+	' 	rout_easy.collidable = false
+	' 	rout_medium.collidable = false
+	' 	rout_hard.collidable = false
+	' 	rout_hardest.collidable = true
+	' 	lout_easy.collidable = false
+	' 	lout_medium.collidable = false
+	' 	lout_hard.collidable = false
+	' 	lout_hardest.collidable = true
+	' End If
+
+	' ' FIXME this should be setup in Blender
+	' routpost_LM_GI.x = routpost_BM_Dark_Room.x
+	' routpost_LM_GI.y = routpost_BM_Dark_Room.y
+	' routpost_LM_Lit_Room.x = routpost_BM_Dark_Room.x
+	' routpost_LM_Lit_Room.y = routpost_BM_Dark_Room.y
+	' routpost_LM_flashers_l130.x = routpost_BM_Dark_Room.x
+	' routpost_LM_flashers_l130.y = routpost_BM_Dark_Room.y
+	' routpost_LM_flashers_l131.x = routpost_BM_Dark_Room.x
+	' routpost_LM_flashers_l131.y = routpost_BM_Dark_Room.y
+	' routpost_LM_flashers_l132.x = routpost_BM_Dark_Room.x
+	' routpost_LM_flashers_l132.y = routpost_BM_Dark_Room.y
+
+	' ' FIXME this should be setup in Blender
+	' loutpost_LM_GI.x = loutpost_BM_Dark_Room.x
+	' loutpost_LM_GI.y = loutpost_BM_Dark_Room.y
+	' loutpost_LM_Lit_Room.x = loutpost_BM_Dark_Room.x
+	' loutpost_LM_Lit_Room.y = loutpost_BM_Dark_Room.y
+	' loutpost_LM_flashers_l130.x = loutpost_BM_Dark_Room.x
+	' loutpost_LM_flashers_l130.y = loutpost_BM_Dark_Room.y
+	' loutpost_LM_flashers_l131.x = loutpost_BM_Dark_Room.x
+	' loutpost_LM_flashers_l131.y = loutpost_BM_Dark_Room.y
+
+	Lampz.state(150) = LightLevel
+End Sub
+
+' Culture neutral string to double conversion (handles situation where you don't know how the string was written)
+Function CNCDbl(str)
+    Dim strt, Sep, i
+    If IsNumeric(str) Then
+        CNCDbl = CDbl(str)
+    Else
+        Sep = Mid(CStr(0.5), 2, 1)
+        Select Case Sep
+        Case "."
+            i = InStr(1, str, ",")
+        Case ","
+            i = InStr(1, str, ".")
+        End Select
+        If i = 0 Then     
+            CNCDbl = Empty
+        Else
+            strt = Mid(str, 1, i - 1) & Sep & Mid(str, i + 1)
+            If IsNumeric(strt) Then
+                CNCDbl = CDbl(strt)
+            Else
+                CNCDbl = Empty
+            End If
+        End If
+    End If
+End Function
+
+
+
 ' ===============================================================
 ' ZVLM       Virtual Pinball X Light Mapper generated code
 '
@@ -17053,6 +17475,7 @@ Sub MovableHelper
     a = Gate001.currentAngle
     For each t in Gates_001_BL : t.RotZ=a : Next
 
+    Options_UpdateDMD
 End Sub
 
 Sub TargetMovableHelper
@@ -17212,6 +17635,7 @@ Sub HideLightHelper
     li216.Visible = False
 
 	li222.Visible = False
+    li230.Visible = False
 
     fl235.Visible = False
     fl236.Visible = False
@@ -17283,7 +17707,6 @@ End Sub
 Sub FrameTimer_Timer
     MovableHelper
     'HideLightHelper
-    Lampz.state(150) = RoomLightLevel
 End Sub
 
 
@@ -17298,9 +17721,9 @@ End Sub
 '
 ' Coding
 '-------
-' Need to implement Options FlexDMD table overlay
-' Check timing for how long score stays on the screen at the end of a game. If you get a high score, probably want it to cycle through which scores you got before moving to Attract mode
-' Match sometimes stays on screen for too little time - maybe when getting a high score?
+' √? Need to implement Options FlexDMD table overlay
+' √? Check timing for how long score stays on the screen at the end of a game. If you get a high score, probably want it to cycle through which scores you got before moving to Attract mode
+' √? Match sometimes stays on screen for too little time - maybe when getting a high score?
 '  - How it should go:
 '    - if you get a high score, enter initials
 '    - once initials are entered, show a scene that rotates through the scores you beat, flashing the player #. See 2:36:42 in Deadflip premium vid
@@ -17308,16 +17731,16 @@ End Sub
 '    - once done, do regular Match scene
 '    - once Match has played for 9 seconds, show Game Over for 2 seconds, then player's score for 2 seconds. Presumably if multiplayer, play each player's score for 2 seconds
 ' Game froze when PSD was entering his initials once
-' Text explaining battle needs to stay on screen longer. Watch video to see how they do it
-' ball save doesn't always work, even when lit
+' √? Text explaining battle needs to stay on screen longer. Watch video to see how they do it
+' √? ball save doesn't always work, even when lit
 ' √? Castle loop was lit, scored 'breach!', but didn't update the lights afterwards
-' flashing 'light shoot again' is getting turned on for battles, but shouldn't - may be the real cause of ball save not working
+' √? flashing 'light shoot again' is getting turned on for battles, but shouldn't - may be the real cause of ball save not working
 ' √? During Baratheon battle, one target got knocked down. Then when other two were knocked down, didn't reset.
 ' √? If you press action button during battle instructions, it goes straight to battle and bypasses intro music, but still sits on the ball for 5 seconds
 ' √? UPF can't handle multiball and battle at the same time - needs refactoring
 ' √? Need to implement timer to reset Wildfire targets to unlit after 2 BWMBs completed. Timer needs to be cleared at end-of-ball
 ' √? fix font-centering of 10-char highscore usernames
-'
+' Add the "Action Button" animation to "Choose your house" - should play every 30 seconds or so
 '
 ' - Need to allow for Blackwater to be stacked with WHC - it CAN happen.
 
